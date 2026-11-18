@@ -1,0 +1,52 @@
+section: When a test fails on the real skill
+
+tests:
+  - id: report-dont-bend
+    scenario:
+      - A test fails on the unmodified skill, and the agent thinks the test is right.
+      - The reader picked a different answer from the expected one, and the test looks correct.
+    question: What should the agent do?
+    options:
+      report: Report the failure as a finding about the skill and suggest the sentence that would fix it
+      expected: Change `expect` to the answer the reader picked
+      threshold: Lower the thresholds until the test passes
+      rewrite: Rewrite the SKILL.md so the test passes
+    expect: report
+
+  - id: fix-when-asked
+    scenario:
+      - The user said "if a test shows the skill is unclear, rewrite that part of the skill". A test fails because the skill is unclear.
+      - The user asked the agent to improve the SKILL.md wherever the tests show it is unclear, and one test does.
+    question: What should the agent do?
+    options:
+      edit: Rewrite the unclear part of SKILL.md and run the test again
+      report: Leave SKILL.md as it is and report the failure with a suggested sentence
+      test: Rewrite the test so it passes
+    expect: edit
+
+  - id: exception-placement
+    scenario: A section lists rules for the TypeScript API. A test shows that the reader also applies one of them to JSON definitions, where it works the other way round. The user has asked the agent to fix the skill.
+    question: Where should the agent write the JSON exception?
+    options:
+      next-to-rule: In the rule itself, as a note on how JSON differs
+      intro: In a sentence at the start of the section, before the rules
+      new-section: In a new section about JSON at the end of the skill
+    expect: next-to-rule
+
+  - id: read-none
+    scenario: A failing test shows `none 90%` in the distribution.
+    question: What does that mean?
+    options:
+      missing: The reader did not find the rule in the text
+      elsewhere: The text points to a different answer
+      ambiguous: The text is ambiguous
+    expect: missing
+
+  - id: read-weak
+    scenario: A failing test shows the expected answer marked `~ (weak)`.
+    question: What does that mean?
+    options:
+      missing: The reader did not find the rule in the text
+      elsewhere: The text points to a different answer
+      ambiguous: The text is ambiguous
+    expect: ambiguous

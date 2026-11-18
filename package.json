@@ -1,0 +1,54 @@
+{
+  "name": "@golemui/alchemist",
+  "version": "0.1.0",
+  "description": "Unit tests for agent skills. Checks that an LLM reading your SKILL.md reaches the decisions it was written to force. Graded by TypeSafe: no agent run, no Claude API.",
+  "license": "MIT",
+  "homepage": "https://alchemist.golemui.com",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/golemui/alchemist.git"
+  },
+  "keywords": [
+    "agent",
+    "skills",
+    "skill",
+    "testing",
+    "llm",
+    "mcp",
+    "typesafe",
+    "ci"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "alchemist": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills/alchemist/SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/cli.ts",
+    "test:skill": "tsx src/cli.ts run --config skills/alchemist/alchemist.yaml",
+    "test:skill:dry": "tsx src/cli.ts run --config skills/alchemist/alchemist.yaml --dry-run",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.3"
+  }
+}

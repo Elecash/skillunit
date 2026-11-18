@@ -1,0 +1,57 @@
+section: Write a test
+
+tests:
+  - id: scenario-without-reason
+    scenario: The skill's rule is "when production is down, roll back instead of deploying a fix, because a rollback takes a minute and a fix takes ten". The agent is writing the scenario for this rule.
+    question: Which scenario should it write?
+    options:
+      plain: "Production is down after a deploy, and the user has a fix ready."
+      leaky: "Production is down after a deploy; a rollback takes a minute and a fix takes ten."
+    expect: plain
+
+  - id: ask-about-action
+    scenario: The agent is writing the question for a test about the rollback rule.
+    question: Which question should it write?
+    options:
+      action: "What should the agent do first?"
+      recall: "Does the skill mention rollbacks?"
+    expect: action
+
+  - id: prefer-choice
+    scenario: The rule is "never commit the API key", and the agent is choosing the kind of test.
+    question: Which kind of test should it write?
+    options:
+      choice: A test with options, such as where the key should go
+      yes-no: A yes/no test asking whether the agent may commit the key
+    expect: choice
+
+  - id: yes-no-for-many-outcomes
+    scenario: The decision is which of four commands to run.
+    question: Should the agent write it as a yes/no test?
+    expect: no
+
+  - id: reuse-skill-example
+    scenario: The skill gives "served from our backend" as an example of the rule, and the agent is writing phrasings for the test.
+    question: May the agent use "served from our backend" as one of the phrasings?
+    expect: no
+
+  - id: negative-test
+    # This test still passes, with less confidence, when the sentence about negative tests is
+    # deleted: the reader knows this testing practice without the skill. It shows the skill
+    # agrees with the practice; it cannot show the sentence is needed.
+    scenario: The rule is "ask which API to use before writing code". The agent has written a test where the request names no API and the agent must ask.
+    question: Which other test should the agent add for this rule?
+    options:
+      named: A request that already names the API, where the agent must not ask
+      phrasing: The same request in other words, added as a second phrasing
+      how: A test that checks which tool the agent uses to ask
+    expect: named
+
+  - id: expect-none-test
+    scenario: The skill is a deploy checklist that never mentions database migrations. The agent is writing the tests for that skill.
+    question: What should the agent do about migrations?
+    options:
+      silent-test: Write a test that checks the reader says the skill does not cover migrations
+      skip: Write no test about migrations; only test what the skill covers
+      closest: Write a test that expects the command closest to a migration, such as `npm run deploy`
+    expect: silent-test
