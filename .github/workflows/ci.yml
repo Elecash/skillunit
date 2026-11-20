@@ -20,6 +20,8 @@ jobs:
       - run: npx nx run-many -t typecheck build test
       # Needs no API key: lint, sync, and the specs load, their headings exist and requests fit.
       - run: node packages/skillunit/dist/cli.js check --dry-run --config skills/skillunit/skillunit.yaml --reporter github
+      # The acceptance scenarios that need no model. Those that do are skipped without a key.
+      - run: npx nx e2e tinyfetch-e2e
 
   skill:
     # skillunit checks its own skill against TypeSafe. Skipped on forks, which get no secrets.
@@ -40,3 +42,10 @@ jobs:
       - run: npx nx build skillunit
       - if: env.TYPESAFE_API_KEY != ''
         run: node packages/skillunit/dist/cli.js check --config skills/skillunit/skillunit.yaml --reporter github
+      - if: env.TYPESAFE_API_KEY != ''
+        working-directory: apps/tinyfetch
+        run: node ../../packages/skillunit/dist/cli.js check --reporter github
+      # Every acceptance scenario, the ones that ask the model included. A scenario whose model
+      # answer flips is a finding to look at, not a run to retry.
+      - if: env.TYPESAFE_API_KEY != ''
+        run: npx nx e2e tinyfetch-e2e

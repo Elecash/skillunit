@@ -1,0 +1,20 @@
+file: features/clients.md
+
+tests:
+  - id: several-calls-same-api
+    unit: one-client-per-api
+    scenario:
+      - A service calls three endpoints of the same API, all with the same bearer token.
+      - Two modules of the app read from one billing API with the same base URL.
+    question: How should the code make these requests?
+    options:
+      shared: Create one client with `create` and reuse it
+      each: Create a client next to each request
+      direct: Call `tf` with full URLs and repeat the headers
+    expect: shared
+
+  - id: single-call-other-host
+    unit: one-client-per-api
+    scenario: A script makes one request to a weather API, once.
+    question: Does the skill ask for a client here?
+    expect: no

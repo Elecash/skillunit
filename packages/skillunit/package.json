@@ -39,8 +39,8 @@
     "name": "skillunit"
   },
   "scripts": {
-    "build": "node scripts/tsc.mjs -p tsconfig.build.json",
-    "typecheck": "node scripts/tsc.mjs --noEmit",
+    "build": "node ../../tools/tsc.mjs -p tsconfig.build.json",
+    "typecheck": "node ../../tools/tsc.mjs --noEmit",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",
     "prepack": "node scripts/copy-shared-files.mjs",

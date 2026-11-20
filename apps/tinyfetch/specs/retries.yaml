@@ -1,0 +1,46 @@
+file: features/retries.md
+
+tests:
+  - id: post-no-retry
+    unit: retry-idempotent-only
+    scenario:
+      - An order is created with `tf.post`, and the network drops now and then.
+      - A payment is sent with `tf.post` to an API that sometimes answers 503.
+    question: Should the agent pass `retry` to that call?
+    options:
+      retry: Yes, pass `retry` so the request survives a dropped connection or a 503
+      no-retry: No, leave `retry` off for this method
+    expect: no-retry
+
+  - id: patch-no-retry
+    unit: retry-idempotent-only
+    scenario: A user profile is updated with `tf.patch`, and the API sometimes answers 503.
+    question: Should the agent pass `retry` to that call?
+    options:
+      retry: Yes, pass `retry` so the update survives a 503
+      no-retry: No, leave `retry` off for this method
+    expect: no-retry
+
+  - id: put-may-retry
+    unit: retry-idempotent-only
+    scenario: A settings document is replaced with `tf.put`, and the API sometimes answers 503.
+    question: Should the agent pass `retry` to that call?
+    options:
+      retry: Yes, `retry` is allowed for this method
+      no-retry: No, leave `retry` off for this method
+    expect: retry
+
+  - id: get-may-retry
+    unit: retry-idempotent-only
+    scenario: A list of users is read with `tf.get`, and the API sometimes answers 503.
+    question: May the agent pass `retry` to that call?
+    expect: yes
+
+  - id: retry-delay-default
+    scenario: The agent sets `retry` and leaves `retryDelay` out.
+    question: How long does tinyfetch wait before the first new attempt?
+    options:
+      ms300: 300 ms
+      ms1000: 1 second
+      none-wait: It retries at once
+    expect: ms300

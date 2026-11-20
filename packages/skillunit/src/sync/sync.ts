@@ -145,13 +145,12 @@ export function defaultBase(git: Git): string {
   return found;
 }
 
-/** The unit text with whitespace normalised, so a formatter run does not count as an edit. */
+/**
+ * The unit text with every run of whitespace, line breaks included, made one space. A formatter
+ * that rewraps a long line, adds blank lines or changes indentation does not count as an edit.
+ */
 export function normalize(text: string): string {
-  return text
-    .split(/\r?\n/)
-    .map((l) => l.replace(/[ \t]+/g, ' ').trim())
-    .filter(Boolean)
-    .join('\n');
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 /** Units of the skill as committed in `commit`, by id. The first unit wins when ids repeat. */

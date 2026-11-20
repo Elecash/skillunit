@@ -1,0 +1,21 @@
+{
+  "name": "tinyfetch-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Acceptance scenarios: each breaks tinyfetch or its skill in a copy of the app and checks that skillunit reports it.",
+  "type": "module",
+  "nx": {
+    "name": "tinyfetch-e2e",
+    "implicitDependencies": ["tinyfetch", "skillunit"],
+    "targets": {
+      "e2e": {
+        "dependsOn": ["skillunit:build"],
+        "cache": false
+      }
+    }
+  },
+  "scripts": {
+    "typecheck": "node ../../tools/tsc.mjs --noEmit",
+    "e2e": "vitest run"
+  }
+}

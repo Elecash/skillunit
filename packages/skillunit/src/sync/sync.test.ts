@@ -191,8 +191,10 @@ describe('sync', () => {
 });
 
 describe('normalize', () => {
-  it('ignores trailing spaces, blank lines and runs of spaces, but not other changes', () => {
+  it('ignores trailing spaces, blank lines, runs of spaces and rewrapped lines, but not other changes', () => {
     expect(normalize('### rule: a\n\nWhen:  x  \n\n\nDo: y\r\n')).toBe(normalize('### rule: a\nWhen: x\nDo: y'));
+    expect(normalize('Do: a long line that a\n  formatter wrapped.')).toBe(normalize('Do: a long line that a formatter wrapped.'));
+    expect(normalize('Do: a b')).not.toBe(normalize('Do: ab'));
     expect(normalize("Right: `tf.get('/a')`")).not.toBe(normalize('Right: `tf.get("/a")`'));
   });
 });

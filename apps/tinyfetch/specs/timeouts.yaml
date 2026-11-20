@@ -1,0 +1,31 @@
+file: features/timeouts.md
+
+tests:
+  - id: default-timeout
+    unit: default-timeout
+    scenario: The user asks how long a tinyfetch request waits before it gives up, when the code sets nothing.
+    question: What should the agent answer?
+    options:
+      s10: 10 seconds
+      s30: 30 seconds
+      forever: It waits until the server answers
+    expect: s10
+
+  - id: connect-timeout
+    unit: default-timeout
+    scenario: The user asks which option sets the connect timeout of a tinyfetch request.
+    question: What should the agent answer?
+    options:
+      timeout: The `timeout` option
+      connect: A `connectTimeout` option
+      none-exists: tinyfetch has no separate connect timeout
+    expect: none-exists
+
+  - id: long-upload
+    unit: never-disable-timeout
+    scenario: An upload with `tf.post` can take up to two minutes.
+    question: What should the agent set?
+    options:
+      raise: "`timeout: 120_000`"
+      off: "`timeout: 0`, so the upload never times out"
+    expect: raise
