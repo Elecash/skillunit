@@ -10,7 +10,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { listMarkdown } from '../skill-text.js';
+import { listMarkdown } from '../files.js';
 import {
   FOOTER_LABELS,
   LABELS,

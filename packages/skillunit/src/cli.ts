@@ -6,9 +6,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
 import { ConfigError, formatLint, lint } from './lint/index.js';
-import { createClient } from './reader.js';
+import { loadModel, ModelError, type DecisionModel } from './models/index.js';
 import { printReport } from './report.js';
-import { runAll, type Report } from './runner.js';
+import { runAll, type Report } from './test/runner.js';
 
 const HELP = `skillunit: unit tests for agent skills
 
@@ -71,19 +71,29 @@ async function main() {
   }
   if (args.skill) config.skill = resolve(args.skill);
   if (args.specs.length) config.specs = args.specs.map((p) => resolve(p));
-  if (args.model) config.model = args.model;
+  if (args.model) {
+    if (config.model.provider !== 'typesafe') usage('--model sets the TypeSafe model name; the settings use a model module');
+    config.model = { provider: 'typesafe', name: args.model };
+  }
   Object.assign(config.thresholds, args.thresholds);
 
   if (!existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
-  if (!args.dryRun && !process.env.TYPESAFE_API_KEY) {
+  if (!args.dryRun && config.model.provider === 'typesafe' && !process.env.TYPESAFE_API_KEY) {
     usage('TYPESAFE_API_KEY is not set. Add it to ./.env or the environment, or use --dry-run.');
   }
 
+  let model: DecisionModel;
+  try {
+    model = await loadModel(config.model);
+  } catch (e) {
+    if (e instanceof ModelError) usage(e.message);
+    throw e;
+  }
   let report: Report;
   try {
-    report = await runAll(config, args.dryRun ? undefined : createClient());
+    report = await runAll(config, model, { dryRun: args.dryRun });
   } catch (e) {
     usage((e as Error).message);
   }

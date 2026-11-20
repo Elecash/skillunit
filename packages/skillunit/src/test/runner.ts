@@ -4,9 +4,9 @@
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { TypeSafeClient } from '@typesafe-ai/sdk';
-import type { Config } from './config.js';
-import { buildRequest, estimateTokens, read, TOKEN_LIMITS, type Verdict } from './reader.js';
+import type { Config } from '../config.js';
+import type { DecisionModel } from '../models/index.js';
+import { buildRequest, estimateTokens, read, type TokenEstimate, type Verdict } from './reader.js';
 import { readSkillText, readWithFiles } from './skill-text.js';
 import { loadSpec } from './spec.js';
 
@@ -23,12 +23,12 @@ export interface SpecReport {
   with: string[];
   /** Length of the text the tests read: the part of `file` plus every `with` file. */
   chars: number;
-  /** Estimated tokens of the state plus the longest question, the figure TypeSafe caps at 32k. */
+  /** Estimated tokens of the state plus the longest question: what the model's `perQuestionTokens` limits. */
   estimatedTokens: number;
   model?: string;
   verdicts: Verdict[];
   usage: Usage;
-  /** Why the spec could not run (invalid YAML, a missing heading, a TypeSafe error…). */
+  /** Why the spec could not run (invalid YAML, a missing heading, a failed request…). */
   error?: string;
 }
 
@@ -41,10 +41,15 @@ export interface Report {
   summary: { tests: number; passed: number; usage: Usage };
 }
 
-/** `client` is undefined for a dry run: specs and headings are checked, nothing is sent. */
-export async function runAll(config: Config, client: TypeSafeClient | undefined): Promise<Report> {
+export interface RunOptions {
+  /** Check that specs load, headings exist and requests fit the model's limits; send nothing. */
+  dryRun?: boolean;
+}
+
+export async function runAll(config: Config, model: DecisionModel, options: RunOptions = {}): Promise<Report> {
+  const dryRun = options.dryRun ?? false;
   const specs: SpecReport[] = [];
-  for (const path of collectSpecs(config.specs)) specs.push(await runSpec(path, config, client));
+  for (const path of collectSpecs(config.specs)) specs.push(await runSpec(path, config, model, dryRun));
 
   const summary = { tests: 0, passed: 0, usage: { input_tokens: 0, output_tokens: 0 } };
   for (const s of specs) {
@@ -54,7 +59,7 @@ export async function runAll(config: Config, client: TypeSafeClient | undefined)
     summary.usage.output_tokens += s.usage.output_tokens;
   }
   const ok = specs.every((s) => !s.error && s.verdicts.every((v) => v.pass));
-  return { schema: REPORT_SCHEMA, ok, skill: config.skill, dryRun: !client, specs, summary };
+  return { schema: REPORT_SCHEMA, ok, skill: config.skill, dryRun, specs, summary };
 }
 
 /** Expands folders into the `.yaml` / `.yml` files they contain, sorted by name. */
@@ -72,7 +77,7 @@ export function collectSpecs(paths: string[]): string[] {
   return out;
 }
 
-async function runSpec(path: string, config: Config, client: TypeSafeClient | undefined): Promise<SpecReport> {
+async function runSpec(path: string, config: Config, model: DecisionModel, dryRun: boolean): Promise<SpecReport> {
   const report: SpecReport = {
     spec: path,
     file: 'SKILL.md',
@@ -93,12 +98,12 @@ async function runSpec(path: string, config: Config, client: TypeSafeClient | un
     report.with = Object.keys(references);
     report.chars = text.length + Object.values(references).reduce((n, r) => n + r.length, 0);
 
-    const request = buildRequest(text, spec.tests, config.context, config.model, references);
+    const request = buildRequest(text, spec.tests, config.context, references);
     const estimate = estimateTokens(request);
     report.estimatedTokens = estimate.stateAndLongestQuestion;
-    checkLimits(estimate, text, references);
+    checkLimits(model, estimate, text, references);
 
-    if (!client) {
+    if (dryRun) {
       report.verdicts = spec.tests.map((t) => ({
         id: t.id,
         expect: t.expect,
@@ -111,7 +116,7 @@ async function runSpec(path: string, config: Config, client: TypeSafeClient | un
       return report;
     }
 
-    const result = await read(client, text, spec.tests, config.thresholds, config.context, config.model, references);
+    const result = await read(model, request, spec.tests, config.thresholds);
     report.verdicts = result.verdicts;
     report.model = result.model;
     report.usage = result.usage;
@@ -121,18 +126,15 @@ async function runSpec(path: string, config: Config, client: TypeSafeClient | un
   }
 }
 
-/** Refuses a request TypeSafe would reject, and says which files make it big. */
-function checkLimits(
-  estimate: ReturnType<typeof estimateTokens>,
-  text: string,
-  references: Record<string, string>,
-) {
+/** Refuses a request the model would reject, and says which files make it big. */
+function checkLimits(model: DecisionModel, estimate: TokenEstimate, text: string, references: Record<string, string>) {
   const fmt = (n: number) => n.toLocaleString('en-US');
+  const { perQuestionTokens, perRequestTokens } = model.limits;
   const over =
-    estimate.stateAndLongestQuestion > TOKEN_LIMITS.stateAndLongestQuestion
-      ? `the skill text plus the longest question is about ${fmt(estimate.stateAndLongestQuestion)} tokens; TypeSafe takes ${fmt(TOKEN_LIMITS.stateAndLongestQuestion)}`
-      : estimate.request > TOKEN_LIMITS.request
-        ? `the request is about ${fmt(estimate.request)} tokens; TypeSafe takes ${fmt(TOKEN_LIMITS.request)}. Split the tests into two specs`
+    estimate.stateAndLongestQuestion > perQuestionTokens
+      ? `the skill text plus the longest question is about ${fmt(estimate.stateAndLongestQuestion)} tokens; ${model.id} takes ${fmt(perQuestionTokens)}`
+      : estimate.request > perRequestTokens
+        ? `the request is about ${fmt(estimate.request)} tokens; ${model.id} takes ${fmt(perRequestTokens)}. Split the tests into two specs`
         : '';
   if (!over) return;
   const sizes = [['the file under test', text.length] as const, ...Object.entries(references).map(([p, r]) => [p, r.length] as const)]

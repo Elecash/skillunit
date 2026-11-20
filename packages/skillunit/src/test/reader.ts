@@ -1,11 +1,14 @@
 /**
- * The reader: asks TypeSafe every test of a spec in one request. The skill text is the state
- * and each scenario phrasing is one question about it. TypeSafe answers the questions in
- * parallel and none of them sees the others, so each answer depends on the skill text alone.
- * A spec with `with` also puts the other files the agent reads in the state, under `references`.
+ * The reader: asks a decision model every test of a spec in one request. The skill text is the
+ * state and each phrasing of a scenario is one question about it. The model answers the
+ * questions apart from each other, so each answer depends on the skill text alone. A spec with
+ * `with` also puts the other files the agent reads in the state, under `references`.
+ *
+ * The framing, the automatic `none` option, the thresholds and the token checks live here, not
+ * in the adapters, so every model is asked and judged the same way.
  */
-import { TypeSafeClient, type Questions, type SystemOneResult } from '@typesafe-ai/sdk';
-import type { Thresholds } from './config.js';
+import type { Thresholds } from '../config.js';
+import type { DecisionAnswer, DecisionModel, DecisionQuestion, DecisionRequest } from '../models/index.js';
 import { NONE, type TestCase } from './spec.js';
 
 export interface Verdict {
@@ -13,7 +16,7 @@ export interface Verdict {
   expect: string;
   /** The option the reader picked, or "yes" / "no" for a yes/no test. */
   answer: string;
-  /** For a choice test, TypeSafe's confidence. For a yes/no test, P(yes). */
+  /** For a choice test, the model's confidence. For a yes/no test, P(yes). */
   confidence: number;
   /** Probability the reader gave to the expected answer, from 0 to 1. */
   expectedProb: number;
@@ -53,7 +56,7 @@ export function framing(context?: string, withReferences = false): string {
   return context ? `${base} What the skill is about: ${context}` : base;
 }
 
-/** Question name for phrasing `i` of a test. A test with one phrasing uses its id. */
+/** Question id for phrasing `i` of a test. A test with one phrasing uses its id. */
 function questionKey(test: TestCase, i: number): string {
   return test.scenarios.length === 1 ? test.id : `${test.id}#${i + 1}`;
 }
@@ -62,70 +65,55 @@ export function buildRequest(
   skillText: string,
   tests: TestCase[],
   context?: string,
-  model?: string,
   references: Record<string, string> = {},
-) {
+): DecisionRequest {
   const withReferences = Object.keys(references).length > 0;
-  const questions: Questions = {};
-  const frame = framing(context, withReferences);
+  const questions: DecisionQuestion[] = [];
   for (const test of tests) {
     test.scenarios.forEach((scenario, i) => {
-      const instructions = { framing: frame, situation: scenario, question: test.question };
-      questions[questionKey(test, i)] = test.options
-        ? { type: 'choice', instructions, criteria: { ...test.options, [NONE]: NONE_DESCRIPTION } }
-        : { type: 'noul', instructions };
+      const question: DecisionQuestion = { id: questionKey(test, i), text: `Situation: ${scenario}\nQuestion: ${test.question}` };
+      if (test.options) {
+        question.options = [
+          ...Object.entries(test.options).map(([id, description]) => (description === null ? { id } : { id, description })),
+          { id: NONE, description: NONE_DESCRIPTION },
+        ];
+      }
+      questions.push(question);
     });
   }
-  const state: Record<string, string | Record<string, string>> = { skill: skillText };
+  const state: Record<string, unknown> = { skill: skillText };
   if (withReferences) state.references = references;
-  return { state, questions, ...(model ? { model } : {}) };
+  return { instructions: framing(context, withReferences), state, questions };
 }
 
 /**
- * TypeSafe's token limits for a request (docs.typesafe.ai/models): the state plus the longest
- * question, and the state plus every question.
- */
-export const TOKEN_LIMITS = { stateAndLongestQuestion: 32_000, request: 64_000 };
-
-/**
- * Characters per token used to estimate a request before it is sent, since the SDK has no
- * tokenizer. Measured on a real skill: adding 65,000 characters of its markdown to a state added
- * about 18,300 input tokens (3.57 characters per token). Rounded down so the estimate errs high
- * by about 8%.
+ * Characters per token used to estimate a request before it is sent, since there is no
+ * tokenizer for every model. Measured with TypeSafe on a real skill: adding 65,000 characters of
+ * its markdown to a state added about 18,300 input tokens (3.57 characters per token). Rounded
+ * down so the estimate errs high by about 8%.
  */
 const CHARS_PER_TOKEN = 3.3;
 
 export interface TokenEstimate {
-  /** The state plus the longest question: what the 32k limit applies to. */
+  /** The state plus the longest question, instructions included: what `perQuestionTokens` limits. */
   stateAndLongestQuestion: number;
   /** The whole request. */
   request: number;
 }
 
-export function estimateTokens(request: ReturnType<typeof buildRequest>): TokenEstimate {
+/** Each question is counted with the instructions, as an adapter may send them with every question. */
+export function estimateTokens(request: DecisionRequest): TokenEstimate {
   const tokens = (value: unknown) => Math.ceil(JSON.stringify(value).length / CHARS_PER_TOKEN);
   const state = tokens(request.state);
-  const questions = Object.values(request.questions).map(tokens);
+  const questions = request.questions.map((q) => tokens({ instructions: request.instructions, ...q }));
   return {
     stateAndLongestQuestion: state + Math.max(0, ...questions),
     request: state + questions.reduce((a, b) => a + b, 0),
   };
 }
 
-export function createClient(): TypeSafeClient {
-  return new TypeSafeClient({ timeout: 60_000 });
-}
-
-export async function read(
-  client: TypeSafeClient,
-  skillText: string,
-  tests: TestCase[],
-  thresholds: Thresholds,
-  context?: string,
-  model?: string,
-  references: Record<string, string> = {},
-): Promise<ReaderResult> {
-  const result = await client.systemOne(buildRequest(skillText, tests, context, model, references));
+export async function read(model: DecisionModel, request: DecisionRequest, tests: TestCase[], thresholds: Thresholds): Promise<ReaderResult> {
+  const result = await model.decide(request);
   const verdicts = tests.map((test) => {
     const perPhrasing = test.scenarios.map((_, i) => judge(test, result.answers[questionKey(test, i)], thresholds));
     if (perPhrasing.length === 1) return perPhrasing[0]!;
@@ -135,42 +123,45 @@ export async function read(
     const median = ranked[Math.floor((ranked.length - 1) / 2)]!;
     return { ...median, variants: perPhrasing.map((v) => v.expectedProb) };
   });
-  return { verdicts, usage: { ...result.usage }, model: result.model };
+  return {
+    verdicts,
+    usage: { input_tokens: result.usage.inputTokens, output_tokens: result.usage.outputTokens },
+    model: result.model,
+  };
 }
 
-type Answer = SystemOneResult<Questions>['answers'][string] | undefined;
-
-function judge(test: TestCase, answer: Answer, th: Thresholds): Verdict {
+export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Thresholds): Verdict {
   const base = { id: test.id, expect: test.expect };
-  if (!answer) {
-    return { ...base, answer: '(no answer)', confidence: 0, expectedProb: 0, pass: false, weak: false };
-  }
-  if (answer.type === 'choice') {
-    const right = answer.choice === test.expect;
-    const sure = answer.confidence >= th.choice;
+  const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false });
+  const probabilities = answer?.probabilities;
+  if (!probabilities || Object.keys(probabilities).length === 0) return missing('(no answer)');
+
+  if (test.options) {
+    const [choice, top] = Object.entries(probabilities).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
+    const confidence = answer.confidence ?? top;
+    const right = choice === test.expect;
+    const sure = confidence >= th.choice;
     return {
       ...base,
-      answer: answer.choice,
-      confidence: answer.confidence,
-      expectedProb: answer.probabilities[test.expect] ?? 0,
-      probabilities: { ...answer.probabilities },
+      answer: choice,
+      confidence,
+      expectedProb: probabilities[test.expect] ?? 0,
+      probabilities: { ...probabilities },
       pass: right && sure,
       weak: right && !sure,
     };
   }
-  if (answer.type === 'noul') {
-    const pYes = answer.noul;
-    const leaning = pYes >= 0.5 ? 'yes' : 'no';
-    const pass = test.expect === 'yes' ? pYes >= th.yes : pYes <= th.no;
-    return {
-      ...base,
-      answer: leaning,
-      confidence: pYes,
-      expectedProb: test.expect === 'yes' ? pYes : 1 - pYes,
-      pass,
-      weak: !pass && leaning === test.expect,
-    };
-  }
-  const type = (answer as { type: string }).type;
-  return { ...base, answer: `(unexpected answer type ${type})`, confidence: 0, expectedProb: 0, pass: false, weak: false };
+
+  const pYes = probabilities.yes;
+  if (typeof pYes !== 'number') return missing('(no yes/no answer)');
+  const leaning = pYes >= 0.5 ? 'yes' : 'no';
+  const pass = test.expect === 'yes' ? pYes >= th.yes : pYes <= th.no;
+  return {
+    ...base,
+    answer: leaning,
+    confidence: pYes,
+    expectedProb: test.expect === 'yes' ? pYes : 1 - pYes,
+    pass,
+    weak: !pass && leaning === test.expect,
+  };
 }

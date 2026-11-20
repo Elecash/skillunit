@@ -5,7 +5,7 @@
  *   skill: ./skills/my-skill     # folder with SKILL.md
  *   specs: ./specs               # a spec file, a folder of them, or a list of either
  *   context: "…"                 # one sentence about what the skill is for
- *   model: jev-latest            # TypeSafe model
+ *   model: { provider: typesafe, name: jev-latest }   # or the path of a module: ./model.mjs
  *   thresholds:
  *     choice: 0.5                # lowest confidence that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
@@ -30,10 +30,16 @@ export interface Config {
   /** Absolute paths of spec files or folders. */
   specs: string[];
   context?: string;
-  model?: string;
+  model: ModelConfig;
   thresholds: Thresholds;
   examples?: ExamplesConfig;
 }
+
+/**
+ * The decision model the `test` layer asks: the `typesafe` adapter, or a module of the project's
+ * own that exports a `DecisionModel`. The module path is absolute.
+ */
+export type ModelConfig = { provider: 'typesafe'; name?: string } | { provider: 'module'; module: string };
 
 /** How lint checks code examples. Paths are absolute. */
 export interface ExamplesConfig {
@@ -59,7 +65,7 @@ const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examp
  */
 export function loadConfig(path?: string): Config {
   const file = resolve(path ?? CONFIG_FILE);
-  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], thresholds: { ...DEFAULT_THRESHOLDS } };
+  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS } };
   if (!existsSync(file)) {
     if (path) throw new Error(`config file not found: ${file}`);
     return config;
@@ -90,8 +96,7 @@ export function loadConfig(path?: string): Config {
     config.context = raw.context.trim() || undefined;
   }
   if (raw.model !== undefined) {
-    if (typeof raw.model !== 'string') throw fail('`model` must be a model name');
-    config.model = raw.model;
+    config.model = readModel(raw.model, root, fail);
   }
   if (raw.thresholds !== undefined) {
     if (!raw.thresholds || typeof raw.thresholds !== 'object') throw fail('`thresholds` must be a mapping');
@@ -103,6 +108,21 @@ export function loadConfig(path?: string): Config {
   }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
   return config;
+}
+
+const MODEL_FORMAT = '`model` is `{ provider: typesafe, name: <model name> }`, or the path of a module that exports a DecisionModel, starting with `./` or `/`';
+
+function readModel(value: unknown, root: string, fail: (msg: string) => Error): ModelConfig {
+  if (typeof value === 'string') {
+    if (!/^\.{0,2}\//.test(value)) throw fail(MODEL_FORMAT);
+    return { provider: 'module', module: resolve(root, value) };
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail(MODEL_FORMAT);
+  const { provider, name, ...rest } = value as Record<string, unknown>;
+  if (provider !== 'typesafe') throw fail(`unknown model provider \`${String(provider)}\`; skillunit ships \`typesafe\`, and any other goes in a module`);
+  if (Object.keys(rest).length) throw fail(`unknown key \`model.${Object.keys(rest)[0]}\` (allowed: provider, name)`);
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw fail('`model.name` must be a model name');
+  return name ? { provider: 'typesafe', name: name as string } : { provider: 'typesafe' };
 }
 
 /** Fence languages the `ts` entry covers. */

@@ -18,10 +18,10 @@ tests:
 
   - id: exact-command
     scenario: The test checks that the skill names the preview command, and the exact spelling of the command matters.
-    question: How should the agent word the question?
+    question: How should the agent write the test?
     options:
-      exact: "Which command, exactly as written, does the skill give for a preview?"
-      loose: "Which command does the skill give for a preview?"
+      exact: "Quote the command in backticks in the options, and ask: which command, exactly as written, does the skill give for a preview?"
+      loose: "Quote the command in backticks in the options, and ask: which command does the skill give for a preview?"
     expect: exact
 
   - id: add-the-answer

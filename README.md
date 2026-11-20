@@ -301,7 +301,7 @@ optional and command-line flags override it. Paths are relative to the file.
 skill: ./skills/my-skill      # folder with SKILL.md (default: the folder of this file)
 specs: ./specs                # a spec file, a folder of them, or a list (default: ./specs)
 context: "tinyfetch is a small HTTP client with retries, timeouts and typed errors."
-model: jev-latest             # TypeSafe model
+model: { provider: typesafe, name: jev-latest }   # the decision model (default: typesafe)
 thresholds:
   choice: 0.5                 # lowest confidence that passes a choice test
   yes: 0.7                    # lowest P(yes) that passes an expected "yes"
@@ -310,6 +310,10 @@ thresholds:
 
 `context` is one sentence about what the skill is for. It is sent with every question and helps
 the reader with the vocabulary of your domain.
+
+`model` can also be the path of a module of your own, such as `./my-model.mjs`. The module
+exports a `DecisionModel` (as its default export or as `model`): an `id`, the model's token
+`limits`, and a `decide` function that answers the questions with a probability per option.
 
 `TYPESAFE_API_KEY` comes from the environment or from `./.env`. It never goes in a spec or in
 the config.

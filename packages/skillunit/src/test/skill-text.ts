@@ -3,7 +3,8 @@
  * its headings. The text is sent as written, with no reflowing or cleanup, so the tests see the
  * same markdown the agent sees, confusing parts included.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { listMarkdown } from '../files.js';
 import { join, normalize, sep } from 'node:path';
 
 export function readSkillText(skillDir: string, file: string, sections: string[]): string {
@@ -24,18 +25,6 @@ export function readWithFiles(skillDir: string, file: string, withFiles: string[
     const full = join(skillDir, p);
     if (!existsSync(full) || !statSync(full).isFile()) throw new Error(`\`with\` lists ${p}, which is not a file in the skill folder`);
     out[p] = readFileSync(full, 'utf8').trim();
-  }
-  return out;
-}
-
-/** Every `.md` file under `dir`, as sorted paths with `/`, skipping dot folders and node_modules. */
-export function listMarkdown(dir: string, prefix = ''): string[] {
-  const out: string[] = [];
-  for (const name of readdirSync(join(dir, prefix)).sort()) {
-    if (name.startsWith('.') || name === 'node_modules') continue;
-    const rel = prefix ? `${prefix}/${name}` : name;
-    if (statSync(join(dir, rel)).isDirectory()) out.push(...listMarkdown(dir, rel));
-    else if (name.endsWith('.md')) out.push(rel);
   }
   return out;
 }

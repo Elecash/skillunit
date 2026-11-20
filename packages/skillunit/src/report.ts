@@ -5,8 +5,8 @@
  * FORCE_COLOR. It uses plain ANSI codes, so there is no dependency.
  */
 import { relative } from 'node:path';
-import type { Verdict } from './reader.js';
-import type { Report } from './runner.js';
+import type { Verdict } from './test/reader.js';
+import type { Report } from './test/runner.js';
 
 // ---------------------------------------------------------------- colour
 
@@ -112,7 +112,7 @@ function testLines(verdicts: Verdict[]): string[] {
 
 /**
  * One number for "how sure is the reader of what it answered". For a choice test that is
- * TypeSafe's confidence; for a yes/no test, the probability of the side it leaned to.
+ * the model's confidence; for a yes/no test, the probability of the side it leaned to.
  */
 function confidenceOf(v: Verdict): number {
   if (v.probabilities) return v.confidence;
