@@ -160,4 +160,20 @@ describe('Source paths', () => {
     ]);
     expect(lint(join(root, 'skill')).problems.filter((p) => p.rule === 'source')).toEqual([]);
   });
+
+  it('warns about a code file under a Source that cannot be parsed, alone or in a folder', () => {
+    const root = skillDir({
+      'src/broken.ts': 'export function f( {\n',
+      'src/lib/ok.ts': 'export const ok = 1;\n',
+      'src/lib/bad.js': 'const = 1;\n',
+      'src/notes.md': 'not ( code\n',
+      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/broken.ts, src/lib, src/notes.md\n',
+    });
+    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
+    expect(problems.map((p) => `${p.severity} ${p.line} ${p.unit}: ${p.message}`)).toEqual([
+      expect.stringMatching(/^warning 13 a: `Source` src\/broken\.ts could not be parsed, so a comment edit in it counts as a change until it parses: .+\(\d+:\d+\)$/),
+      expect.stringMatching(/^warning 13 a: `Source` src\/lib\/bad\.js could not be parsed, so a comment edit in it counts as a change until it parses: .+\(\d+:\d+\)$/),
+    ]);
+    expect(lint(join(root, 'skill'), { sourceRoot: root }).ok).toBe(true);
+  });
 });
