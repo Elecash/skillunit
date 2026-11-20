@@ -29,7 +29,7 @@ export function readWithFiles(skillDir: string, file: string, withFiles: string[
 }
 
 /** Every `.md` file under `dir`, as sorted paths with `/`, skipping dot folders and node_modules. */
-function listMarkdown(dir: string, prefix = ''): string[] {
+export function listMarkdown(dir: string, prefix = ''): string[] {
   const out: string[] = [];
   for (const name of readdirSync(join(dir, prefix)).sort()) {
     if (name.startsWith('.') || name === 'node_modules') continue;
