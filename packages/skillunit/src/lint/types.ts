@@ -2,8 +2,8 @@
 
 export type Severity = 'error' | 'warning';
 
-/** The lint rule that found a problem, for filtering and for reporters. */
-export type LintRule = 'parse' | 'structure' | 'check' | 'setup' | 'types' | 'wrong-code' | 'command' | 'index';
+/** The rule that found a problem, for filtering and for reporters. `sync` comes from `skillunit sync`. */
+export type LintRule = 'parse' | 'structure' | 'check' | 'setup' | 'types' | 'wrong-code' | 'command' | 'index' | 'source' | 'sync';
 
 export interface Problem {
   /** Path in the skill folder, with `/`. */

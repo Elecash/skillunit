@@ -108,7 +108,7 @@ function project(specs: Record<string, string>): Config {
   writeFileSync(join(root, 'SKILL.md'), '# Skill\n\n## Retries\n\nRetry only GET requests.\n');
   mkdirSync(join(root, 'specs'));
   for (const [name, text] of Object.entries(specs)) writeFileSync(join(root, 'specs', name), text);
-  return { skill: root, specs: [join(root, 'specs')], model: { provider: 'typesafe' }, thresholds: { ...th } };
+  return { skill: root, specs: [join(root, 'specs')], model: { provider: 'typesafe' }, thresholds: { ...th }, sourceRoot: root };
 }
 
 const SPEC = `section: Retries

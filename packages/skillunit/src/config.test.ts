@@ -49,3 +49,11 @@ describe('model', () => {
     expect(() => load('model: { provider: typesafe, temperature: 0 }\n')).toThrow(/unknown key `model.temperature`/);
   });
 });
+
+describe('sourceRoot', () => {
+  it('is the folder of the config file by default, and relative to it when set', () => {
+    expect(load('skill: .\n').sourceRoot).toBe(dir);
+    expect(load('sourceRoot: ../code\n').sourceRoot).toBe(join(dir, '..', 'code'));
+    expect(() => load('sourceRoot: 3\n')).toThrow(/`sourceRoot` must be a folder/);
+  });
+});

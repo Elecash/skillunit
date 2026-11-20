@@ -10,6 +10,7 @@
  *     choice: 0.5                # lowest confidence that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
+ *   sourceRoot: ../..            # where `Source:` paths start (default: this file's folder)
  *   examples:                    # how lint checks the code examples of the skill
  *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
  *     py: { command: "python3 -m py_compile {file}" }   # any other language
@@ -33,6 +34,11 @@ export interface Config {
   model: ModelConfig;
   thresholds: Thresholds;
   examples?: ExamplesConfig;
+  /**
+   * Absolute folder that the `Source:` paths of units start from: the folder of the config
+   * file, or `sourceRoot` in it; the current folder when there is no config file.
+   */
+  sourceRoot: string;
 }
 
 /**
@@ -56,7 +62,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3 }
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples']);
+const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'sourceRoot']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -65,7 +71,7 @@ const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examp
  */
 export function loadConfig(path?: string): Config {
   const file = resolve(path ?? CONFIG_FILE);
-  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS } };
+  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS }, sourceRoot: resolve('.') };
   if (!existsSync(file)) {
     if (path) throw new Error(`config file not found: ${file}`);
     return config;
@@ -105,6 +111,11 @@ export function loadConfig(path?: string): Config {
       if (typeof value !== 'number' || value < 0 || value > 1) throw fail(`thresholds.${key} must be a number from 0 to 1`);
       config.thresholds[key as keyof Thresholds] = value;
     }
+  }
+  config.sourceRoot = root;
+  if (raw.sourceRoot !== undefined) {
+    if (typeof raw.sourceRoot !== 'string' || !raw.sourceRoot.trim()) throw fail('`sourceRoot` must be a folder');
+    config.sourceRoot = resolve(root, raw.sourceRoot);
   }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
   return config;

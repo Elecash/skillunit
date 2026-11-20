@@ -9,12 +9,15 @@ import { runCommands } from './commands.js';
 import { collectWrongCode, isExample, isNoCheck, ownerUnit, setupFor, type WrongCode } from './examples.js';
 import { index } from './links.js';
 import { setups } from './setup.js';
+import { sources } from './sources.js';
 import { structure } from './structure.js';
 import { runTsc, type TsBlock, type TsDiagnostic } from './tsc.js';
 import type { LintResult, LintSummary, Problem } from './types.js';
 
 export interface LintOptions {
   examples?: ExamplesConfig;
+  /** Folder that `Source:` paths start from. Without it, `Source` paths are not checked. */
+  sourceRoot?: string;
 }
 
 /** An undefined name in `Wrong` code would make the mistake look caught by the types. */
@@ -37,6 +40,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
   };
   const wrong = collectWrongCode(skill);
   const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill)];
+  if (options.sourceRoot) problems.push(...sources(skill, options.sourceRoot));
 
   problems.push(...typeCheck(skill, wrong, options.examples, summary));
   if (options.examples) {

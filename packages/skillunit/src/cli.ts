@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
 import { ConfigError, formatLint, lint } from './lint/index.js';
+import { formatSync, sync } from './sync/index.js';
 import { loadModel, ModelError, type DecisionModel } from './models/index.js';
 import { printReport } from './report.js';
 import { runAll, type Report } from './test/runner.js';
@@ -15,11 +16,14 @@ const HELP = `skillunit: unit tests for agent skills
 Usage
   skillunit run [specs...] [options]   run the specs (the default command)
   skillunit lint [skill] [options]     check the skill's format, examples, Check rules and links
+  skillunit sync [skill] [options]     list units whose Source changed while the unit did not
   skillunit init [dir]                 create skillunit.yaml and a first spec
 
-Options for lint
+Options for lint and sync
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
   --json              print the result as JSON
+  --base <ref>        sync only: compare HEAD with its merge base with this ref
+                      (default: the pull request's target branch, else the default branch)
 
 Options for run
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
@@ -58,6 +62,7 @@ async function main() {
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
   if (command === 'init') return init(argv[0] ?? '.');
   if (command === 'lint') return lintCommand(argv);
+  if (command === 'sync') return syncCommand(argv);
   if (command !== 'run') usage(`unknown command "${command}". Run \`skillunit --help\`.`);
 
   const args = parseRunArgs(argv);
@@ -156,8 +161,49 @@ function lintCommand(argv: string[]) {
   if (!existsSync(dir)) usage(`no skill folder at ${dir}`);
 
   try {
-    const result = lint(dir, config.examples ? { examples: config.examples } : {});
+    const result = lint(dir, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}) });
     print(json ? `${JSON.stringify(result, null, 2)}\n` : formatLint(result));
+    process.exit(result.ok ? 0 : 1);
+  } catch (e) {
+    if (e instanceof ConfigError) usage(e.message);
+    throw e;
+  }
+}
+
+// ---------------------------------------------------------------- sync
+
+function syncCommand(argv: string[]) {
+  let configPath: string | undefined;
+  let skill: string | undefined;
+  let base: string | undefined;
+  let json = false;
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i]!;
+    const value = () => {
+      const v = argv[++i];
+      if (v === undefined) usage(`${flag} needs a value`);
+      return v;
+    };
+    if (flag === '--config') configPath = value();
+    else if (flag === '--base') base = value();
+    else if (flag === '--json') json = true;
+    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
+    else if (skill === undefined) skill = flag;
+    else usage('sync takes one skill folder');
+  }
+
+  let config: Config;
+  try {
+    config = loadConfig(configPath);
+  } catch (e) {
+    usage((e as Error).message);
+  }
+  const dir = skill ? resolve(skill) : config.skill;
+  if (!existsSync(dir)) usage(`no skill folder at ${dir}`);
+
+  try {
+    const result = sync({ skill: dir, sourceRoot: config.sourceRoot, ...(base ? { base } : {}) });
+    print(json ? `${JSON.stringify(result, null, 2)}\n` : formatSync(result));
     process.exit(result.ok ? 0 : 1);
   } catch (e) {
     if (e instanceof ConfigError) usage(e.message);

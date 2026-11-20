@@ -155,3 +155,19 @@ describe('lint as a whole', () => {
     expect(withSh.summary).toMatchObject({ commandChecked: 1, noCheck: 1 });
   });
 });
+
+describe('Source paths', () => {
+  it('reports a Source that does not exist and an absolute one, and passes one that does', () => {
+    const root = skillDir({
+      'src/retry.ts': 'export const retry = 1;\n',
+      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/retry.ts#retry, src/gone.ts, /abs/path.ts\n',
+    });
+    const show = (p: Problem) => `${p.line} ${p.unit} ${p.rule}: ${p.message}`;
+    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
+    expect(problems.map(show)).toEqual([
+      expect.stringMatching(/^13 a source: `Source` src\/gone\.ts does not exist in /),
+      '13 a source: `Source` /abs/path.ts is an absolute path; write it relative to the folder of skillunit.yaml, or to its `sourceRoot`',
+    ]);
+    expect(lint(join(root, 'skill')).problems.filter((p) => p.rule === 'source')).toEqual([]);
+  });
+});
