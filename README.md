@@ -77,18 +77,18 @@ npm run skill                  # needs TYPESAFE_API_KEY in .env
 
 SkillUnit ships a skill that teaches an agent to write and check specs:
 [`skills/skillunit/SKILL.md`](skills/skillunit/SKILL.md). It covers how to split a skill into
-specs, how to write scenarios and options that catch regressions, and what to do when a test
+specs and units, how to write scenarios and options that catch regressions, and what to do when a test
 fails. To use it with Claude Code, copy it into your project's skills:
 
 ```sh
-mkdir -p .claude/skills/skillunit
-cp node_modules/skillunit/skills/skillunit/SKILL.md .claude/skills/skillunit/
+mkdir -p .claude/skills
+cp -R node_modules/skillunit/skills/skillunit .claude/skills/
 ```
 
 Then ask the agent something like "write SkillUnit tests for `skills/my-skill`".
 
 The skill is tested with SkillUnit itself, in
-[`skills/skillunit/specs/`](skills/skillunit/specs): seven specs, 32 tests, run on every
+[`skills/skillunit/specs/`](skills/skillunit/specs): seven specs, 49 tests, run on every
 push. Writing them found two unclear sentences in the skill, which were rewritten before the
 first release.
 

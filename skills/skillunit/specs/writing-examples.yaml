@@ -1,0 +1,41 @@
+file: writing/examples.md
+
+tests:
+  - id: shared-import
+    unit: setup-once-per-file
+    scenario: Every example of a file uses `tf` from the library.
+    question: Where should the import go?
+    options:
+      setup: Once, in a `Setup` block before the first example of the file
+      each: At the top of every example
+      nowhere: Nowhere; the reader knows where `tf` comes from
+    expect: setup
+
+  - id: undefined-name
+    unit: complete-examples
+    scenario: An example calls `api.get("users")`, and nothing in the file declares `api`.
+    question: What should the agent do?
+    options:
+      declare: Declare `api` in the example or in `Setup`, so the example compiles
+      no-check: Mark the block `no-check`
+      leave: Leave it; readers can guess what `api` is
+    expect: declare
+
+  - id: signature-block
+    unit: signatures-in-tables
+    scenario: The agent wants to show the signature `get(path, options)` of a method.
+    question: How should it show it?
+    options:
+      table: In a table or in inline code
+      ts-block: In a fenced `ts` block on its own
+    expect: table
+
+  - id: stale-blocks
+    unit: no-check-rarely
+    scenario: After a library change, five examples of the skill no longer compile.
+    question: What should the agent do?
+    options:
+      fix: Fix the five examples
+      no-check: Mark the five blocks `no-check`
+      delete: Delete the five examples
+    expect: fix

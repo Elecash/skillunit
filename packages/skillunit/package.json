@@ -31,7 +31,7 @@
   },
   "files": [
     "dist",
-    "skills/skillunit/SKILL.md",
+    "skills/skillunit",
     "README.md",
     "LICENSE"
   ],

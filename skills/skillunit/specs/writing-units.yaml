@@ -1,0 +1,81 @@
+file: writing/units.md
+
+tests:
+  - id: default-value
+    unit: pick-a-kind
+    scenario: The agent writes down that a request waits 10 seconds by default.
+    question: Which kind of unit should it write?
+    options:
+      fact: A `fact`, with `Value` and `Unknown`
+      rule: A `rule`, with `Do`
+      decision: A `decision`, with one path
+    expect: fact
+
+  - id: two-paths
+    unit: pick-a-kind
+    scenario: The agent writes down that one client is right for many calls to one API, and direct calls for one-off requests.
+    question: Which kind of unit should it write?
+    options:
+      decision: A `decision`, with one path per case
+      rule: One `rule` whose `Do` covers both cases
+      fact: A `fact`
+    expect: decision
+
+  - id: label-layout
+    unit: one-label-per-paragraph
+    scenario: The agent writes `When:` and `Do:` of a new unit.
+    question: How should they be laid out?
+    options:
+      paragraphs: Each label in a paragraph of its own, with a blank line between them
+      lines: One label per line, with no blank line between them
+      one-line: Both on one line, separated by a full stop
+    expect: paragraphs
+
+  - id: label-after-list
+    unit: blank-line-after-a-list
+    scenario: The last path of a `Decide` list is written, and `Even when:` comes next.
+    question: What goes between them?
+    options:
+      blank: A blank line
+      nothing: Nothing; `Even when:` starts on the next line
+      indent: "`Even when:` indented under the last path"
+    expect: blank
+
+  - id: check-format
+    unit: check-regex-in-a-code-span
+    scenario: The agent adds a check that no example passes `retry` to `tf.post`.
+    question: Which line should it write?
+    options:
+      span: "`Check: forbid`, then the regex inside backticks, then `in ts`"
+      bare: "`Check: forbid`, then the regex bare between its slashes, then `in ts`"
+    expect: span
+
+  - id: regex-misses-wrong
+    unit: check-matches-its-wrong-code
+    scenario: A unit's `Check` regex does not match the code in its own `Wrong` item.
+    question: What does lint do?
+    options:
+      error: Reports an error, because the regex guards nothing
+      ignore: Nothing, since the regex is valid
+      warn: Rewrites the regex to match
+    expect: error
+
+  - id: wrong-shown-as-code
+    unit: wrong-as-code
+    scenario: The mistake of a rule can be shown as one call of the library.
+    question: How should the agent write its `Doing`?
+    options:
+      code: As that call in one code span, and nothing else
+      prose: As a sentence describing the call, with the names in code spans
+      skip: Leave the mistake out of the unit
+    expect: code
+
+  - id: source-path
+    unit: source-from-the-config-folder
+    scenario: "`skillunit.yaml` sits in `apps/tinyfetch/`, and a unit describes `apps/tinyfetch/src/retry.ts`."
+    question: What should its `Source` say, exactly as written?
+    options:
+      relative: "`src/retry.ts`"
+      repo: "`apps/tinyfetch/src/retry.ts`"
+      absolute: "`/home/me/project/apps/tinyfetch/src/retry.ts`"
+    expect: relative

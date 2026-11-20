@@ -1,0 +1,63 @@
+file: SKILL.md
+
+tests:
+  - id: init-first
+    unit: init-first
+    scenario: The project has a skill folder but no `skillunit.yaml` and no specs.
+    question: What should the agent do first?
+    options:
+      init: "Run `npx skillunit init` on the skill folder, then set `context`"
+      manual: Write `skillunit.yaml` from scratch by hand
+      run: "Run `npx skillunit test` to see what happens"
+    expect: init
+
+  - id: key-in-config
+    unit: key-outside-the-repo
+    scenario: CI needs the TypeSafe key, and the agent is setting up the project.
+    question: Where should the agent put the key?
+    options:
+      env: "In a `.env` file that git ignores locally, and as a `TYPESAFE_API_KEY` secret in CI"
+      config: In `skillunit.yaml`, next to `model`
+      spec: In each spec file
+    expect: env
+
+  - id: no-key-yet
+    unit: dry-run-without-key
+    scenario:
+      - The user asks for SkillUnit tests for their skill, and TYPESAFE_API_KEY is not set anywhere.
+      - The agent is about to test a skill, but there is no .env file and no API key in the environment.
+    question: What should the agent do?
+    options:
+      dry: Write the specs, run `check --dry-run`, and tell the user the tests were not sent
+      ask: Stop and wait until the user provides a key before writing anything
+      skip: Write the specs and report them as passing
+    expect: dry
+
+  - id: code-changed
+    unit: which-command
+    scenario: The agent renamed a function in the library the skill describes, and changed nothing in the skill.
+    question: Which command shows the units that may now be out of date?
+    options:
+      sync: "`npx skillunit sync`"
+      test: "`npx skillunit test`"
+      lint-only: "`npx skillunit lint`, and nothing else"
+    expect: sync
+
+  - id: before-handing-over
+    unit: which-command
+    scenario: The agent has finished changing a skill and its specs and is about to tell the user the work is done.
+    question: What should it run last?
+    options:
+      check: "`npx skillunit check`"
+      test: "`npx skillunit test` only"
+      nothing: Nothing more, since each file was checked while it was written
+    expect: check
+
+  - id: which-model
+    # The skill does not say which TypeSafe model to use.
+    scenario: The agent is filling in `skillunit.yaml`.
+    question: Which value, exactly as written, should the agent set for the model name?
+    options:
+      latest: "`jev-latest`"
+      pinned: "`jev-1.13.0`"
+    expect: none

@@ -1,0 +1,54 @@
+file: testing/plan.md
+
+tests:
+  - id: which-files
+    unit: one-spec-per-file
+    scenario: A skill has a `SKILL.md` and four feature files that `SKILL.md` links to. The agent is planning the specs.
+    question: Which files should get specs?
+    options:
+      each: Each of the five files, in a spec of its own
+      skill-only: Only `SKILL.md`, because it links to the others
+      merged: One spec with every file in `with`
+    expect: each
+
+  - id: long-file
+    unit: section-for-long-files
+    scenario: A file of the skill is 12,000 characters, with five headings of about 2,000 characters each.
+    question: How should the agent organise its specs?
+    options:
+      per-heading: One spec per heading, each with `section` set to that heading
+      whole: One spec for the whole file
+      one-list: One spec whose `section` lists all five headings
+    expect: per-heading
+
+  - id: with-files
+    unit: with-only-what-the-agent-reads
+    scenario: A skill has ten files. For the task a group of tests describes, the agent reads two of them. The agent adds a spec that checks those rules together with what the agent reads.
+    question: What should `with` list?
+    options:
+      two: The two files the agent reads for that task
+      all: "`all`, so the reader has every file"
+      none-listed: Nothing; one file per spec
+    expect: two
+
+  - id: show-the-list
+    unit: list-the-decisions-first
+    scenario:
+      - The user says "add SkillUnit tests to our skill" and nothing about which parts matter.
+      - The user asks for tests for the skill without saying what to focus on.
+    question: What should the agent do before writing the tests?
+    options:
+      show: List the decisions each file forces and show the list to the user
+      everything: Write a test for every sentence of the skill
+      top-three: Pick the three rules that look most important and test only those
+    expect: show
+
+  - id: unit-field
+    unit: link-tests-to-units
+    scenario: The agent writes a test about the unit `retry-idempotent-only`.
+    question: What should the test carry so that `test --changed` runs it when that unit's code changes?
+    options:
+      unit: "`unit: retry-idempotent-only`"
+      id: An `id` that starts with `retry-idempotent-only`
+      nothing: Nothing; `--changed` finds it by its scenario
+    expect: unit

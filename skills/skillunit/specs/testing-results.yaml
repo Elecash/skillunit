@@ -1,0 +1,106 @@
+file: testing/results.md
+
+tests:
+  - id: dry-run-first
+    unit: dry-run-first
+    scenario: The agent has just written three specs.
+    question: What should it run first?
+    options:
+      dry: "`npx skillunit test --dry-run`"
+      run: "`npx skillunit test`"
+      prove: The check that deletes each rule's sentence
+    expect: dry
+
+  - id: prove-on-a-copy
+    unit: prove-on-a-copy
+    scenario: The agent wants to prove that a test depends on its rule.
+    question: Where should it delete the rule's sentence?
+    options:
+      copy: In a copy of the skill folder, then run with `--skill <copy>`
+      real: In the real skill, restoring it with git afterwards
+      scenario: In the test's scenario
+    expect: copy
+
+  - id: still-green
+    unit: still-green-without-the-rule
+    scenario: The agent deleted a rule's sentence from a copy of the skill, and the rule's test still passes.
+    question: What should the agent check first?
+    options:
+      options: Whether one of the options gives the answer away
+      threshold: Whether the confidence threshold is too low
+      delete: Nothing; it should delete the test
+    expect: options
+
+  - id: user-asks-for-mutations
+    unit: no-mutations
+    scenario:
+      - The user asks the agent to add mutations to the specs.
+      - The user wants mutation testing for their SkillUnit tests.
+    question: What should the agent do?
+    options:
+      explain: Explain that SkillUnit has no mutations, and that deleting a rule's sentence in a copy and running the spec against it does the same job
+      block: Add a `mutations` block to each spec
+      tool: Look for a separate mutation-testing tool
+    expect: explain
+
+  - id: report-dont-bend
+    unit: report-dont-bend
+    scenario:
+      - A test fails on the unmodified skill, and the agent thinks the test is right.
+      - The reader picked a different answer from the expected one, and the test looks correct.
+    question: What should the agent do?
+    options:
+      report: Report the failure as a finding about the skill and suggest the sentence that would fix it
+      expected: Change `expect` to the answer the reader picked
+      threshold: Lower the thresholds until the test passes
+    expect: report
+
+  - id: fix-when-asked
+    unit: fix-when-asked
+    scenario:
+      - The user said "if a test shows the skill is unclear, rewrite that part of the skill". A test fails because the skill is unclear.
+      - The user asked the agent to improve the skill wherever the tests show it is unclear, and one test does.
+    question: What should the agent do?
+    options:
+      edit: Rewrite the unclear part of the skill, adding the idea the rule is missing, and run the test again
+      report: Leave the skill as it is and report the failure with a suggested sentence
+      test: Rewrite the test so it passes
+    expect: edit
+
+  - id: borderline-pass
+    unit: strengthen-borderline-tests
+    scenario: A test passes, but the report marks it borderline.
+    question: What should the agent do?
+    options:
+      strengthen: Make the skill's text more direct on that point, or add phrasings to the test
+      margin: Raise `thresholds.margin` until the mark goes away
+      ignore: Nothing; it passed
+    expect: strengthen
+
+  - id: sync-review
+    unit: review-what-sync-reports
+    scenario: Sync reports a unit whose source file changed. The agent reads the change, and the unit still describes the code correctly.
+    question: What should the agent do?
+    options:
+      trailer: "Add `Skill-reviewed: <unit-id>` as a trailer to a commit message"
+      edit: Edit the unit anyway, so its text changes
+      ignore: Nothing; sync will stop reporting it on its own
+    expect: trailer
+
+  - id: read-none
+    scenario: A failing test shows `none 90%` in the distribution.
+    question: What does that mean?
+    options:
+      missing: The reader did not find the rule in the text
+      elsewhere: The text points to a different answer
+      ambiguous: The text is ambiguous
+    expect: missing
+
+  - id: read-weak
+    scenario: A failing test shows the expected answer with too little confidence.
+    question: What does that mean?
+    options:
+      missing: The reader did not find the rule in the text
+      elsewhere: The text points to a different answer
+      ambiguous: The text is ambiguous
+    expect: ambiguous

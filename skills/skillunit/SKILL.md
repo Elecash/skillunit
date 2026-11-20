@@ -1,153 +1,127 @@
 ---
 name: skillunit
-description: Write and run SkillUnit specs, the YAML unit tests that check an agent skill (a SKILL.md) leads to the decisions it was written for. Use when asked to test a skill, to add or fix SkillUnit tests, or to check that a SKILL.md still says what it should.
+description: Write an agent skill in units and keep it in sync with the code it describes, with SkillUnit. Use when asked to write or restructure a skill, to add or fix SkillUnit tests (specs), or to check that a skill still says what it should after the code changed.
 ---
 
-# Writing SkillUnit specs
+# SkillUnit
 
-SkillUnit tests a skill by asking a reader model closed questions about the skill's text. A spec
-is a YAML file with the tests for one part of a skill. Each test is a situation, a question and
-a short list of answers, one of them expected. The test passes when the text leads the reader to
-the expected answer.
+SkillUnit keeps an agent skill in sync with the code it describes. A skill is written as small Markdown files whose instructions are units: a `### rule:`, `### decision:` or `### fact:` heading followed by labelled paragraphs. Three layers check it:
 
-Your job is to write tests that fail when the skill stops saying what it should. A test that
-passes on any version of the skill is worse than no test, because it looks like protection.
+| Layer | Command | What it finds | Needs the API key |
+| --- | --- | --- | --- |
+| lint | `npx skillunit lint` | a malformed unit, an example that does not compile or breaks a rule, a broken link, a `Source` that does not exist | no |
+| sync | `npx skillunit sync` | a unit whose `Source` code changed while the unit did not | no |
+| test | `npx skillunit test` | text that does not settle a decision: closed questions to a decision model, from YAML specs | yes |
 
-## Set up
+`npx skillunit check` runs all three; it is what CI runs. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
 
-If the project has no `skillunit.yaml`, run `npx skillunit init <skill folder>`. It creates
-`skillunit.yaml` next to SKILL.md and a first spec in `specs/`. Set `context` in
-`skillunit.yaml` to one sentence about what the skill is for.
+The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
 
-The TypeSafe API key goes in `.env` or the environment as `TYPESAFE_API_KEY`, never in a spec or
-in `skillunit.yaml`. If there is no key, write the specs anyway, run only `--dry-run`, and tell
-the user the tests have not been sent.
+## Where to look
 
-## Plan the specs
+| Task | File |
+| --- | --- |
+| Split a skill into files, write its index, decide what goes in prose and what in a unit | [writing/files.md](writing/files.md) |
+| Write a unit: kinds, labels, `Check`, `Source` | [writing/units.md](writing/units.md) |
+| Write code examples that lint can check: `Setup`, `no-check` | [writing/examples.md](writing/examples.md) |
+| Decide which specs a skill needs | [testing/plan.md](testing/plan.md) |
+| Write a test: scenario, question, options, the spec format | [testing/tests.md](testing/tests.md) |
+| Run the checks, read a report, act on a failure | [testing/results.md](testing/results.md) |
 
-A skill is SKILL.md plus every file it tells the agent to read, such as `references/*.md`.
-Every one of those files gets its own specs, named after it (`forms-json.yaml`, or
-`forms-json-validation.yaml` when the file is split), with `file` set to its path. A rule that
-lives only in a referenced file is tested there, not through SKILL.md.
+## Rules
 
-Write one spec per heading, with `section` set to that heading. Keep the tested text
-under about 3,000 characters: when a heading is longer, write one spec per subheading. Leave
-`section` out and test the whole file only when the skill is short.
+### rule: init-first
 
-An agent reads SKILL.md together with the files it points to for the task at hand, so a rule
-can reach the agent from another file. For the rules where a mistake costs most, add a spec with
-`with` that lists the files SKILL.md sends the agent to in the situations the tests describe.
-List those files only; `with: all` adds text the agent never reads, which makes the answers less
-reliable, so keep it for a skill of a few files. Keep the spec without `with` as well: it shows
-whether the section states the rule itself.
+When: a project has a skill but no `skillunit.yaml`.
 
-Before writing tests, read the section and list the decisions it forces: the places where an
-agent that read it would act differently from one that did not. A sentence that changes nothing
-an agent does needs no test. If the user has not said which parts matter, show them the list
-before writing the tests.
+Do: run `npx skillunit init <skill folder>`, then set `context` in the new `skillunit.yaml` to one sentence about what the skill is for.
 
-## Write a test
+Right:
 
-Give each decision one test:
-
-- `scenario` describes the situation as the agent meets it. It never contains the rule or the
-  reason for it. "Production is down and the user has a fix ready" is a scenario. "Production is
-  down, and a rollback is faster than a fix" gives the answer away.
-- `question` asks what the agent should do, or what the skill says to do. Ask about an action,
-  never about the text: "What should the agent do first?", not "Does the skill mention
-  rollbacks?".
-- Prefer a test with `options`. A test without them is a yes/no test (`expect: yes` or
-  `expect: no`), and it has no `none`: when the skill is silent, the reader answers from common
-  sense, so a rule that common sense agrees with passes without the skill. Use yes/no only for
-  a decision with exactly two outcomes that common sense would get wrong.
-
-When users will describe the situation in many ways, give `scenario` a list of two to four
-phrasings. Write them in the user's words. Never reuse the skill's own examples as phrasings: a
-phrasing that repeats an example passes on the example alone.
-
-Each spec also needs:
-
-- A negative test for every rule with a limit: a situation where the rule does not apply, so the
-  agent must not follow it.
-- At least one test for a nearby situation the skill does not cover, such as a related task it
-  never mentions. Write it even though the skill says nothing there: its `expect` is `none`, and
-  it catches a reader that stretches a rule to fit instead of saying the skill is silent.
-
-## Choose the options
-
-Offer two to four options: the expected answer and the wrong answers an agent would pick if the
-rule were missing, such as the shortcut, the default, or doing literally what the user asked.
-An option nobody would pick lets the right answer win by elimination.
-
-Label options with short lowercase words (`stop`, `deploy`, `preview`) and put the meaning in the
-description.
-
-Never define an option called `none`, and never add one that means "other" or "the skill does not
-say". SkillUnit adds `none` to every choice test by itself, and a spec that defines it does not
-load.
-
-`none` means both "the skill says something else" and "the skill says nothing". Expect it only
-when the skill should be silent. When the skill does give an answer, make that answer an option
-and expect the option, even if you have to add it: a test that expects `none` because no option
-matches the skill also passes when the rule is deleted.
-
-When the exact value matters, such as a command, a file name or a flag, quote it in backticks in
-the options and ask for it "exactly as written". Otherwise the reader compares meaning and
-accepts a renamed command.
-
-## Check the tests
-
-1. Run `npx skillunit test --dry-run`. It sends nothing and fails when a spec is invalid, a
-   heading does not exist, or a spec is too large to send. Fix and repeat until it passes.
-2. Run `npx skillunit test`.
-3. Prove that each test depends on its rule. Copy the skill folder to a temporary location,
-   delete the rule's sentence in the copy, and run `npx skillunit test <spec> --skill <copy>`.
-   The test must fail. Never edit the real SKILL.md for this check.
-4. If a test still passes without its sentence, find out why, in this order: an option gives
-   the answer away, the scenario contains the answer, the skill states the same rule somewhere
-   else, or the reader knows the answer without the skill. Fix the test in the first two cases.
-   In the last two, tell the user: the rule is written twice, or the sentence may not be
-   needed at all.
-
-SkillUnit has no mutations. If the user asks for them, explain that step 3 does the same job.
-
-## When a test fails on the real skill
-
-When a test fails on the unmodified skill, either the test is wrong or the skill does not say
-what it should. The distribution in the output tells you which:
-
-- `none` is high: the reader did not find the rule in the text.
-- A wrong option is high: the text points to that answer.
-- The expected answer is marked `~ (weak)`: the text is ambiguous.
-
-Never change a test only to make it pass, and never lower the thresholds. If the test is right,
-the skill needs the fix. When the user has asked you to improve the skill, edit SKILL.md and run
-the test again. Otherwise, leave SKILL.md as it is, report the failure as a finding about the
-skill, and suggest the sentence that would fix it.
-
-When you write the fix, put an exception next to the rule it changes, never in an introduction
-or a separate note: the reader follows the most specific rule it finds, so an exception stated
-earlier loses to the rule below it. Add the idea the rule is missing, not the test's wording.
-
-## Spec format
-
-```yaml
-file: SKILL.md              # optional; SKILL.md by default
-section: A heading          # or a list of headings; leave out for the whole file
-with: [references/a.md]     # optional; other files the agent reads too, sent whole, or all
-tests:
-  - id: kebab-case-id
-    scenario: The situation.            # or a list of phrasings
-    question: What should the agent do?
-    options:                            # leave out for a yes/no test
-      label: What this answer means
-    expect: label                       # an option label or none; yes or no when there are no options
+```sh
+npx skillunit init skills/my-skill
 ```
 
-These are the only keys; any other key is an error.
+Wrong:
 
-Quote a value in double quotes when it contains `: ` or starts with a backtick, a `{` or a `[`,
-and in single quotes when it also contains double quotes. Write a heading that contains a comma
-as a block list item, since a comma splits `[a, b]`. Run `--dry-run` after every edit: it
-reports the file and line of any YAML error. Leave the thresholds at their defaults
-unless the user asks to change them.
+- Doing: writing `skillunit.yaml` and the first spec by hand from memory.
+
+  Because: a key that is not allowed stops every command, and `init` writes a file that loads.
+
+Applies: setup
+
+Source: src/cli.ts
+
+### rule: key-outside-the-repo
+
+When: the test layer needs the decision model's API key.
+
+Do: put `TYPESAFE_API_KEY` in the environment (a secret in CI), or in a `.env` file that git ignores, next to `skillunit.yaml` or at the root of the repository.
+
+Right:
+
+```sh
+echo "TYPESAFE_API_KEY=your-key" >> .env
+```
+
+Wrong:
+
+- Doing: `TYPESAFE_API_KEY: your-key`
+
+  Because: `skillunit.yaml` and the specs are committed, so the key is published, and SkillUnit never reads it there.
+
+Applies: setup, keys
+
+Check: forbid `/TYPESAFE_API_KEY:\s*\S/` in yaml
+
+Source: src/env.ts
+
+### rule: dry-run-without-key
+
+When: there is no API key, and the user asked for tests.
+
+Do: write the specs anyway, run `npx skillunit check --dry-run`, and tell the user the tests were not sent to the model.
+
+Even when: the specs look obviously right; a test that was never sent has not passed.
+
+Right:
+
+```sh
+npx skillunit check --dry-run
+```
+
+Wrong:
+
+- Doing: reporting the new tests as passing.
+
+  Because: a dry run only checks that the specs load and fit; no answer was judged.
+
+Applies: setup, test
+
+Source: src/cli.ts
+
+### decision: which-command
+
+When: the agent has changed a skill, its specs or the code it describes, and wants to know if the skill still holds.
+
+Decide: which layer to run.
+
+- **lint** — the skill's files changed: `npx skillunit lint`.
+
+- **sync** — the code changed: `npx skillunit sync`, which lists the units to review.
+
+- **test** — what a unit says changed, or its specs did: `npx skillunit test`, or `npx skillunit test --changed` for only the specs those changes touch.
+
+- **check** — before handing the work over: `npx skillunit check`, the three layers in one run.
+
+Even when: only one file changed; `check` is what CI runs, so it is the last command before handing over.
+
+Wrong:
+
+- Doing: running only `npx skillunit test` after changing the code.
+
+  Because: the tests read the skill's text, which did not change; only sync sees the code.
+
+Applies: commands
+
+Source: src/cli.ts
