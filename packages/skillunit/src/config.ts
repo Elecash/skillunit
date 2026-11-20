@@ -10,6 +10,9 @@
  *     choice: 0.5                # lowest confidence that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
+ *   examples:                    # how lint checks the code examples of the skill
+ *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
+ *     py: { command: "python3 -m py_compile {file}" }   # any other language
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -29,6 +32,17 @@ export interface Config {
   context?: string;
   model?: string;
   thresholds: Thresholds;
+  examples?: ExamplesConfig;
+}
+
+/** How lint checks code examples. Paths are absolute. */
+export interface ExamplesConfig {
+  /** `ts`, `tsx`, `js` and `jsx` fences are type-checked with `tsc` against this tsconfig. */
+  ts?: { tsconfig: string };
+  /** Other languages: a command per fence language, with `{file}` for the example's path. */
+  commands: Record<string, string>;
+  /** Folder the commands run in: the folder of the config file. */
+  cwd: string;
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3 };
@@ -36,7 +50,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3 }
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds']);
+const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -87,5 +101,34 @@ export function loadConfig(path?: string): Config {
       config.thresholds[key as keyof Thresholds] = value;
     }
   }
+  if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
   return config;
+}
+
+/** Fence languages the `ts` entry covers. */
+export const TS_LANGS = ['ts', 'tsx', 'js', 'jsx'];
+
+function readExamples(value: unknown, root: string, fail: (msg: string) => Error): ExamplesConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw fail('`examples` must be a mapping of fence language to settings');
+  }
+  const out: ExamplesConfig = { commands: {}, cwd: root };
+  for (const [lang, entry] of Object.entries(value as Record<string, unknown>)) {
+    const settings = entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null;
+    if (lang === 'ts') {
+      if (!settings || typeof settings.tsconfig !== 'string' || Object.keys(settings).length !== 1) {
+        throw fail('`examples.ts` takes one key, `tsconfig`, with the path of a tsconfig.json');
+      }
+      out.ts = { tsconfig: resolve(root, settings.tsconfig) };
+    } else if (TS_LANGS.includes(lang)) {
+      throw fail(`\`examples.${lang}\`: ${TS_LANGS.join(', ')} fences are all type-checked through \`examples.ts\``);
+    } else {
+      if (!settings || typeof settings.command !== 'string' || Object.keys(settings).length !== 1) {
+        throw fail(`\`examples.${lang}\` takes one key, \`command\`, with \`{file}\` where the example's path goes`);
+      }
+      if (!settings.command.includes('{file}')) throw fail(`\`examples.${lang}.command\` must contain \`{file}\``);
+      out.commands[lang.toLowerCase()] = settings.command;
+    }
+  }
+  return out;
 }

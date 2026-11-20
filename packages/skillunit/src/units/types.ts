@@ -37,7 +37,9 @@ export type FenceOwner =
   /** `path` is the id of the `Decide` path the fence sits in. */
   | { kind: 'decide'; unit: string; path: string }
   /** A fence under a label that takes no code. The parser also reports it as an error. */
-  | { kind: 'misplaced'; unit: string; label: LabelName | null };
+  | { kind: 'misplaced'; unit: string; label: LabelName | null }
+  /** A fence inside a list item the parser reported as malformed and skipped. Nothing checks it. */
+  | { kind: 'skipped'; unit: string };
 
 export interface Fence {
   type: 'fence';
@@ -46,7 +48,10 @@ export interface Fence {
   line: number;
   /** Line of the closing fence, or the last line of the file when it is never closed. */
   endLine: number;
-  /** First word of the info string, lowercased (`ts`, `tsx`, `sh`), or '' when there is none. */
+  /**
+   * First word of the info string, lowercased (`ts`, `tsx`, `sh`), or '' when there is none.
+   * `typescript` and `javascript` read as `ts` and `js`.
+   */
   lang: string;
   /** The other words of the info string, such as `no-check`. */
   flags: string[];
@@ -134,6 +139,8 @@ export interface Unit {
   /** Fences and inline code spans under `Right`. */
   right: (Fence | InlineCode)[];
   wrong: WrongItem[];
+  /** `Wrong`, `Decide` or `Right` items the parser reported as malformed and skipped. */
+  skipped: number;
 
   applies: string[];
   check: Check[];
@@ -159,6 +166,10 @@ export interface ParseError {
 
 export interface ParsedFile {
   file: string;
+  /** The file as read. Lint reads links and line counts from it. */
+  text: string;
+  /** Lines of the leading frontmatter block, 0 when there is none. */
+  frontmatter: number;
   units: Unit[];
   /** Every fenced block of the file, in order, `Setup` blocks included. */
   fences: Fence[];

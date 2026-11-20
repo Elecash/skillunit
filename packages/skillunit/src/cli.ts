@@ -5,6 +5,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
+import { ConfigError, formatLint, lint } from './lint/index.js';
 import { createClient } from './reader.js';
 import { printReport } from './report.js';
 import { runAll, type Report } from './runner.js';
@@ -13,7 +14,12 @@ const HELP = `skillunit: unit tests for agent skills
 
 Usage
   skillunit run [specs...] [options]   run the specs (the default command)
+  skillunit lint [skill] [options]     check the skill's format, examples, Check rules and links
   skillunit init [dir]                 create skillunit.yaml and a first spec
+
+Options for lint
+  --config <file>     settings file (default: ./skillunit.yaml, if it exists)
+  --json              print the result as JSON
 
 Options for run
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
@@ -26,9 +32,9 @@ Options for run
   --no <0-1>          highest P(yes) that passes an expected "no" (default 0.3)
 
 Exit codes
-  0  every test passed
-  1  a test failed, or a spec could not run
-  2  the command itself was wrong (unknown option, missing file, no API key)
+  0  every test passed; for lint, no errors (warnings allowed)
+  1  a test failed, or a spec could not run; for lint, an error was found
+  2  the command itself was wrong (unknown option, missing file, no API key, bad settings)
 
 Environment
   TYPESAFE_API_KEY    needed for everything except --dry-run; also read from ./.env
@@ -51,6 +57,7 @@ async function main() {
   const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'run';
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
   if (command === 'init') return init(argv[0] ?? '.');
+  if (command === 'lint') return lintCommand(argv);
   if (command !== 'run') usage(`unknown command "${command}". Run \`skillunit --help\`.`);
 
   const args = parseRunArgs(argv);
@@ -110,6 +117,42 @@ function parseRunArgs(argv: string[]): RunArgs {
     else args.specs.push(flag);
   }
   return args;
+}
+
+// ---------------------------------------------------------------- lint
+
+function lintCommand(argv: string[]) {
+  let configPath: string | undefined;
+  let skill: string | undefined;
+  let json = false;
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i]!;
+    if (flag === '--config') {
+      configPath = argv[++i];
+      if (configPath === undefined) usage('--config needs a value');
+    } else if (flag === '--json') json = true;
+    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
+    else if (skill === undefined) skill = flag;
+    else usage('lint takes one skill folder');
+  }
+
+  let config: Config;
+  try {
+    config = loadConfig(configPath);
+  } catch (e) {
+    usage((e as Error).message);
+  }
+  const dir = skill ? resolve(skill) : config.skill;
+  if (!existsSync(dir)) usage(`no skill folder at ${dir}`);
+
+  try {
+    const result = lint(dir, config.examples ? { examples: config.examples } : {});
+    print(json ? `${JSON.stringify(result, null, 2)}\n` : formatLint(result));
+    process.exit(result.ok ? 0 : 1);
+  } catch (e) {
+    if (e instanceof ConfigError) usage(e.message);
+    throw e;
+  }
 }
 
 // ---------------------------------------------------------------- init

@@ -40,6 +40,8 @@ const DOING = /^Doing:\s*(.*)$/;
 const BECAUSE = /^Because:\s*(.*)$/;
 const DECIDE_PATH = /^\*\*([^*]+)\*\*\s+[—–-]\s+(.*)$/;
 const SETUP = /^Setup:\s*(.*)$/;
+/** Long language names, read as the short ones so the type-check and `Check … in ts` see them. */
+const LANG_ALIASES: Record<string, string> = { typescript: 'ts', javascript: 'js' };
 
 /** Parses every `.md` file under `dir`, skipping dot folders and node_modules. */
 export function parseSkill(dir: string): ParsedSkill {
@@ -62,7 +64,7 @@ export function parseFile(text: string, file: string): ParsedFile {
  * Lines of a leading YAML frontmatter block (`---` to `---` or `...`), or 0 when there is none.
  * Its text is not Markdown: no headings, labels or examples in it.
  */
-function frontmatterLength(lines: string[]): number {
+export function frontmatterLength(lines: string[]): number {
   if (lines[0]?.trim() !== '---') return 0;
   for (let i = 1; i < lines.length; i++) {
     const t = lines[i]!.trim();
@@ -195,7 +197,7 @@ class FileParser {
     // Frontmatter is blanked, not removed, so line numbers stay those of the file.
     const front = frontmatterLength(this.lines);
     for (let i = 0; i < front; i++) this.lines[i] = '';
-    this.result = { file, units: [], fences: [], inlineCode: [], setup: {}, wrongCode: [], headings: [], errors: [] };
+    this.result = { file, text, frontmatter: front, units: [], fences: [], inlineCode: [], setup: {}, wrongCode: [], headings: [], errors: [] };
   }
 
   parse(): ParsedFile {
@@ -256,6 +258,7 @@ class FileParser {
       decide: [],
       right: [],
       wrong: [],
+      skipped: 0,
       applies: [],
       check: [],
       source: [],
@@ -380,7 +383,7 @@ class FileParser {
       file: this.file,
       line: raw.start + 1,
       endLine: raw.end + 1,
-      lang: lang.toLowerCase(),
+      lang: LANG_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase(),
       flags,
       code: raw.code,
       owner: { kind: 'reference' },
@@ -402,6 +405,8 @@ class FileParser {
 
   private unitFenceOwner(raw: RawFence, fence: Fence): FenceOwner {
     const u = this.unit!;
+    // The item was reported once already; its code is not an example of anything.
+    if (this.item?.kind === 'ignore' && raw.indent >= 2) return { kind: 'skipped', unit: u.id };
     const misplaced = (message: string): FenceOwner => {
       this.error(raw.start, message);
       return { kind: 'misplaced', unit: u.id, label: this.label };
@@ -554,6 +559,7 @@ class FileParser {
       const doing = DOING.exec(content);
       if (!doing) {
         this.error(i, 'an item under `Wrong` starts with `Doing:`');
+        u.skipped++;
         this.item = { kind: 'ignore' };
         this.para = { kind: 'ignore' };
         return;
@@ -569,6 +575,7 @@ class FileParser {
       const path = DECIDE_PATH.exec(content);
       if (!path) {
         this.error(i, 'a path under `Decide` reads `- **path** — condition`');
+        u.skipped++;
         this.item = { kind: 'ignore' };
         this.para = { kind: 'ignore' };
         return;

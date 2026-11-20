@@ -675,3 +675,31 @@ describe('parseSkill', () => {
     ]);
   });
 });
+
+describe('skipped items', () => {
+  it('skips a fence inside a malformed Wrong item, with one error for the item', () => {
+    const file = parse(`### rule: r\n\nWrong:\n\n- a POST with retry\n\n  ${F}ts\n  tf.post('/a', {}, { retry: 1 });\n  ${F}\n\nApplies: a\n`);
+    expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual(['5: an item under `Wrong` starts with `Doing:`']);
+    expect(file.fences.map((f) => f.owner)).toEqual([{ kind: 'skipped', unit: 'r' }]);
+    expect(file.units[0]).toMatchObject({ wrong: [], skipped: 1 });
+    expect(file.inlineCode).toEqual([]);
+  });
+
+  it('skips a fence inside a malformed Decide path', () => {
+    const file = parse(`### decision: d\n\nDecide:\n\n- shared: when x\n\n  ${F}ts\n  const a = 1;\n  ${F}\n\nApplies: a\n`);
+    expect(file.errors.map((e) => e.line)).toEqual([5]);
+    expect(file.fences.map((f) => f.owner.kind)).toEqual(['skipped']);
+    expect(file.units[0]).toMatchObject({ decide: [], skipped: 1 });
+  });
+});
+
+describe('language names', () => {
+  it('reads typescript as ts and javascript as js', () => {
+    const file = parse(`Setup:\n\n${F}TypeScript\nimport { tf } from 'tinyfetch';\n${F}\n\n${F}javascript no-check\nx\n${F}\n`);
+    expect(file.fences.map((f) => [f.lang, f.flags])).toEqual([
+      ['ts', []],
+      ['js', ['no-check']],
+    ]);
+    expect(Object.keys(file.setup)).toEqual(['ts']);
+  });
+});
