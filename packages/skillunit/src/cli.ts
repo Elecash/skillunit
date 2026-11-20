@@ -1,22 +1,22 @@
 #!/usr/bin/env node
 /**
- * The `alchemist` command. See README.md for the full reference.
+ * The `skillunit` command. See README.md for the full reference.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
-import { CONFIG_FILE, loadConfig, type Config, type Thresholds } from './config.js';
+import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
 import { createClient } from './reader.js';
 import { printReport } from './report.js';
 import { runAll, type Report } from './runner.js';
 
-const HELP = `alchemist: unit tests for agent skills
+const HELP = `skillunit: unit tests for agent skills
 
 Usage
-  alchemist run [specs...] [options]   run the specs (the default command)
-  alchemist init [dir]                 create alchemist.yaml and a first spec
+  skillunit run [specs...] [options]   run the specs (the default command)
+  skillunit init [dir]                 create skillunit.yaml and a first spec
 
 Options for run
-  --config <file>     settings file (default: ./alchemist.yaml, if it exists)
+  --config <file>     settings file (default: ./skillunit.yaml, if it exists)
   --skill <dir>       folder with SKILL.md, instead of the one in the settings
   --dry-run           check that specs load, headings exist and requests fit; send nothing
   --json              print the report as JSON
@@ -51,7 +51,7 @@ async function main() {
   const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'run';
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
   if (command === 'init') return init(argv[0] ?? '.');
-  if (command !== 'run') usage(`unknown command "${command}". Run \`alchemist --help\`.`);
+  if (command !== 'run') usage(`unknown command "${command}". Run \`skillunit --help\`.`);
 
   const args = parseRunArgs(argv);
   loadDotEnv(resolve('.env'));
@@ -106,7 +106,7 @@ function parseRunArgs(argv: string[]): RunArgs {
     else if (flag === '--choice') args.thresholds.choice = fraction();
     else if (flag === '--yes') args.thresholds.yes = fraction();
     else if (flag === '--no') args.thresholds.no = fraction();
-    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`alchemist --help\`.`);
+    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
     else args.specs.push(flag);
   }
   return args;
@@ -114,9 +114,9 @@ function parseRunArgs(argv: string[]): RunArgs {
 
 // ---------------------------------------------------------------- init
 
-const INIT_CONFIG = `# Alchemist settings. Reference: https://alchemist.golemui.com
+const INIT_CONFIG = `# skillunit settings. Reference: https://github.com/Elecash/skillunit#readme
 skill: .              # folder with SKILL.md
-specs: ./alchemist    # folder with the spec files
+specs: ./specs        # folder with the spec files
 # context: "One sentence about what the skill is for."
 `;
 
@@ -133,7 +133,7 @@ tests:
       a: What the skill tells the agent to do
       b: A plausible thing the skill rules out
     expect: a
-    # Alchemist adds a "none" option to every choice test: the reader picks it when the
+    # skillunit adds a "none" option to every choice test: the reader picks it when the
     # skill says something else or does not settle the question. "expect: none" is valid.
 
   - id: example-yes-no
@@ -145,10 +145,10 @@ tests:
 function init(dir: string) {
   const root = resolve(dir);
   const configPath = join(root, CONFIG_FILE);
-  const specPath = join(root, 'alchemist', 'example.yaml');
+  const specPath = join(root, DEFAULT_SPECS, 'example.yaml');
   if (existsSync(configPath)) usage(`${relative(process.cwd(), configPath)} already exists`);
 
-  mkdirSync(join(root, 'alchemist'), { recursive: true });
+  mkdirSync(join(root, DEFAULT_SPECS), { recursive: true });
   writeFileSync(configPath, INIT_CONFIG);
   if (!existsSync(specPath)) writeFileSync(specPath, INIT_SPEC);
 
@@ -156,7 +156,7 @@ function init(dir: string) {
   if (!existsSync(join(root, 'SKILL.md'))) {
     print(`there is no SKILL.md here: set \`skill\` in ${CONFIG_FILE} to the folder that has it\n`);
   }
-  print('next: write your tests, add TYPESAFE_API_KEY to .env, then run `alchemist run`\n');
+  print('next: write your tests, add TYPESAFE_API_KEY to .env, then run `skillunit run`\n');
 }
 
 // ---------------------------------------------------------------- helpers
@@ -186,7 +186,7 @@ function print(text: string) {
 }
 
 function usage(message: string): never {
-  process.stderr.write(`alchemist: ${message}\n`);
+  process.stderr.write(`skillunit: ${message}\n`);
   process.exit(2);
 }
 

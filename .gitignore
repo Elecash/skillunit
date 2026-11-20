@@ -2,3 +2,12 @@ node_modules
 dist
 .env
 .idea
+.nx/cache
+.nx/workspace-data
+.DS_Store
+# Copied from the repository root by `prepack`, so the npm package ships them.
+packages/skillunit/README.md
+packages/skillunit/LICENSE
+packages/skillunit/skills
+lab/
+PLAN.md

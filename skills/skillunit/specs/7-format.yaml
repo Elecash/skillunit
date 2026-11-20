@@ -3,11 +3,11 @@ section: Spec format
 tests:
   - id: extra-key
     scenario: The agent adds a `description` key to a test to explain it.
-    question: What happens when Alchemist loads that spec?
+    question: What happens when skillunit loads that spec?
     options:
       error: The spec does not load, because `description` is not an allowed key
-      ignored: Alchemist ignores the key and runs the test
-      shown: Alchemist prints the description in the report
+      ignored: skillunit ignores the key and runs the test
+      shown: skillunit prints the description in the report
     expect: error
 
   - id: thresholds-untouched
@@ -15,7 +15,7 @@ tests:
     question: What should the agent do with the thresholds?
     options:
       defaults: Leave them at their defaults
-      lower: Lower them in `alchemist.yaml`
+      lower: Lower them in `skillunit.yaml`
       per-spec: Set lower thresholds inside each spec
     expect: defaults
 

@@ -1,14 +1,14 @@
-# Alchemist
+# skillunit
 
 **Unit tests for agent skills.**
 
 A skill is a document an AI agent reads before it acts: a `SKILL.md`, a rules file, an
 instruction page. You write it so that, in a given situation, the agent makes a given decision.
-Alchemist checks that the text still leads to those decisions. It runs in seconds on every pull
+skillunit checks that the text still leads to those decisions. It runs in seconds on every pull
 request, without running an agent and without an LLM API bill.
 
 ```
-skills/alchemist/alchemist/5-check.yaml
+skills/skillunit/specs/5-check.yaml
 SKILL.md › Check the tests  844 chars · jev-1.13.0
 
   TEST                       ANSWER                    CONFIDENCE  DISTRIBUTION
@@ -23,13 +23,13 @@ SKILL.md › Check the tests  844 chars · jev-1.13.0
 FAILED  1 test failed
 ```
 
-This is Alchemist testing its own skill after one sentence was deleted from it: "Alchemist has
+This is skillunit testing its own skill after one sentence was deleted from it: "skillunit has
 no mutations. If the user asks for them, explain that step 3 does the same job." The test for
 that rule failed. The reader no longer finds the rule in the text and answers `none`.
 
 ## How it works
 
-Alchemist sends the skill to [TypeSafe](https://typesafe.ai), together with one question per
+skillunit sends the skill to [TypeSafe](https://typesafe.ai), together with one question per
 test. TypeSafe's System One model does not write text. It picks an answer from a fixed list and
 reports how likely each answer is.
 
@@ -43,52 +43,52 @@ Every choice test also gets an extra answer, `none`: "the skill says something d
 does not settle this". It gives the reader a way to say the rule is missing. Without it, the
 reader would have to pick one of your options even when the skill no longer backs any of them.
 
-Alchemist tests whether the skill *says* the right thing, not whether an agent *follows* it.
+skillunit tests whether the skill *says* the right thing, not whether an agent *follows* it.
 When a spec also loads the files the agent reads (see
 [Testing with the files the agent reads](#testing-with-the-files-the-agent-reads)), the results
 matched what real agents did in the one comparison made so far. To measure behaviour itself, run
 a real agent with [skillgrade](https://github.com/mgechev/skillgrade) or `claude plugin eval`,
-nightly, with a few trials. Alchemist is the cheap check to run before that, on every change.
+nightly, with a few trials. skillunit is the cheap check to run before that, on every change.
 
 ## Quick start
 
 ```sh
-npm install --save-dev @golemui/alchemist
-npx alchemist init         # creates alchemist.yaml and alchemist/example.yaml
+npm install --save-dev skillunit
+npx skillunit init         # creates skillunit.yaml and specs/example.yaml
 ```
 
 Add your TypeSafe API key to `.env` as `TYPESAFE_API_KEY=…` (keys are issued at
-[typesafe.ai](https://typesafe.ai)), write your tests in `alchemist/`, then:
+[typesafe.ai](https://typesafe.ai)), write your tests in `specs/`, then:
 
 ```sh
-npx alchemist run --dry-run    # checks the specs; sends nothing and needs no key
-npx alchemist run              # asks TypeSafe
+npx skillunit run --dry-run    # checks the specs; sends nothing and needs no key
+npx skillunit run              # asks TypeSafe
 ```
 
-To see a complete set of specs first, run the ones Alchemist uses for its own skill:
+To see a complete set of specs first, run the ones skillunit uses for its own skill:
 
 ```sh
-git clone https://github.com/golemui/alchemist && cd alchemist && npm install
+git clone https://github.com/Elecash/skillunit && cd skillunit && npm install
 npm run skill:dry
 npm run skill                  # needs TYPESAFE_API_KEY in .env
 ```
 
 ## Let your agent write the specs
 
-Alchemist ships a skill that teaches an agent to write and check specs:
-[`skills/alchemist/SKILL.md`](skills/alchemist/SKILL.md). It covers how to split a skill into
+skillunit ships a skill that teaches an agent to write and check specs:
+[`skills/skillunit/SKILL.md`](skills/skillunit/SKILL.md). It covers how to split a skill into
 specs, how to write scenarios and options that catch regressions, and what to do when a test
 fails. To use it with Claude Code, copy it into your project's skills:
 
 ```sh
-mkdir -p .claude/skills/alchemist
-cp node_modules/@golemui/alchemist/skills/alchemist/SKILL.md .claude/skills/alchemist/
+mkdir -p .claude/skills/skillunit
+cp node_modules/skillunit/skills/skillunit/SKILL.md .claude/skills/skillunit/
 ```
 
-Then ask the agent something like "write Alchemist tests for `skills/my-skill`".
+Then ask the agent something like "write skillunit tests for `skills/my-skill`".
 
-The skill is tested with Alchemist itself, in
-[`skills/alchemist/alchemist/`](skills/alchemist/alchemist): seven specs, 32 tests, run on every
+The skill is tested with skillunit itself, in
+[`skills/skillunit/specs/`](skills/skillunit/specs): seven specs, 32 tests, run on every
 push. Writing them found two unclear sentences in the skill, which were rewritten before the
 first release.
 
@@ -145,11 +145,11 @@ A choice test passes when the reader picks `expect` with a confidence of 0.5 or 
 test passes when P(yes) is at least 0.7 for an expected `yes`, or at most 0.3 for an expected
 `no`. The right answer with too little confidence shows as `~` (weak) and counts as a failure.
 
-With several phrasings, each one is asked separately. Alchemist ranks them by the probability of
+With several phrasings, each one is asked separately. skillunit ranks them by the probability of
 the expected answer and takes the median, so one odd phrasing cannot decide the test but half of
 them can.
 
-`section` takes a heading of any level. Alchemist sends that heading and everything under it, up
+`section` takes a heading of any level. skillunit sends that heading and everything under it, up
 to the next heading of the same or a higher level, exactly as written. A section of one to three
 thousand characters works best. A whole `SKILL.md` works too, but answers get less precise as the
 text grows.
@@ -164,7 +164,7 @@ gives the reader those files too:
 ```yaml
 file: SKILL.md
 section: Non-negotiable rules
-with: [references/forms-dx.md, references/framework-setup.md]
+with: [features/retries.md, features/errors.md]
 ```
 
 Paths are relative to the skill folder, and each file is sent whole. `with: all` sends every
@@ -175,7 +175,7 @@ accuracy falls as the state grows with text unrelated to the question
 ([Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)), and a file the agent
 never opens can settle a test that the agent would get wrong. Keep `all` for small skills.
 
-TypeSafe takes at most 32,000 tokens for the state plus the longest question. Alchemist estimates
+TypeSafe takes at most 32,000 tokens for the state plus the longest question. skillunit estimates
 the size before sending, prints it with `--dry-run`, and refuses a spec that would not fit,
 naming its largest files. The estimate runs about 8% high.
 
@@ -191,11 +191,10 @@ another file. Decide whether SKILL.md should state it too.
 
 ### Compared with real agents
 
-GolemUI's skill has the rule "`formDef` is the bare array; named states go in a separate
-`formConfig`", stated in SKILL.md and repeated in `forms-dx.md` and `framework-setup.md`. We made
-two copies of the skill, one with the rule deleted from SKILL.md only and one with it deleted from
-every file. For each copy, eight Claude Haiku agents wrote a form with a named state and a script
-checked where they put it. Alchemist ran the same three tests on each copy, in three ways:
+A forms library's skill has a rule about where a form's named states go, stated in SKILL.md and
+repeated in two reference files. We made two copies of the skill, one with the rule deleted from
+SKILL.md only and one with it deleted from every file. For each copy, eight Claude Haiku agents
+wrote a form with a named state and a script checked where they put it. skillunit ran the same three tests on each copy, in three ways:
 
 | Copy of the skill | Agents right | Tests failed: section only | with the two files | with `all` |
 |---|---|---|---|---|
@@ -205,13 +204,13 @@ checked where they put it. Alchemist ran the same three tests on each copy, in t
 
 With the files the agents read, the tests matched the agents on all three copies. Tested alone,
 the section flagged the second copy although every agent got it right there, because the rule
-still reached them through `forms-dx.md`. With `all`, the extra files made the answers less
+still reached them through a reference file. With `all`, the extra files made the answers less
 certain, and on the last copy one test passed at 0.52 while every agent failed. This is one rule,
 one model and eight runs per copy: a first comparison, not a benchmark.
 
 ## Best practices
 
-Each practice below comes from a test that passed for the wrong reason while Alchemist was being
+Each practice below comes from a test that passed for the wrong reason while skillunit was being
 built. Together they are what makes a test fail when its rule is removed from the skill.
 
 **Ask about decisions.** "Does the skill mention two APIs?" passes even when the section is badly
@@ -238,7 +237,7 @@ skill to cover a case it never mentions, like database migrations in a deploy ch
 something else" and "the skill says nothing". If the skill does give an answer and none of your
 options says it, add an option that does and expect it. A test that expects `none` because the
 options do not match the skill passes just the same when the rule is deleted: the reader answers
-`none` because the skill is now silent. Alchemist's own skill had such a test; it passed at 0.80
+`none` because the skill is now silent. skillunit's own skill had such a test; it passed at 0.80
 with its rule and at 0.55 without it.
 
 **Ask for exact values when they matter.** The reader compares meaning, and `npm run preview`
@@ -253,9 +252,9 @@ the skill passes on the example alone and tells you nothing about the rule behin
 ### Fixing the skill when a test fails
 
 **Put an exception next to the rule it changes.** A reader, like an agent, follows the most
-specific rule it finds. GolemUI's skill said "every validator without a choice list takes no
-`type`", a rule for its TypeScript API; JSON definitions need a `type` on every validator.
-Stating the JSON exception at the top of the section did not help: the reader still answered
+specific rule it finds. A forms library's skill said "every validator without a choice list
+takes no `type`", a rule for its TypeScript API; its JSON definitions need a `type` on every
+validator. Stating the JSON exception at the top of the section did not help: the reader still answered
 "no `type`" at 83%. The same sentence, moved into the rule as a note, made it answer "`type`"
 at 99%.
 
@@ -272,15 +271,15 @@ A green test proves the reader gave the right answer. To prove it gave it *becau
 skill*, copy the skill, delete the sentence the test is about in the copy, and run the spec
 against the copy with `--skill`. The test should fail.
 
-Alchemist's own skill was checked this way, one sentence at a time. Some of the results:
+skillunit's own skill was checked this way, one sentence at a time. Some of the results:
 
 | Sentence deleted from the skill | Test | Answer without it |
 |---|---|---|
-| The API key goes in `.env` or the environment, never in a spec or `alchemist.yaml` | `key-in-config` | `none` 97% |
+| The API key goes in `.env` or the environment, never in a spec or `skillunit.yaml` | `key-in-config` | `none` 97% |
 | Delete the rule's sentence in a copy, never in the real SKILL.md | `prove-on-a-copy` | `none` 95% |
 | Never change a test only to make it pass, and never lower the thresholds | `report-dont-bend` | `rewrite` 82% |
 | When a heading is longer, write one spec per subheading | `long-heading` | `heading` 73% |
-| Alchemist has no mutations; explain that step 3 does the same job | `user-asks-for-mutations` | `none` 60% |
+| skillunit has no mutations; explain that step 3 does the same job | `user-asks-for-mutations` | `none` 60% |
 
 Sixteen of the seventeen tests checked failed without their sentence. If a test stays green,
 look for the cause in this order:
@@ -295,13 +294,13 @@ look for the cause in this order:
 
 ## Configuration
 
-`alchemist.yaml` in the project root, or any file passed with `--config`. Every field is
+`skillunit.yaml` in the project root, or any file passed with `--config`. Every field is
 optional and command-line flags override it. Paths are relative to the file.
 
 ```yaml
 skill: ./skills/my-skill      # folder with SKILL.md (default: the folder of this file)
-specs: ./alchemist            # a spec file, a folder of them, or a list (default: ./alchemist)
-context: "GolemUI is a JSON forms library for React, Angular, Vue and Lit."
+specs: ./specs                # a spec file, a folder of them, or a list (default: ./specs)
+context: "tinyfetch is a small HTTP client with retries, timeouts and typed errors."
 model: jev-latest             # TypeSafe model
 thresholds:
   choice: 0.5                 # lowest confidence that passes a choice test
@@ -318,10 +317,10 @@ the config.
 ## Command line
 
 ```
-alchemist run [specs...] [options]   run the specs (the default command)
-alchemist init [dir]                 create alchemist.yaml and a first spec
+skillunit run [specs...] [options]   run the specs (the default command)
+skillunit init [dir]                 create skillunit.yaml and a first spec
 
---config <file>     settings file (default: ./alchemist.yaml, if it exists)
+--config <file>     settings file (default: ./skillunit.yaml, if it exists)
 --skill <dir>       folder with SKILL.md, instead of the one in the settings
 --dry-run           check that specs load, headings exist and requests fit; send nothing
 --json              print the report as JSON
@@ -337,7 +336,7 @@ that someone renamed or deleted from the skill.
 
 ## JSON report
 
-`alchemist run --json` prints one object. `schema` changes only when a field changes meaning or
+`skillunit run --json` prints one object. `schema` changes only when a field changes meaning or
 disappears.
 
 ```jsonc
@@ -349,7 +348,7 @@ disappears.
   "summary": { "tests": 5, "passed": 4, "usage": { "input_tokens": 2212, "output_tokens": 278 } },
   "specs": [
     {
-      "spec": "/path/to/alchemist/5-check.yaml",
+      "spec": "/path/to/specs/5-check.yaml",
       "file": "SKILL.md",
       "sections": ["Check the tests"],
       "with": [],
@@ -374,7 +373,7 @@ disappears.
 ```
 
 `with` lists the other files the reader got. `chars` counts the tested text and those files
-together, and `estimatedTokens` is Alchemist's estimate of the state plus the longest question,
+together, and `estimatedTokens` is skillunit's estimate of the state plus the longest question,
 the figure TypeSafe limits to 32,000.
 
 `confidence` is TypeSafe's confidence for a choice test and P(yes) for a yes/no test.
@@ -388,7 +387,7 @@ the figure TypeSafe limits to 32,000.
 name: skill
 on: [pull_request]
 jobs:
-  alchemist:
+  skillunit:
     runs-on: ubuntu-latest
     env:
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
@@ -396,17 +395,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npx --yes @golemui/alchemist run --dry-run
-      - run: npx --yes @golemui/alchemist run
+      - run: npx --yes skillunit run --dry-run
+      - run: npx --yes skillunit run
 ```
 
-Each spec file is one request to TypeSafe, whatever the number of tests in it. Alchemist's own
+Each spec file is one request to TypeSafe, whatever the number of tests in it. skillunit's own
 skill, with seven specs and 32 tests, uses about 13,600 input tokens per run.
 
-## Where the name comes from
+## License
 
-Alchemist was built for [GolemUI](https://golemui.com), a forms library whose MCP server checks
-the code and JSON that agents write. The MCP cannot check the prose in GolemUI's skill, so
-Alchemist was written to test it. Nothing in it is specific to GolemUI.
-
-MIT © GolemUI
+MIT © Raúl Jiménez

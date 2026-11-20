@@ -1,11 +1,11 @@
 ---
-name: alchemist
-description: Write and run Alchemist specs, the YAML unit tests that check an agent skill (a SKILL.md) leads to the decisions it was written for. Use when asked to test a skill, to add or fix Alchemist tests, or to check that a SKILL.md still says what it should.
+name: skillunit
+description: Write and run skillunit specs, the YAML unit tests that check an agent skill (a SKILL.md) leads to the decisions it was written for. Use when asked to test a skill, to add or fix skillunit tests, or to check that a SKILL.md still says what it should.
 ---
 
-# Writing Alchemist specs
+# Writing skillunit specs
 
-Alchemist tests a skill by asking a reader model closed questions about the skill's text. A spec
+skillunit tests a skill by asking a reader model closed questions about the skill's text. A spec
 is a YAML file with the tests for one part of a skill. Each test is a situation, a question and
 a short list of answers, one of them expected. The test passes when the text leads the reader to
 the expected answer.
@@ -15,12 +15,12 @@ passes on any version of the skill is worse than no test, because it looks like 
 
 ## Set up
 
-If the project has no `alchemist.yaml`, run `npx alchemist init <skill folder>`. It creates
-`alchemist.yaml` next to SKILL.md and a first spec in `alchemist/`. Set `context` in
-`alchemist.yaml` to one sentence about what the skill is for.
+If the project has no `skillunit.yaml`, run `npx skillunit init <skill folder>`. It creates
+`skillunit.yaml` next to SKILL.md and a first spec in `specs/`. Set `context` in
+`skillunit.yaml` to one sentence about what the skill is for.
 
 The TypeSafe API key goes in `.env` or the environment as `TYPESAFE_API_KEY`, never in a spec or
-in `alchemist.yaml`. If there is no key, write the specs anyway, run only `--dry-run`, and tell
+in `skillunit.yaml`. If there is no key, write the specs anyway, run only `--dry-run`, and tell
 the user the tests have not been sent.
 
 ## Plan the specs
@@ -83,7 +83,7 @@ Label options with short lowercase words (`stop`, `deploy`, `preview`) and put t
 description.
 
 Never define an option called `none`, and never add one that means "other" or "the skill does not
-say". Alchemist adds `none` to every choice test by itself, and a spec that defines it does not
+say". skillunit adds `none` to every choice test by itself, and a spec that defines it does not
 load.
 
 `none` means both "the skill says something else" and "the skill says nothing". Expect it only
@@ -97,11 +97,11 @@ accepts a renamed command.
 
 ## Check the tests
 
-1. Run `npx alchemist run --dry-run`. It sends nothing and fails when a spec is invalid, a
+1. Run `npx skillunit run --dry-run`. It sends nothing and fails when a spec is invalid, a
    heading does not exist, or a spec is too large to send. Fix and repeat until it passes.
-2. Run `npx alchemist run`.
+2. Run `npx skillunit run`.
 3. Prove that each test depends on its rule. Copy the skill folder to a temporary location,
-   delete the rule's sentence in the copy, and run `npx alchemist run <spec> --skill <copy>`.
+   delete the rule's sentence in the copy, and run `npx skillunit run <spec> --skill <copy>`.
    The test must fail. Never edit the real SKILL.md for this check.
 4. If a test still passes without its sentence, find out why, in this order: an option gives
    the answer away, the scenario contains the answer, the skill states the same rule somewhere
@@ -109,7 +109,7 @@ accepts a renamed command.
    In the last two, tell the user: the rule is written twice, or the sentence may not be
    needed at all.
 
-Alchemist has no mutations. If the user asks for them, explain that step 3 does the same job.
+skillunit has no mutations. If the user asks for them, explain that step 3 does the same job.
 
 ## When a test fails on the real skill
 

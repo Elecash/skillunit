@@ -32,7 +32,7 @@ export interface ReaderResult {
   model: string;
 }
 
-/** Description of the option Alchemist adds to every choice test. */
+/** Description of the option skillunit adds to every choice test. */
 export const NONE_DESCRIPTION =
   'None of the options above: the skill says something different, or it does not settle this';
 
@@ -89,9 +89,9 @@ export const TOKEN_LIMITS = { stateAndLongestQuestion: 32_000, request: 64_000 }
 
 /**
  * Characters per token used to estimate a request before it is sent, since the SDK has no
- * tokenizer. Measured on the GolemUI skill: adding 65,000 characters of markdown to a state
- * added about 18,300 input tokens (3.57 characters per token). Rounded down so the estimate errs
- * high by about 8%.
+ * tokenizer. Measured on a real skill: adding 65,000 characters of its markdown to a state added
+ * about 18,300 input tokens (3.57 characters per token). Rounded down so the estimate errs high
+ * by about 8%.
  */
 const CHARS_PER_TOKEN = 3.3;
 

@@ -1,0 +1,59 @@
+{
+  "name": "skillunit",
+  "version": "0.1.0",
+  "description": "Keeps an agent skill in sync with the code it describes. Tests that the skill text settles the decisions it must, with closed questions to a decision model.",
+  "license": "MIT",
+  "homepage": "https://github.com/Elecash/skillunit#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Elecash/skillunit.git",
+    "directory": "packages/skillunit"
+  },
+  "bugs": {
+    "url": "https://github.com/Elecash/skillunit/issues"
+  },
+  "keywords": [
+    "agent",
+    "skills",
+    "skill",
+    "testing",
+    "llm",
+    "mcp",
+    "typesafe",
+    "ci"
+  ],
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "skillunit": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "skills/skillunit/SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "nx": {
+    "name": "skillunit"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "dev": "tsx src/cli.ts",
+    "prepack": "node scripts/copy-shared-files.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@typesafe-ai/sdk": "^0.6.0",
+    "yaml": "^2.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "~5.6.3",
+    "vitest": "^5.1.1"
+  }
+}

@@ -1,6 +1,0 @@
-# Alchemist testing its own skill. From the repository root:
-#   npm run skill:dry     checks the specs, sends nothing
-#   npm run skill         runs them against TypeSafe (needs TYPESAFE_API_KEY)
-skill: .
-specs: ./alchemist
-context: "Alchemist is a command-line tool that tests agent skills: it asks a reader model closed questions about a SKILL.md, using tests written as YAML spec files."

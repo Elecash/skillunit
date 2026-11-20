@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 
 /**
- * Label of the option the reader always gets on choice tests, added by Alchemist.
+ * Label of the option the reader always gets on choice tests, added by skillunit.
  * A spec can expect it (`expect: none`) but cannot define it.
  */
 export const NONE = 'none';

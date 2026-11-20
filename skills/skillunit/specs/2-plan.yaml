@@ -44,7 +44,7 @@ tests:
 
   - id: show-the-list
     scenario:
-      - The user says "add Alchemist tests to our skill" and nothing about which parts matter.
+      - The user says "add skillunit tests to our skill" and nothing about which parts matter.
       - The user asks for tests for the skill without saying what to focus on.
     question: What should the agent do before writing the tests?
     options:

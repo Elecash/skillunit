@@ -1,9 +1,9 @@
 /**
- * `alchemist.yaml`: optional project settings, so a project does not repeat the same flags on
+ * `skillunit.yaml`: optional project settings, so a project does not repeat the same flags on
  * every run. Every field is optional and every field can be overridden from the command line.
  *
  *   skill: ./skills/my-skill     # folder with SKILL.md
- *   specs: ./alchemist           # a spec file, a folder of them, or a list of either
+ *   specs: ./specs               # a spec file, a folder of them, or a list of either
  *   context: "…"                 # one sentence about what the skill is for
  *   model: jev-latest            # TypeSafe model
  *   thresholds:
@@ -32,18 +32,20 @@ export interface Config {
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3 };
-export const CONFIG_FILE = 'alchemist.yaml';
+/** Folder with the spec files when the settings do not say. */
+export const DEFAULT_SPECS = 'specs';
+export const CONFIG_FILE = 'skillunit.yaml';
 
 const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds']);
 
 /**
- * Loads the config file at `path`, or `./alchemist.yaml` if it exists. With no file, the skill
- * is the current folder and the specs are in `./alchemist`. Paths in the file are relative to
+ * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
+ * is the current folder and the specs are in `./specs`. Paths in the file are relative to
  * the file itself.
  */
 export function loadConfig(path?: string): Config {
   const file = resolve(path ?? CONFIG_FILE);
-  const config: Config = { skill: resolve('.'), specs: [resolve('alchemist')], thresholds: { ...DEFAULT_THRESHOLDS } };
+  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], thresholds: { ...DEFAULT_THRESHOLDS } };
   if (!existsSync(file)) {
     if (path) throw new Error(`config file not found: ${file}`);
     return config;
@@ -58,7 +60,7 @@ export function loadConfig(path?: string): Config {
 
   const root = dirname(file);
   config.skill = root;
-  config.specs = [resolve(root, 'alchemist')];
+  config.specs = [resolve(root, DEFAULT_SPECS)];
 
   if (raw.skill !== undefined) {
     if (typeof raw.skill !== 'string') throw fail('`skill` must be a path');
