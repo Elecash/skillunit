@@ -1,0 +1,35 @@
+/**
+ * The one report every command builds and every reporter prints: the layers that ran, each with
+ * its own result. `--reporter json` prints it as it is.
+ */
+import type { LintResult } from '../lint/types.js';
+import type { SyncResult } from '../sync/sync.js';
+import type { Report as TestReport } from '../test/runner.js';
+
+/** Bumped only when a field changes meaning or disappears. 1 was the `run --json` report. */
+export const REPORT_SCHEMA = 2;
+
+export type Command = 'lint' | 'sync' | 'test' | 'check';
+
+export interface CheckReport {
+  schema: typeof REPORT_SCHEMA;
+  command: Command;
+  ok: boolean;
+  lint?: LintResult;
+  sync?: SyncResult;
+  test?: TestReport;
+}
+
+export const REPORTERS = ['table', 'json', 'junit', 'github'] as const;
+export type ReporterName = (typeof REPORTERS)[number];
+
+export interface ReportOptions {
+  /** Paths in the output are relative to this folder. */
+  cwd: string;
+  color: boolean;
+}
+
+export function buildReport(command: Command, layers: Omit<CheckReport, 'schema' | 'command' | 'ok'>): CheckReport {
+  const ok = [layers.lint, layers.sync, layers.test].every((l) => l === undefined || l.ok);
+  return { schema: REPORT_SCHEMA, command, ok, ...layers };
+}

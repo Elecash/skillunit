@@ -4,14 +4,11 @@
  */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Config } from '../config.js';
+import type { Config, Thresholds } from '../config.js';
 import type { DecisionModel } from '../models/index.js';
 import { buildRequest, estimateTokens, read, type TokenEstimate, type Verdict } from './reader.js';
 import { readSkillText, readWithFiles } from './skill-text.js';
-import { loadSpec } from './spec.js';
-
-/** Bumped only when a field of the JSON report changes meaning or disappears. */
-export const REPORT_SCHEMA = 1;
+import { loadSpec, type SpecFile } from './spec.js';
 
 type Usage = { input_tokens: number; output_tokens: number };
 
@@ -33,33 +30,55 @@ export interface SpecReport {
 }
 
 export interface Report {
-  schema: typeof REPORT_SCHEMA;
   ok: boolean;
   skill: string;
   dryRun: boolean;
+  /** What the verdicts were judged with. */
+  thresholds: Thresholds;
   specs: SpecReport[];
-  summary: { tests: number; passed: number; usage: Usage };
+  summary: {
+    tests: number;
+    passed: number;
+    /** Verdicts near their threshold, pass or fail. */
+    borderline: number;
+    /** Specs a selection (`test --changed`) left out. */
+    skipped: number;
+    usage: Usage;
+  };
 }
+
+/**
+ * Which tests of a spec to run: `all`, the ids of some, or null to leave the spec out. A spec
+ * that does not load is always reported.
+ */
+export type Selection = (spec: SpecFile) => 'all' | Set<string> | null;
 
 export interface RunOptions {
   /** Check that specs load, headings exist and requests fit the model's limits; send nothing. */
   dryRun?: boolean;
+  select?: Selection;
 }
 
 export async function runAll(config: Config, model: DecisionModel, options: RunOptions = {}): Promise<Report> {
   const dryRun = options.dryRun ?? false;
   const specs: SpecReport[] = [];
-  for (const path of collectSpecs(config.specs)) specs.push(await runSpec(path, config, model, dryRun));
+  let skipped = 0;
+  for (const path of collectSpecs(config.specs)) {
+    const report = await runSpec(path, config, model, dryRun, options.select);
+    if (report) specs.push(report);
+    else skipped++;
+  }
 
-  const summary = { tests: 0, passed: 0, usage: { input_tokens: 0, output_tokens: 0 } };
+  const summary = { tests: 0, passed: 0, borderline: 0, skipped, usage: { input_tokens: 0, output_tokens: 0 } };
   for (const s of specs) {
     summary.tests += s.verdicts.length;
     summary.passed += s.verdicts.filter((v) => v.pass).length;
+    summary.borderline += s.verdicts.filter((v) => v.borderline).length;
     summary.usage.input_tokens += s.usage.input_tokens;
     summary.usage.output_tokens += s.usage.output_tokens;
   }
   const ok = specs.every((s) => !s.error && s.verdicts.every((v) => v.pass));
-  return { schema: REPORT_SCHEMA, ok, skill: config.skill, dryRun, specs, summary };
+  return { ok, skill: config.skill, dryRun, thresholds: { ...config.thresholds }, specs, summary };
 }
 
 /** Expands folders into the `.yaml` / `.yml` files they contain, sorted by name. */
@@ -77,7 +96,13 @@ export function collectSpecs(paths: string[]): string[] {
   return out;
 }
 
-async function runSpec(path: string, config: Config, model: DecisionModel, dryRun: boolean): Promise<SpecReport> {
+async function runSpec(
+  path: string,
+  config: Config,
+  model: DecisionModel,
+  dryRun: boolean,
+  select: Selection | undefined,
+): Promise<SpecReport | null> {
   const report: SpecReport = {
     spec: path,
     file: 'SKILL.md',
@@ -90,6 +115,12 @@ async function runSpec(path: string, config: Config, model: DecisionModel, dryRu
   };
   try {
     const spec = loadSpec(path);
+    const chosen = select ? select(spec) : 'all';
+    if (chosen === null) return null;
+    if (chosen !== 'all') {
+      spec.tests = spec.tests.filter((t) => chosen.has(t.id));
+      if (spec.tests.length === 0) return null;
+    }
     report.file = spec.file;
     report.sections = spec.sections;
 
@@ -112,6 +143,11 @@ async function runSpec(path: string, config: Config, model: DecisionModel, dryRu
         expectedProb: 0,
         pass: true,
         weak: false,
+        borderline: false,
+        scenario: t.scenarios[0]!,
+        question: t.question,
+        ...(t.unit ? { unit: t.unit } : {}),
+        ...(t.line ? { line: t.line } : {}),
       }));
       return report;
     }

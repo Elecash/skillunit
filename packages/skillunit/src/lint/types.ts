@@ -42,6 +42,8 @@ export interface LintSummary {
 export interface LintResult {
   /** Absolute path of the skill folder. */
   skill: string;
+  /** Every Markdown file of the skill, from the skill folder, clean ones included. */
+  files: string[];
   ok: boolean;
   problems: Problem[];
   summary: LintSummary;

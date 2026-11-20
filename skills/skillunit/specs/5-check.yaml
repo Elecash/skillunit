@@ -5,8 +5,8 @@ tests:
     scenario: The agent has just written three specs.
     question: What should it run first?
     options:
-      dry: "`npx skillunit run --dry-run`"
-      run: "`npx skillunit run`"
+      dry: "`npx skillunit test --dry-run`"
+      run: "`npx skillunit test`"
       prove: The check that deletes each rule's sentence
     expect: dry
 

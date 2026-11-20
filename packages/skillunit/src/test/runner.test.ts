@@ -5,7 +5,9 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
 import { loadModel, ModelError, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
 import { buildRequest, judge, NONE_DESCRIPTION } from './reader.js';
+import { changedSelection } from './changed.js';
 import { runAll } from './runner.js';
+import { loadSpec } from './spec.js';
 import type { TestCase } from './spec.js';
 
 /**
@@ -143,7 +145,7 @@ describe('runAll', () => {
     expect(report.ok).toBe(true);
     expect(report.specs[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8] });
     expect(report.specs[0]!.model).toBe('stub-1');
-    expect(report.summary).toEqual({ tests: 2, passed: 2, usage: { input_tokens: 100, output_tokens: 10 } });
+    expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 
   it('reports a failed request as a spec that could not run, and runs the other specs', async () => {
@@ -235,5 +237,72 @@ describe('loadModel', () => {
   it('says what a module must export, and when it cannot be loaded', async () => {
     await expect(loadModel({ provider: 'module', module: write('d.mjs', 'export default { id: 1 };') })).rejects.toThrow(ModelError);
     await expect(loadModel({ provider: 'module', module: join(dir, 'missing.mjs') })).rejects.toThrow(/could not load the model module/);
+  });
+});
+
+describe('borderline', () => {
+  const m = th.margin;
+  it('marks a verdict whose deciding number is within the margin of its threshold, pass or fail', () => {
+    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m - 0.01 }, th)).toMatchObject({ pass: true, borderline: true });
+    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m + 0.01 }, th)).toMatchObject({ pass: true, borderline: false });
+    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: th.choice - 0.05 }, th)).toMatchObject({ pass: false, weak: true, borderline: true });
+    expect(judge(yes, { probabilities: { yes: th.yes + 0.1, no: 0.2 } }, th)).toMatchObject({ pass: true, borderline: true });
+    expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, th)).toMatchObject({ pass: true, borderline: false });
+    expect(judge(no, { probabilities: { yes: th.no - 0.1, no: 0.8 } }, th)).toMatchObject({ pass: true, borderline: true });
+  });
+
+  it('marks a wrong choice borderline when the expected option is close behind the top one', () => {
+    expect(judge(choice, { probabilities: { none: 0.55, a: 0.45 }, confidence: 0.45 }, th)).toMatchObject({ pass: false, borderline: true });
+    expect(judge(choice, { probabilities: { none: 0.8, a: 0.2 }, confidence: 0.8 }, th)).toMatchObject({ pass: false, borderline: false });
+  });
+
+  it('honours thresholds.margin, and counts borderline verdicts in the summary', async () => {
+    expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, { ...th, margin: 0.3 })).toMatchObject({ borderline: true });
+    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+    const { model } = stub(() => ({
+      'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
+      'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
+      'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
+      'get-ok': { probabilities: { yes: 0.75, no: 0.25 } },
+    }));
+    const report = await runAll(config, model);
+    expect(report.summary).toMatchObject({ passed: 2, borderline: 1 });
+    expect(report.thresholds).toEqual(th);
+  });
+});
+
+describe('specs: unit and line', () => {
+  it('reads an optional unit per test and the line of each test', () => {
+    const path = join(dir, 'unit.yaml');
+    writeFileSync(path, `${SPEC}    expect: yes\n    unit: retry-idempotent-only\n`);
+    const spec = loadSpec(path);
+    expect(spec.tests.map((t) => [t.id, t.line, t.unit])).toEqual([
+      ['post-retry', 3, undefined],
+      ['get-ok', 13, 'retry-idempotent-only'],
+    ]);
+    writeFileSync(path, 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n    unit: Not_Kebab\n');
+    expect(() => loadSpec(path)).toThrow(/`unit` must be the id of a unit, in kebab-case/);
+  });
+});
+
+describe('test --changed', () => {
+  const syncResult = (skillFiles: string[], units: { id: string; status: 'edited' | 'marked' | 'to-review' }[]) =>
+    ({ skillFiles, units: units.map((u) => ({ ...u, file: 'SKILL.md', line: 1, sources: ['src/a.ts'] })) }) as unknown as Parameters<typeof changedSelection>[0];
+  const spec = (file: string, withFiles: string[] | 'all', units: (string | undefined)[]) => ({
+    path: 'x.yaml',
+    file,
+    sections: [],
+    withFiles,
+    tests: units.map((unit, i) => ({ id: `t${i}`, scenarios: ['s'], question: 'q', expect: 'yes', ...(unit ? { unit } : {}) })),
+  });
+
+  it('runs whole specs of changed skill files, and the tests of units sync reports', () => {
+    const select = changedSelection(syncResult(['features/retries.md'], [{ id: 'a', status: 'to-review' }, { id: 'b', status: 'marked' }]));
+    expect(select(spec('features/retries.md', [], [undefined]))).toBe('all');
+    expect(select(spec('./features/../features/retries.md', [], []))).toBe('all');
+    expect(select(spec('SKILL.md', ['features/retries.md'], []))).toBe('all');
+    expect(select(spec('SKILL.md', 'all', []))).toBe('all');
+    expect(select(spec('SKILL.md', [], ['a', 'b', undefined]))).toEqual(new Set(['t0']));
+    expect(select(spec('SKILL.md', [], ['b']))).toBeNull();
   });
 });

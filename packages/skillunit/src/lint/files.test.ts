@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { parseSkill } from '../units/index.js';
 import { runCommands } from './commands.js';
-import { formatLint, formatProblem } from './format.js';
+import { buildReport, render } from '../report/index.js';
 import { index } from './links.js';
 import { lint } from './lint.js';
 import { F } from './testing.js';
@@ -109,27 +109,17 @@ ${F}
 });
 
 describe('output', () => {
-  it('prints `file:line  unit-id  what is wrong`, with - when there is no unit', () => {
-    expect(formatProblem({ file: 'a.md', line: 3, unit: 'r', severity: 'error', rule: 'structure', message: 'a rule needs `Do`' })).toBe(
-      'a.md:3  r  a rule needs `Do`',
-    );
-    expect(formatProblem({ file: 'a.md', line: 1, severity: 'warning', rule: 'index', message: 'long' })).toBe('a.md:1  -  warning: long');
-  });
+  const table = (result: ReturnType<typeof lint>, cwd: string) => render(buildReport('lint', { lint: result }), 'table', { cwd, color: false });
 
-  it('ends with a summary', () => {
+  it('prints each finding as `file:line  unit-id  what is wrong`, with - when there is no unit', () => {
     const root = skillDir({ 'SKILL.md': `# T\n\n${F}ts\nconst a = 1;\n${F}\n\n[x](missing.md)\n` });
     const result = lint(root);
     expect(result.ok).toBe(false);
-    expect(formatLint(result)).toBe(
-      [
-        'SKILL.md:7  -  the link to `missing.md` does not resolve',
-        '',
-        '1 file, 0 units · 1 ts/js not type-checked: set `examples.ts` in skillunit.yaml',
-        '1 error, 0 warnings',
-        '',
-      ].join('\n'),
-    );
-    expect(formatLint(lint(skillDir({ 'SKILL.md': '# T\n' })))).toBe('1 file, 0 units\nlint ok\n');
+    const text = table(result, root);
+    expect(text).toContain('\n  1) SKILL.md:7  -  the link to `missing.md` does not resolve\n');
+    expect(text).toContain('1 ts/js not type-checked: set `examples.ts` in skillunit.yaml');
+    expect(text.trimEnd().split('\n').at(-1)).toBe('FAILED  lint 1 error, 0 warnings');
+    expect(table(lint(skillDir({ 'SKILL.md': '# T\n' })), root).trimEnd().split('\n').at(-1)).toBe('OK  lint ok');
   });
 });
 
@@ -138,8 +128,8 @@ describe('lint as a whole', () => {
     const root = skillDir({ 'SKILL.md': '# T\n\n## Rules\n\n### rule: r\n\nWhen: x\n\nDo: y\n\nApplies: a\n\nnot a label\n' });
     const result = lint(root);
     expect(result.ok).toBe(false);
-    expect(formatLint(result).split('\n')[0]).toBe(
-      'SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source)',
+    expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain(
+      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source)',
     );
   });
 
@@ -149,7 +139,7 @@ describe('lint as a whole', () => {
     });
     const result = lint(root);
     expect(result.summary.unchecked).toEqual({ py: 2, sh: 1 });
-    expect(formatLint(result)).toContain('not checked, no command set: 2 py, 1 sh');
+    expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain('not checked, no command set: 2 py, 1 sh');
     const withSh = lint(root, { examples: { commands: { sh: 'sh -n {file}' }, cwd: root } });
     expect(withSh.summary.unchecked).toEqual({ py: 2 });
     expect(withSh.summary).toMatchObject({ commandChecked: 1, noCheck: 1 });

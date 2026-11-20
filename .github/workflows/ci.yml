@@ -9,17 +9,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # sync compares HEAD with its merge base with the target branch: it needs the history.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npx nx run-many -t typecheck build test
-      # Needs no API key: checks that the skill's specs load and their headings exist.
-      - run: node packages/skillunit/dist/cli.js run --config skills/skillunit/skillunit.yaml --dry-run
+      # Needs no API key: lint, sync, and the specs load, their headings exist and requests fit.
+      - run: node packages/skillunit/dist/cli.js check --dry-run --config skills/skillunit/skillunit.yaml --reporter github
 
   skill:
-    # skillunit tests its own skill against TypeSafe. Skipped on forks, which do not get the secret.
+    # skillunit checks its own skill against TypeSafe. Skipped on forks, which get no secrets.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build
     runs-on: ubuntu-latest
@@ -27,6 +30,8 @@ jobs:
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -34,4 +39,4 @@ jobs:
       - run: npm ci
       - run: npx nx build skillunit
       - if: env.TYPESAFE_API_KEY != ''
-        run: node packages/skillunit/dist/cli.js run --config skills/skillunit/skillunit.yaml
+        run: node packages/skillunit/dist/cli.js check --config skills/skillunit/skillunit.yaml --reporter github

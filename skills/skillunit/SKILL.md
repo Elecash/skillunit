@@ -97,11 +97,11 @@ accepts a renamed command.
 
 ## Check the tests
 
-1. Run `npx skillunit run --dry-run`. It sends nothing and fails when a spec is invalid, a
+1. Run `npx skillunit test --dry-run`. It sends nothing and fails when a spec is invalid, a
    heading does not exist, or a spec is too large to send. Fix and repeat until it passes.
-2. Run `npx skillunit run`.
+2. Run `npx skillunit test`.
 3. Prove that each test depends on its rule. Copy the skill folder to a temporary location,
-   delete the rule's sentence in the copy, and run `npx skillunit run <spec> --skill <copy>`.
+   delete the rule's sentence in the copy, and run `npx skillunit test <spec> --skill <copy>`.
    The test must fail. Never edit the real SKILL.md for this check.
 4. If a test still passes without its sentence, find out why, in this order: an option gives
    the answer away, the scenario contains the answer, the skill states the same rule somewhere

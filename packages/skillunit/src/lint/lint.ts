@@ -53,7 +53,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
   countUnchecked(skill, options.examples, summary);
 
   problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  return { skill: skill.root, ok: !problems.some((p) => p.severity === 'error'), problems, summary };
+  return { skill: skill.root, files: skill.files.map((f) => f.file), ok: !problems.some((p) => p.severity === 'error'), problems, summary };
 }
 
 type Job =

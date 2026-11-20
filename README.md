@@ -61,8 +61,8 @@ Add your TypeSafe API key to `.env` as `TYPESAFE_API_KEY=…` (keys are issued a
 [typesafe.ai](https://typesafe.ai)), write your tests in `specs/`, then:
 
 ```sh
-npx skillunit run --dry-run    # checks the specs; sends nothing and needs no key
-npx skillunit run              # asks TypeSafe
+npx skillunit check --dry-run  # lint, sync, and the specs load and fit; needs no key
+npx skillunit check            # the same, and the tests asked to TypeSafe
 ```
 
 To see a complete set of specs first, run the ones skillunit uses for its own skill:
@@ -321,68 +321,45 @@ the config.
 ## Command line
 
 ```
-skillunit run [specs...] [options]   run the specs (the default command)
-skillunit init [dir]                 create skillunit.yaml and a first spec
+skillunit check [options]           lint, sync and test: what CI runs
+skillunit lint [skill] [options]    the skill's format, examples, Check rules, links and Source paths
+skillunit sync [skill] [options]    units whose Source changed while the unit did not
+skillunit test [specs...] [options] ask a decision model the spec tests about the skill
+skillunit init [dir]                create skillunit.yaml and a first spec
 
 --config <file>     settings file (default: ./skillunit.yaml, if it exists)
 --skill <dir>       folder with SKILL.md, instead of the one in the settings
---dry-run           check that specs load, headings exist and requests fit; send nothing
---json              print the report as JSON
+--reporter <name>   table (default), json, junit or github
+--json              the same as --reporter json
+--base <ref>        sync, test and check: compare HEAD with its merge base with this ref
+--dry-run           test and check: check that specs load and requests fit; send nothing
+--changed           test and check: test only what changed since --base
 --model <name>      TypeSafe model
---choice / --yes / --no <0-1>    pass thresholds, as in the config
+--choice / --yes / --no / --margin <0-1>    thresholds, as in the config
 ```
 
-Exit codes: `0` when every test passed, `1` when a test failed or a spec could not run, `2`
-when the command itself was wrong (unknown option, missing file, no API key).
+Exit codes: `0` when every check passed, `1` when one failed, `2` when the command itself was
+wrong (unknown option, missing file, no API key, bad settings). Lint warnings and borderline
+verdicts do not fail a run.
 
-Run `--dry-run` in every CI job. It needs no key, and it fails when a spec refers to a heading
-that someone renamed or deleted from the skill.
+Run `check --dry-run` in every CI job. It needs no key, and it fails when a spec refers to a
+heading that someone renamed or deleted from the skill.
 
-## JSON report
+`test --changed` runs the specs of the skill files that changed since `--base`, and the tests
+whose `unit:` names a unit that `sync` reports.
 
-`skillunit run --json` prints one object. `schema` changes only when a field changes meaning or
-disappears.
+A verdict is borderline when the number that decided it is within `thresholds.margin` (default
+0.13) of its threshold. Model answers move a little between runs, and a borderline test is the
+one most likely to change verdict next time. Strengthen the skill's text, or add phrasings to
+the test. A borderline pass still passes.
 
-```jsonc
-{
-  "schema": 1,
-  "ok": false,
-  "skill": "/path/to/skill",
-  "dryRun": false,
-  "summary": { "tests": 5, "passed": 4, "usage": { "input_tokens": 2212, "output_tokens": 278 } },
-  "specs": [
-    {
-      "spec": "/path/to/specs/5-check.yaml",
-      "file": "SKILL.md",
-      "sections": ["Check the tests"],
-      "with": [],
-      "chars": 844,
-      "estimatedTokens": 770,
-      "model": "jev-1.13.0",
-      "usage": { "input_tokens": 2212, "output_tokens": 278 },
-      "verdicts": [
-        { "id": "dry-run-first", "expect": "dry", "answer": "dry",
-          "confidence": 1, "expectedProb": 1, "pass": true, "weak": false,
-          "probabilities": { "none": 0, "run": 0, "prove": 0, "dry": 1 } },
-        { "id": "user-asks-for-mutations", "expect": "explain", "answer": "none",
-          "confidence": 0.53, "expectedProb": 0.34, "pass": false, "weak": false,
-          "probabilities": { "explain": 0.34, "none": 0.66, "tool": 0, "block": 0 },
-          "variants": [0.34, 0.66] }
-        // …one entry per test
-      ]
-      // "error": "…" appears, and "verdicts" is empty, when the spec could not run
-    }
-  ]
-}
-```
+## Reports
 
-`with` lists the other files the reader got. `chars` counts the tested text and those files
-together, and `estimatedTokens` is skillunit's estimate of the state plus the longest question,
-the figure TypeSafe limits to 32,000.
-
-`confidence` is TypeSafe's confidence for a choice test and P(yes) for a yes/no test.
-`expectedProb` is the probability the reader gave to the expected answer. `variants` lists
-`expectedProb` for each phrasing of a test that has several.
+`--reporter table` is for people: one row per file or spec, then each failure, the borderline
+verdicts and the warnings. `json` prints the whole report as one object; its `schema` field
+changes only when a field changes meaning or disappears. `junit` writes JUnit XML for CI systems
+that read it. `github` writes GitHub Actions annotations, so each finding shows on its line in
+the pull request.
 
 ## In CI
 
@@ -397,11 +374,14 @@ jobs:
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }   # sync needs the history back to the base branch
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
-      - run: npx --yes skillunit run --dry-run
-      - run: npx --yes skillunit run
+      - run: npx --yes skillunit check --dry-run --reporter github
+      - run: npx --yes skillunit check --reporter github
 ```
+
+Pull requests from forks get no secrets. Run only the `--dry-run` step for them.
 
 Each spec file is one request to TypeSafe, whatever the number of tests in it. skillunit's own
 skill, with seven specs and 32 tests, uses about 13,600 input tokens per run.

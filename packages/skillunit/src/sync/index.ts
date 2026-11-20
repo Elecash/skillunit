@@ -1,2 +1,1 @@
-export { formatSync } from './format.js';
-export { defaultBase, normalize, sync, TRAILER, type SyncOptions, type SyncResult } from './sync.js';
+export { defaultBase, normalize, sync, TRAILER, type SyncOptions, type SyncResult, type SyncUnit } from './sync.js';

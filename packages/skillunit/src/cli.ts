@@ -5,69 +5,126 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
-import { ConfigError, formatLint, lint } from './lint/index.js';
-import { formatSync, sync } from './sync/index.js';
-import { loadModel, ModelError, type DecisionModel } from './models/index.js';
-import { printReport } from './report.js';
+import { ConfigError, lint } from './lint/index.js';
+import type { LintResult } from './lint/types.js';
+import { loadModel, ModelError } from './models/index.js';
+import { buildReport, colorByDefault, render, REPORTERS, type Command, type ReporterName } from './report/index.js';
+import { sync, type SyncResult } from './sync/index.js';
+import { changedSelection } from './test/changed.js';
 import { runAll, type Report } from './test/runner.js';
 
-const HELP = `skillunit: unit tests for agent skills
+const HELP = `skillunit: keeps an agent skill in sync with the code it describes
 
 Usage
-  skillunit run [specs...] [options]   run the specs (the default command)
-  skillunit lint [skill] [options]     check the skill's format, examples, Check rules and links
-  skillunit sync [skill] [options]     list units whose Source changed while the unit did not
-  skillunit init [dir]                 create skillunit.yaml and a first spec
+  skillunit check [options]           lint, sync and test: what CI runs
+  skillunit lint [skill] [options]    the skill's format, examples, Check rules, links and Source paths
+  skillunit sync [skill] [options]    units whose Source changed while the unit did not
+  skillunit test [specs...] [options] ask a decision model the spec tests about the skill
+  skillunit init [dir]                create skillunit.yaml and a first spec
 
-Options for lint and sync
-  --config <file>     settings file (default: ./skillunit.yaml, if it exists)
-  --json              print the result as JSON
-  --base <ref>        sync only: compare HEAD with its merge base with this ref
-                      (default: the pull request's target branch, else the default branch)
-
-Options for run
+Options
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
   --skill <dir>       folder with SKILL.md, instead of the one in the settings
+  --reporter <name>   table (default), json, junit or github
+  --json              the same as --reporter json
+
+Options for sync, test and check
+  --base <ref>        compare HEAD with its merge base with this ref (default: the pull
+                      request's target branch, else the default branch)
+
+Options for test and check
   --dry-run           check that specs load, headings exist and requests fit; send nothing
-  --json              print the report as JSON
+  --changed           test only the specs of skill files that changed since --base, and the
+                      tests whose \`unit\` sync reports
   --model <name>      TypeSafe model (default: jev-latest)
   --choice <0-1>      lowest confidence that passes a choice test (default 0.5)
   --yes <0-1>         lowest P(yes) that passes an expected "yes" (default 0.7)
   --no <0-1>          highest P(yes) that passes an expected "no" (default 0.3)
+  --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)
 
 Exit codes
-  0  every test passed; for lint, no errors (warnings allowed)
-  1  a test failed, or a spec could not run; for lint, an error was found
-  2  the command itself was wrong (unknown option, missing file, no API key, bad settings)
+  0  every check passed (lint warnings and borderline verdicts allowed)
+  1  a check failed
+  2  the command itself was wrong: unknown option, missing file, no API key, bad settings
 
 Environment
-  TYPESAFE_API_KEY    needed for everything except --dry-run; also read from ./.env
+  TYPESAFE_API_KEY    needed by test and check, except with --dry-run; also read from ./.env
 `;
 
-interface RunArgs {
+interface Args {
   config?: string;
   skill?: string;
   specs: string[];
+  base?: string;
   dryRun: boolean;
-  json: boolean;
+  changed: boolean;
+  reporter: ReporterName;
   model?: string;
   thresholds: Partial<Thresholds>;
 }
 
+/** Options each command takes, besides --config, --skill, --reporter and --json. */
+const OPTIONS: Record<Command, string[]> = {
+  lint: [],
+  sync: ['--base'],
+  test: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
+  check: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
+};
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--version') || argv.includes('-v')) return print(`${version()}\n`);
-
-  const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'run';
+  const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'help';
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
   if (command === 'init') return init(argv[0] ?? '.');
-  if (command === 'lint') return lintCommand(argv);
-  if (command === 'sync') return syncCommand(argv);
-  if (command !== 'run') usage(`unknown command "${command}". Run \`skillunit --help\`.`);
+  if (!(command in OPTIONS)) usage(`unknown command "${command}". Run \`skillunit --help\`.`);
+  await runCommand(command as Command, parseArgs(command as Command, argv));
+}
 
-  const args = parseRunArgs(argv);
+function parseArgs(command: Command, argv: string[]): Args {
+  const args: Args = { specs: [], dryRun: false, changed: false, reporter: 'table', thresholds: {} };
+  const positional: string[] = [];
+  for (let i = 0; i < argv.length; i++) {
+    const flag = argv[i]!;
+    const value = () => {
+      const v = argv[++i];
+      if (v === undefined) usage(`${flag} needs a value`);
+      return v;
+    };
+    const fraction = () => {
+      const v = Number(value());
+      if (!(v >= 0 && v <= 1)) usage(`${flag} must be a number from 0 to 1`);
+      return v;
+    };
+    if (flag.startsWith('-') && !['--config', '--skill', '--reporter', '--json', ...OPTIONS[command]].includes(flag)) {
+      usage(`${command} does not take ${flag}. Run \`skillunit --help\`.`);
+    }
+    if (flag === '--config') args.config = value();
+    else if (flag === '--skill') args.skill = value();
+    else if (flag === '--json') args.reporter = 'json';
+    else if (flag === '--reporter') {
+      const name = value();
+      if (!(REPORTERS as readonly string[]).includes(name)) usage(`--reporter takes ${REPORTERS.join(', ')}`);
+      args.reporter = name as ReporterName;
+    } else if (flag === '--base') args.base = value();
+    else if (flag === '--dry-run') args.dryRun = true;
+    else if (flag === '--changed') args.changed = true;
+    else if (flag === '--model') args.model = value();
+    else if (flag === '--choice') args.thresholds.choice = fraction();
+    else if (flag === '--yes') args.thresholds.yes = fraction();
+    else if (flag === '--no') args.thresholds.no = fraction();
+    else if (flag === '--margin') args.thresholds.margin = fraction();
+    else positional.push(flag);
+  }
+  if (command === 'test') args.specs = positional;
+  else if (command === 'check' && positional.length) usage('check takes no paths; use --skill and the settings');
+  else if (positional.length > 1) usage(`${command} takes one skill folder`);
+  else if (positional[0]) args.skill = positional[0];
+  return args;
+}
+
+async function runCommand(command: Command, args: Args) {
   loadDotEnv(resolve('.env'));
-
   let config: Config;
   try {
     config = loadConfig(args.config);
@@ -81,132 +138,42 @@ async function main() {
     config.model = { provider: 'typesafe', name: args.model };
   }
   Object.assign(config.thresholds, args.thresholds);
+  if (!existsSync(config.skill)) usage(`no skill folder at ${config.skill}`);
 
-  if (!existsSync(join(config.skill, 'SKILL.md'))) {
+  const testing = command === 'test' || command === 'check';
+  if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
-  if (!args.dryRun && config.model.provider === 'typesafe' && !process.env.TYPESAFE_API_KEY) {
+  if (testing && !args.dryRun && config.model.provider === 'typesafe' && !process.env.TYPESAFE_API_KEY) {
     usage('TYPESAFE_API_KEY is not set. Add it to ./.env or the environment, or use --dry-run.');
   }
 
-  let model: DecisionModel;
   try {
-    model = await loadModel(config.model);
+    let lintResult: LintResult | undefined;
+    let syncResult: SyncResult | undefined;
+    let testResult: Report | undefined;
+    if (command === 'lint' || command === 'check') {
+      lintResult = lint(config.skill, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}) });
+    }
+    if (command === 'sync' || command === 'check' || (command === 'test' && args.changed)) {
+      syncResult = sync({ skill: config.skill, sourceRoot: config.sourceRoot, ...(args.base ? { base: args.base } : {}) });
+    }
+    if (testing) {
+      const model = await loadModel(config.model);
+      const select = args.changed ? changedSelection(syncResult!) : undefined;
+      testResult = await runAll(config, model, { dryRun: args.dryRun, ...(select ? { select } : {}) });
+    }
+    // `test --changed` runs sync to choose the tests; its findings belong to `sync` and `check`.
+    const report = buildReport(command, {
+      ...(lintResult ? { lint: lintResult } : {}),
+      ...(syncResult && command !== 'test' ? { sync: syncResult } : {}),
+      ...(testResult ? { test: testResult } : {}),
+    });
+    print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault() }));
+    process.exit(report.ok ? 0 : 1);
   } catch (e) {
-    if (e instanceof ModelError) usage(e.message);
-    throw e;
-  }
-  let report: Report;
-  try {
-    report = await runAll(config, model, { dryRun: args.dryRun });
-  } catch (e) {
-    usage((e as Error).message);
-  }
-  print(args.json ? `${JSON.stringify(report, null, 2)}\n` : printReport(report));
-  process.exit(report.ok ? 0 : 1);
-}
-
-function parseRunArgs(argv: string[]): RunArgs {
-  const args: RunArgs = { specs: [], dryRun: false, json: false, thresholds: {} };
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    const value = () => {
-      const v = argv[++i];
-      if (v === undefined) usage(`${flag} needs a value`);
-      return v;
-    };
-    const fraction = () => {
-      const v = Number(value());
-      if (!(v >= 0 && v <= 1)) usage(`${flag} must be a number from 0 to 1`);
-      return v;
-    };
-    if (flag === '--config') args.config = value();
-    else if (flag === '--skill') args.skill = value();
-    else if (flag === '--dry-run') args.dryRun = true;
-    else if (flag === '--json') args.json = true;
-    else if (flag === '--model') args.model = value();
-    else if (flag === '--choice') args.thresholds.choice = fraction();
-    else if (flag === '--yes') args.thresholds.yes = fraction();
-    else if (flag === '--no') args.thresholds.no = fraction();
-    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
-    else args.specs.push(flag);
-  }
-  return args;
-}
-
-// ---------------------------------------------------------------- lint
-
-function lintCommand(argv: string[]) {
-  let configPath: string | undefined;
-  let skill: string | undefined;
-  let json = false;
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    if (flag === '--config') {
-      configPath = argv[++i];
-      if (configPath === undefined) usage('--config needs a value');
-    } else if (flag === '--json') json = true;
-    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
-    else if (skill === undefined) skill = flag;
-    else usage('lint takes one skill folder');
-  }
-
-  let config: Config;
-  try {
-    config = loadConfig(configPath);
-  } catch (e) {
-    usage((e as Error).message);
-  }
-  const dir = skill ? resolve(skill) : config.skill;
-  if (!existsSync(dir)) usage(`no skill folder at ${dir}`);
-
-  try {
-    const result = lint(dir, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}) });
-    print(json ? `${JSON.stringify(result, null, 2)}\n` : formatLint(result));
-    process.exit(result.ok ? 0 : 1);
-  } catch (e) {
-    if (e instanceof ConfigError) usage(e.message);
-    throw e;
-  }
-}
-
-// ---------------------------------------------------------------- sync
-
-function syncCommand(argv: string[]) {
-  let configPath: string | undefined;
-  let skill: string | undefined;
-  let base: string | undefined;
-  let json = false;
-  for (let i = 0; i < argv.length; i++) {
-    const flag = argv[i]!;
-    const value = () => {
-      const v = argv[++i];
-      if (v === undefined) usage(`${flag} needs a value`);
-      return v;
-    };
-    if (flag === '--config') configPath = value();
-    else if (flag === '--base') base = value();
-    else if (flag === '--json') json = true;
-    else if (flag.startsWith('-')) usage(`unknown option ${flag}. Run \`skillunit --help\`.`);
-    else if (skill === undefined) skill = flag;
-    else usage('sync takes one skill folder');
-  }
-
-  let config: Config;
-  try {
-    config = loadConfig(configPath);
-  } catch (e) {
-    usage((e as Error).message);
-  }
-  const dir = skill ? resolve(skill) : config.skill;
-  if (!existsSync(dir)) usage(`no skill folder at ${dir}`);
-
-  try {
-    const result = sync({ skill: dir, sourceRoot: config.sourceRoot, ...(base ? { base } : {}) });
-    print(json ? `${JSON.stringify(result, null, 2)}\n` : formatSync(result));
-    process.exit(result.ok ? 0 : 1);
-  } catch (e) {
-    if (e instanceof ConfigError) usage(e.message);
+    if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
+    if (e instanceof Error && /^(spec path not found|no \.yaml spec files)/.test(e.message)) usage(e.message);
     throw e;
   }
 }
@@ -226,6 +193,7 @@ file: SKILL.md
 
 tests:
   - id: example-choice
+    # unit: some-unit-id    # the unit this test is about; \`test --changed\` uses it
     scenario: Describe the situation the agent is in.
     question: What should the agent do?
     options:
@@ -255,7 +223,7 @@ function init(dir: string) {
   if (!existsSync(join(root, 'SKILL.md'))) {
     print(`there is no SKILL.md here: set \`skill\` in ${CONFIG_FILE} to the folder that has it\n`);
   }
-  print('next: write your tests, add TYPESAFE_API_KEY to .env, then run `skillunit run`\n');
+  print('next: write your tests, add TYPESAFE_API_KEY to .env, then run `skillunit check`\n');
 }
 
 // ---------------------------------------------------------------- helpers
@@ -284,6 +252,7 @@ function print(text: string) {
   process.stdout.write(text);
 }
 
+/** A usage or configuration error: a diagnostic on stderr, and exit 2. */
 function usage(message: string): never {
   process.stderr.write(`skillunit: ${message}\n`);
   process.exit(2);

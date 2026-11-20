@@ -10,6 +10,7 @@
  *     choice: 0.5                # lowest confidence that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
+ *     margin: 0.13               # a verdict this close to its threshold is marked borderline
  *   sourceRoot: ../..            # where `Source:` paths start (default: this file's folder)
  *   examples:                    # how lint checks the code examples of the skill
  *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
@@ -21,6 +22,12 @@ import { parse } from 'yaml';
 
 export interface Thresholds {
   choice: number;
+  /**
+   * A verdict whose deciding number is closer than this to its threshold is borderline: the
+   * next run may decide it the other way. Measured: across six runs of the dogfood specs with
+   * no change, the largest move of a test whose answer stayed the same was 0.13.
+   */
+  margin: number;
   yes: number;
   no: number;
 }
@@ -57,7 +64,7 @@ export interface ExamplesConfig {
   cwd: string;
 }
 
-export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3 };
+export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, margin: 0.13 };
 /** Folder with the spec files when the settings do not say. */
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
@@ -107,7 +114,7 @@ export function loadConfig(path?: string): Config {
   if (raw.thresholds !== undefined) {
     if (!raw.thresholds || typeof raw.thresholds !== 'object') throw fail('`thresholds` must be a mapping');
     for (const [key, value] of Object.entries(raw.thresholds as Record<string, unknown>)) {
-      if (!(key in DEFAULT_THRESHOLDS)) throw fail(`unknown threshold \`${key}\` (allowed: choice, yes, no)`);
+      if (!(key in DEFAULT_THRESHOLDS)) throw fail(`unknown threshold \`${key}\` (allowed: choice, yes, no, margin)`);
       if (typeof value !== 'number' || value < 0 || value > 1) throw fail(`thresholds.${key} must be a number from 0 to 1`);
       config.thresholds[key as keyof Thresholds] = value;
     }

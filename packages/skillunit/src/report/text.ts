@@ -1,0 +1,78 @@
+/** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
+import { join, relative } from 'node:path';
+import type { Problem } from '../lint/types.js';
+import type { Verdict } from '../test/reader.js';
+import type { CheckReport, ReportOptions } from './types.js';
+
+/**
+ * Colour is on when stdout is a terminal, off with NO_COLOR or TERM=dumb, and forced on with
+ * FORCE_COLOR. Plain ANSI codes, no dependency.
+ */
+export function colorByDefault(): boolean {
+  if (process.env.FORCE_COLOR !== undefined) return process.env.FORCE_COLOR !== '0';
+  return Boolean(process.stdout.isTTY) && process.env.NO_COLOR === undefined && process.env.TERM !== 'dumb';
+}
+
+export function painter(color: boolean) {
+  const paint = (code: string) => (s: string) => (color ? `\x1b[${code}m${s}\x1b[0m` : s);
+  return { bold: paint('1'), dim: paint('2'), red: paint('31'), green: paint('32'), yellow: paint('33') };
+}
+
+/** Length as shown on screen, without the ANSI codes. */
+export const width = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, '').length;
+export const pad = (s: string, n: number) => s + ' '.repeat(Math.max(0, n - width(s)));
+export const padStart = (s: string, n: number) => ' '.repeat(Math.max(0, n - width(s))) + s;
+export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+export const pct = (p: number) => `${Math.round(p * 100)}%`;
+
+/** A path for people: relative to the folder the command ran in, with `/`. */
+export function shown(path: string, options: ReportOptions): string {
+  return relative(options.cwd, path).split('\\').join('/') || '.';
+}
+
+/** Where a lint or sync problem is, for people: `skills/x/SKILL.md:12`. */
+export function where(skill: string, p: Problem, options: ReportOptions): string {
+  return `${shown(join(skill, p.file), options)}:${p.line}`;
+}
+
+/** Options from most to least likely, e.g. "stop 96% · none 3% · local 1%". */
+export function distribution(v: Verdict, sep = ' · '): string {
+  const entries = v.probabilities ? Object.entries(v.probabilities) : [['yes', v.confidence] as const, ['no', 1 - v.confidence] as const];
+  return [...entries]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, p]) => `${label} ${pct(p)}`)
+    .join(sep);
+}
+
+/** The number that decided the verdict, and what it was compared with. */
+export function decidingNumber(v: Verdict, report: CheckReport): string {
+  const th = report.test?.thresholds;
+  if (v.probabilities) {
+    return `confidence ${v.confidence.toFixed(2)}${th ? `, threshold ${th.choice.toFixed(2)}` : ''}`;
+  }
+  const threshold = th ? (v.expect === 'yes' ? `, needs ≥ ${th.yes.toFixed(2)}` : `, needs ≤ ${th.no.toFixed(2)}`) : '';
+  return `P(yes) ${v.confidence.toFixed(2)}${threshold}`;
+}
+
+/** One line on how each layer went, for the end of every text report. */
+export function statusLine(report: CheckReport): string {
+  const parts: string[] = [];
+  const { lint, sync, test } = report;
+  if (lint) {
+    const errors = lint.problems.filter((p) => p.severity === 'error').length;
+    const warnings = lint.problems.length - errors;
+    parts.push(`lint ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}`);
+  }
+  if (sync) parts.push(`sync ${sync.ok ? 'ok' : `${plural(sync.problems.length, 'unit')} to review`}`);
+  if (test) {
+    const s = test.summary;
+    const errors = test.specs.filter((x) => x.error).length;
+    if (test.dryRun) {
+      parts.push(`test dry run ${errors ? `${plural(errors, 'spec')} could not run` : `ok, ${plural(s.tests, 'test')} ready`}`);
+    } else {
+      const extra = [errors ? `${plural(errors, 'spec')} could not run` : '', s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
+      parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
+    }
+  }
+  return `${report.ok ? 'OK' : 'FAILED'}  ${parts.join(' · ')}`;
+}

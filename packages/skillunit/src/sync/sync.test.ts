@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ConfigError } from '../lint/types.js';
-import { formatSync } from './format.js';
+import { buildReport, render } from '../report/index.js';
 import { normalize, sync } from './sync.js';
 
 const roots: string[] = [];
@@ -147,7 +147,8 @@ describe('sync', () => {
     repo.commit('Docs');
     const result = repo.run();
     expect(result).toMatchObject({ ok: true, summary: { pointing: 0 } });
-    expect(formatSync(result)).toMatch(/^1 file changed since main \([0-9a-f]{7}\) · 3 units\nsync ok: no unit points at changed code\n$/);
+    const text = render(buildReport('sync', { sync: result }), 'table', { cwd: repo.root, color: false });
+    expect(text).toMatch(/Sync  since main \([0-9a-f]{7}\)\n  1 file changed · 3 units, 0 pointing at changed code\n\nOK  sync ok\n$/);
   });
 
   it('compares with the merge base, so commits on main after the branch point do not count', () => {

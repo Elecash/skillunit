@@ -25,6 +25,18 @@ export interface Verdict {
   pass: boolean;
   /** The reader picked the expected answer but without enough confidence. Counts as a fail. */
   weak: boolean;
+  /**
+   * The deciding number is within `thresholds.margin` of what would flip the verdict, so the next
+   * run may decide it the other way. A borderline pass still passes.
+   */
+  borderline: boolean;
+  /** The phrasing of the scenario this verdict comes from: the median one when there are several. */
+  scenario: string;
+  question: string;
+  /** The unit the test names, if any. */
+  unit?: string;
+  /** Line of the test in its spec file. */
+  line?: number;
   /** For a test with several phrasings: `expectedProb` of each, in the order of the spec. */
   variants?: number[];
 }
@@ -115,7 +127,7 @@ export function estimateTokens(request: DecisionRequest): TokenEstimate {
 export async function read(model: DecisionModel, request: DecisionRequest, tests: TestCase[], thresholds: Thresholds): Promise<ReaderResult> {
   const result = await model.decide(request);
   const verdicts = tests.map((test) => {
-    const perPhrasing = test.scenarios.map((_, i) => judge(test, result.answers[questionKey(test, i)], thresholds));
+    const perPhrasing = test.scenarios.map((_, i) => judge(test, result.answers[questionKey(test, i)], thresholds, i));
     if (perPhrasing.length === 1) return perPhrasing[0]!;
     // Rank the phrasings by how strongly the reader backed the expected answer and keep the
     // median one: a single odd phrasing cannot decide the test, half of them can.
@@ -130,9 +142,17 @@ export async function read(model: DecisionModel, request: DecisionRequest, tests
   };
 }
 
-export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Thresholds): Verdict {
-  const base = { id: test.id, expect: test.expect };
-  const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false });
+export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Thresholds, phrasing = 0): Verdict {
+  const base = {
+    id: test.id,
+    expect: test.expect,
+    scenario: test.scenarios[phrasing]!,
+    question: test.question,
+    ...(test.unit ? { unit: test.unit } : {}),
+    ...(test.line ? { line: test.line } : {}),
+  };
+  const near = (value: number, threshold: number) => Math.abs(value - threshold) < th.margin;
+  const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false, borderline: false });
   const probabilities = answer?.probabilities;
   if (!probabilities || Object.keys(probabilities).length === 0) return missing('(no answer)');
 
@@ -141,14 +161,17 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
     const confidence = answer.confidence ?? top;
     const right = choice === test.expect;
     const sure = confidence >= th.choice;
+    const expectedProb = probabilities[test.expect] ?? 0;
     return {
       ...base,
       answer: choice,
       confidence,
-      expectedProb: probabilities[test.expect] ?? 0,
+      expectedProb,
       probabilities: { ...probabilities },
       pass: right && sure,
       weak: right && !sure,
+      // Right: the confidence is near the threshold. Wrong: the expected option is close behind.
+      borderline: right ? near(confidence, th.choice) : near(expectedProb, top),
     };
   }
 
@@ -156,6 +179,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
   if (typeof pYes !== 'number') return missing('(no yes/no answer)');
   const leaning = pYes >= 0.5 ? 'yes' : 'no';
   const pass = test.expect === 'yes' ? pYes >= th.yes : pYes <= th.no;
+  const threshold = test.expect === 'yes' ? th.yes : th.no;
   return {
     ...base,
     answer: leaning,
@@ -163,5 +187,6 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
     expectedProb: test.expect === 'yes' ? pYes : 1 - pYes,
     pass,
     weak: !pass && leaning === test.expect,
+    borderline: near(pYes, threshold),
   };
 }

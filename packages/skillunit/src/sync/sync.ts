@@ -22,12 +22,28 @@ export interface SyncOptions {
   base?: string;
 }
 
+export interface SyncUnit {
+  id: string;
+  /** Skill file of the unit, from the skill folder. */
+  file: string;
+  line: number;
+  /** `Source` paths that changed, as the unit writes them. */
+  sources: string[];
+  status: 'edited' | 'marked' | 'to-review';
+}
+
 export interface SyncResult {
   ok: boolean;
+  /** Absolute path of the skill folder. */
+  skill: string;
   /** The ref given or found, and the merge-base commit the diff starts from. */
   base: { ref: string; commit: string };
   /** Files changed in the range, from the repository's top folder. */
   changed: string[];
+  /** Of those, the files inside the skill folder, from the skill folder. */
+  skillFiles: string[];
+  /** Every unit with a `Source` that changed, and what made it reviewed or not. */
+  units: SyncUnit[];
   problems: Problem[];
   summary: {
     units: number;
@@ -60,7 +76,10 @@ export function sync(options: SyncOptions): SyncResult {
   const sourceRoot = realOrResolved(options.sourceRoot);
 
   const problems: Problem[] = [];
+  const units: SyncUnit[] = [];
   const summary = { units: head.size, pointing: 0, edited: 0, marked: 0, toReview: 0 };
+  const prefix = skillPath ? `${skillPath}/` : '';
+  const skillFiles = changed.filter((c) => c.startsWith(prefix)).map((c) => c.slice(prefix.length));
   const short = base.slice(0, 7);
 
   for (const unit of head.values()) {
@@ -86,9 +105,11 @@ export function sync(options: SyncOptions): SyncResult {
 
     summary.pointing++;
     const old = before.get(unit.id);
-    if (!old || normalize(old.text) !== normalize(unit.text)) {
+    const status: SyncUnit['status'] = !old || normalize(old.text) !== normalize(unit.text) ? 'edited' : reviewed.has(unit.id) ? 'marked' : 'to-review';
+    units.push({ id: unit.id, file: unit.file, line: unit.line, sources: touched, status });
+    if (status === 'edited') {
       summary.edited++;
-    } else if (reviewed.has(unit.id)) {
+    } else if (status === 'marked') {
       summary.marked++;
     } else {
       summary.toReview++;
@@ -105,7 +126,7 @@ export function sync(options: SyncOptions): SyncResult {
   }
 
   problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  return { ok: problems.length === 0, base: { ref, commit: base }, changed, problems, summary };
+  return { ok: problems.length === 0, skill: skillDir, base: { ref, commit: base }, changed, skillFiles, units, problems, summary };
 }
 
 /**

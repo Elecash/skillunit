@@ -13,8 +13,8 @@
     "build": "nx run-many -t build",
     "typecheck": "nx run-many -t typecheck",
     "test": "nx run-many -t test",
-    "skill": "nx build skillunit && node packages/skillunit/dist/cli.js run --config skills/skillunit/skillunit.yaml",
-    "skill:dry": "nx build skillunit && node packages/skillunit/dist/cli.js run --config skills/skillunit/skillunit.yaml --dry-run"
+    "skill": "nx build skillunit && node packages/skillunit/dist/cli.js test --config skills/skillunit/skillunit.yaml",
+    "skill:dry": "nx build skillunit && node packages/skillunit/dist/cli.js test --config skills/skillunit/skillunit.yaml --dry-run"
   },
   "devDependencies": {
     "nx": "^24.0.6"

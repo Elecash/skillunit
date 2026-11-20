@@ -29,7 +29,7 @@ tests:
     options:
       init: "Run `npx skillunit init` on the skill folder"
       manual: Write `skillunit.yaml` from scratch by hand
-      run: "Run `npx skillunit run` to see what happens"
+      run: "Run `npx skillunit test` to see what happens"
     expect: init
 
   - id: which-model

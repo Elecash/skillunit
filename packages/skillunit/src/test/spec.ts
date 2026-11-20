@@ -7,7 +7,7 @@
  * to review in a diff and easy to generate.
  */
 import { readFileSync } from 'node:fs';
-import { parse } from 'yaml';
+import { isNode, isSeq, LineCounter, parseDocument } from 'yaml';
 
 /**
  * Label of the option the reader always gets on choice tests, added by skillunit.
@@ -28,6 +28,10 @@ export interface TestCase {
   options?: Record<string, string | null>;
   /** An option label, `none`, or `yes` / `no` for a yes/no test. */
   expect: string;
+  /** The unit the test is about. `test --changed` runs it when sync reports that unit. */
+  unit?: string;
+  /** Line of the test in the spec file, for reports. */
+  line?: number;
 }
 
 export interface SpecFile {
@@ -46,11 +50,14 @@ export interface SpecFile {
 }
 
 const SPEC_KEYS = new Set(['file', 'section', 'with', 'tests']);
-const TEST_KEYS = new Set(['id', 'scenario', 'question', 'options', 'expect']);
+const TEST_KEYS = new Set(['id', 'scenario', 'question', 'options', 'expect', 'unit']);
 
 export function loadSpec(path: string): SpecFile {
-  const raw = parse(readFileSync(path, 'utf8'));
+  const lines = new LineCounter();
+  const doc = parseDocument(readFileSync(path, 'utf8'), { lineCounter: lines });
   const fail = (msg: string) => new Error(`${path}: ${msg}`);
+  if (doc.errors.length) throw fail(doc.errors[0]!.message);
+  const raw = doc.toJS();
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw fail('expected a mapping at the top level');
 
   for (const key of Object.keys(raw)) {
@@ -70,7 +77,14 @@ export function loadSpec(path: string): SpecFile {
 
   if (!Array.isArray(raw.tests) || raw.tests.length === 0) throw fail('`tests` must be a non-empty list');
   const seen = new Set<string>();
-  const tests = raw.tests.map((t: unknown, i: number) => loadTest(t, (msg) => fail(`tests[${i}]: ${msg}`), seen));
+  const items = doc.get('tests', true);
+  const tests = raw.tests.map((t: unknown, i: number) => {
+    const test = loadTest(t, (msg) => fail(`tests[${i}]: ${msg}`), seen);
+    const node = isSeq(items) ? items.items[i] : undefined;
+    const offset = isNode(node) ? node.range?.[0] : undefined;
+    if (offset !== undefined) test.line = lines.linePos(offset).line;
+    return test;
+  });
 
   return { path, file, sections, withFiles, tests };
 }
@@ -103,6 +117,10 @@ function loadTest(value: unknown, fail: (msg: string) => Error, seen: Set<string
   const id = test.id as string;
   if (seen.has(id)) throw fail(`duplicate id "${id}"`);
   seen.add(id);
+  if (test.unit !== undefined && (typeof test.unit !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(test.unit))) {
+    throw fail('`unit` must be the id of a unit, in kebab-case');
+  }
+  const unit = test.unit === undefined ? {} : { unit: test.unit as string };
 
   const scenarios = Array.isArray(test.scenario) ? test.scenario : [test.scenario];
   if (scenarios.length === 0 || scenarios.some((s) => typeof s !== 'string' || !s.trim())) {
@@ -113,7 +131,7 @@ function loadTest(value: unknown, fail: (msg: string) => Error, seen: Set<string
   if (test.options === undefined) {
     const yn = expect.toLowerCase();
     if (yn !== 'yes' && yn !== 'no') throw fail('a test without `options` is a yes/no test, so `expect` must be yes or no');
-    return { id, scenarios, question: test.question as string, expect: yn };
+    return { id, scenarios, question: test.question as string, expect: yn, ...unit };
   }
 
   const options = readOptions(test.options, fail);
@@ -122,7 +140,7 @@ function loadTest(value: unknown, fail: (msg: string) => Error, seen: Set<string
   if (expect !== NONE && !(expect in options)) {
     throw fail(`\`expect\` is "${expect}", which is not an option (use one of: ${Object.keys(options).join(', ')}, none)`);
   }
-  return { id, scenarios, question: test.question as string, options, expect };
+  return { id, scenarios, question: test.question as string, options, expect, ...unit };
 }
 
 /** Options are either `label: description` pairs or a plain list of labels. */
