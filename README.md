@@ -1,10 +1,10 @@
-# skillunit
+# SkillUnit
 
 **Unit tests for agent skills.**
 
 A skill is a document an AI agent reads before it acts: a `SKILL.md`, a rules file, an
 instruction page. You write it so that, in a given situation, the agent makes a given decision.
-skillunit checks that the text still leads to those decisions. It runs in seconds on every pull
+SkillUnit checks that the text still leads to those decisions. It runs in seconds on every pull
 request, without running an agent and without an LLM API bill.
 
 ```
@@ -23,13 +23,13 @@ SKILL.md › Check the tests  844 chars · jev-1.13.0
 FAILED  1 test failed
 ```
 
-This is skillunit testing its own skill after one sentence was deleted from it: "skillunit has
+This is SkillUnit testing its own skill after one sentence was deleted from it: "SkillUnit has
 no mutations. If the user asks for them, explain that step 3 does the same job." The test for
 that rule failed. The reader no longer finds the rule in the text and answers `none`.
 
 ## How it works
 
-skillunit sends the skill to [TypeSafe](https://typesafe.ai), together with one question per
+SkillUnit sends the skill to [TypeSafe](https://typesafe.ai), together with one question per
 test. TypeSafe's System One model does not write text. It picks an answer from a fixed list and
 reports how likely each answer is.
 
@@ -43,12 +43,12 @@ Every choice test also gets an extra answer, `none`: "the skill says something d
 does not settle this". It gives the reader a way to say the rule is missing. Without it, the
 reader would have to pick one of your options even when the skill no longer backs any of them.
 
-skillunit tests whether the skill *says* the right thing, not whether an agent *follows* it.
+SkillUnit tests whether the skill *says* the right thing, not whether an agent *follows* it.
 When a spec also loads the files the agent reads (see
 [Testing with the files the agent reads](#testing-with-the-files-the-agent-reads)), the results
 matched what real agents did in the one comparison made so far. To measure behaviour itself, run
 a real agent with [skillgrade](https://github.com/mgechev/skillgrade) or `claude plugin eval`,
-nightly, with a few trials. skillunit is the cheap check to run before that, on every change.
+nightly, with a few trials. SkillUnit is the cheap check to run before that, on every change.
 
 ## Quick start
 
@@ -65,7 +65,7 @@ npx skillunit check --dry-run  # lint, sync, and the specs load and fit; needs n
 npx skillunit check            # the same, and the tests asked to TypeSafe
 ```
 
-To see a complete set of specs first, run the ones skillunit uses for its own skill:
+To see a complete set of specs first, run the ones SkillUnit uses for its own skill:
 
 ```sh
 git clone https://github.com/Elecash/skillunit && cd skillunit && npm install
@@ -75,7 +75,7 @@ npm run skill                  # needs TYPESAFE_API_KEY in .env
 
 ## Let your agent write the specs
 
-skillunit ships a skill that teaches an agent to write and check specs:
+SkillUnit ships a skill that teaches an agent to write and check specs:
 [`skills/skillunit/SKILL.md`](skills/skillunit/SKILL.md). It covers how to split a skill into
 specs, how to write scenarios and options that catch regressions, and what to do when a test
 fails. To use it with Claude Code, copy it into your project's skills:
@@ -85,9 +85,9 @@ mkdir -p .claude/skills/skillunit
 cp node_modules/skillunit/skills/skillunit/SKILL.md .claude/skills/skillunit/
 ```
 
-Then ask the agent something like "write skillunit tests for `skills/my-skill`".
+Then ask the agent something like "write SkillUnit tests for `skills/my-skill`".
 
-The skill is tested with skillunit itself, in
+The skill is tested with SkillUnit itself, in
 [`skills/skillunit/specs/`](skills/skillunit/specs): seven specs, 32 tests, run on every
 push. Writing them found two unclear sentences in the skill, which were rewritten before the
 first release.
@@ -145,11 +145,11 @@ A choice test passes when the reader picks `expect` with a confidence of 0.5 or 
 test passes when P(yes) is at least 0.7 for an expected `yes`, or at most 0.3 for an expected
 `no`. The right answer with too little confidence shows as `~` (weak) and counts as a failure.
 
-With several phrasings, each one is asked separately. skillunit ranks them by the probability of
+With several phrasings, each one is asked separately. SkillUnit ranks them by the probability of
 the expected answer and takes the median, so one odd phrasing cannot decide the test but half of
 them can.
 
-`section` takes a heading of any level. skillunit sends that heading and everything under it, up
+`section` takes a heading of any level. SkillUnit sends that heading and everything under it, up
 to the next heading of the same or a higher level, exactly as written. A section of one to three
 thousand characters works best. A whole `SKILL.md` works too, but answers get less precise as the
 text grows.
@@ -175,7 +175,7 @@ accuracy falls as the state grows with text unrelated to the question
 ([Jev 1.13 jaggedness](https://docs.typesafe.ai/model-jaggedness/jev-1.13)), and a file the agent
 never opens can settle a test that the agent would get wrong. Keep `all` for small skills.
 
-TypeSafe takes at most 32,000 tokens for the state plus the longest question. skillunit estimates
+TypeSafe takes at most 32,000 tokens for the state plus the longest question. SkillUnit estimates
 the size before sending, prints it with `--dry-run`, and refuses a spec that would not fit,
 naming its largest files. The estimate runs about 8% high.
 
@@ -194,7 +194,7 @@ another file. Decide whether SKILL.md should state it too.
 A forms library's skill has a rule about where a form's named states go, stated in SKILL.md and
 repeated in two reference files. We made two copies of the skill, one with the rule deleted from
 SKILL.md only and one with it deleted from every file. For each copy, eight Claude Haiku agents
-wrote a form with a named state and a script checked where they put it. skillunit ran the same three tests on each copy, in three ways:
+wrote a form with a named state and a script checked where they put it. SkillUnit ran the same three tests on each copy, in three ways:
 
 | Copy of the skill | Agents right | Tests failed: section only | with the two files | with `all` |
 |---|---|---|---|---|
@@ -210,7 +210,7 @@ one model and eight runs per copy: a first comparison, not a benchmark.
 
 ## Best practices
 
-Each practice below comes from a test that passed for the wrong reason while skillunit was being
+Each practice below comes from a test that passed for the wrong reason while SkillUnit was being
 built. Together they are what makes a test fail when its rule is removed from the skill.
 
 **Ask about decisions.** "Does the skill mention two APIs?" passes even when the section is badly
@@ -237,7 +237,7 @@ skill to cover a case it never mentions, like database migrations in a deploy ch
 something else" and "the skill says nothing". If the skill does give an answer and none of your
 options says it, add an option that does and expect it. A test that expects `none` because the
 options do not match the skill passes just the same when the rule is deleted: the reader answers
-`none` because the skill is now silent. skillunit's own skill had such a test; it passed at 0.80
+`none` because the skill is now silent. SkillUnit's own skill had such a test; it passed at 0.80
 with its rule and at 0.55 without it.
 
 **Ask for exact values when they matter.** The reader compares meaning, and `npm run preview`
@@ -271,7 +271,7 @@ A green test proves the reader gave the right answer. To prove it gave it *becau
 skill*, copy the skill, delete the sentence the test is about in the copy, and run the spec
 against the copy with `--skill`. The test should fail.
 
-skillunit's own skill was checked this way, one sentence at a time. Some of the results:
+SkillUnit's own skill was checked this way, one sentence at a time. Some of the results:
 
 | Sentence deleted from the skill | Test | Answer without it |
 |---|---|---|
@@ -279,7 +279,7 @@ skillunit's own skill was checked this way, one sentence at a time. Some of the 
 | Delete the rule's sentence in a copy, never in the real SKILL.md | `prove-on-a-copy` | `none` 95% |
 | Never change a test only to make it pass, and never lower the thresholds | `report-dont-bend` | `rewrite` 82% |
 | When a heading is longer, write one spec per subheading | `long-heading` | `heading` 73% |
-| skillunit has no mutations; explain that step 3 does the same job | `user-asks-for-mutations` | `none` 60% |
+| SkillUnit has no mutations; explain that step 3 does the same job | `user-asks-for-mutations` | `none` 60% |
 
 Sixteen of the seventeen tests checked failed without their sentence. If a test stays green,
 look for the cause in this order:
@@ -315,7 +315,7 @@ the reader with the vocabulary of your domain.
 exports a `DecisionModel` (as its default export or as `model`): an `id`, the model's token
 `limits`, and a `decide` function that answers the questions with a probability per option.
 
-`TYPESAFE_API_KEY` comes from the environment, or from a `.env` file. skillunit reads the
+`TYPESAFE_API_KEY` comes from the environment, or from a `.env` file. SkillUnit reads the
 `.env` next to `skillunit.yaml` (the current folder when there is none), then the `.env` of each
 folder above it up to the root of the git repository, so one `.env` at the root serves every
 project in a monorepo. A variable already set in the environment wins over every file, and a
@@ -386,7 +386,7 @@ jobs:
 
 Pull requests from forks get no secrets. Run only the `--dry-run` step for them.
 
-Each spec file is one request to TypeSafe, whatever the number of tests in it. skillunit's own
+Each spec file is one request to TypeSafe, whatever the number of tests in it. SkillUnit's own
 skill, with seven specs and 32 tests, uses about 13,600 input tokens per run.
 
 ## License

@@ -1,6 +1,6 @@
 /**
  * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is,
- * a scenario changes it and commits, and `run` calls the built skillunit CLI on the copy.
+ * a scenario changes it and commits, and `run` calls the built SkillUnit CLI on the copy.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';

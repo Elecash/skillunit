@@ -24,7 +24,7 @@ jobs:
       - run: npx nx e2e tinyfetch-e2e
 
   skill:
-    # skillunit checks its own skill against TypeSafe. Skipped on forks, which get no secrets.
+    # SkillUnit checks its own skill against TypeSafe. Skipped on forks, which get no secrets.
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     needs: build
     runs-on: ubuntu-latest

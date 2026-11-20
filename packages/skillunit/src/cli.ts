@@ -14,7 +14,7 @@ import { sync, type SyncResult } from './sync/index.js';
 import { changedSelection } from './test/changed.js';
 import { runAll, type Report } from './test/runner.js';
 
-const HELP = `skillunit: keeps an agent skill in sync with the code it describes
+const HELP = `SkillUnit keeps an agent skill in sync with the code it describes
 
 Usage
   skillunit check [options]           lint, sync and test: what CI runs
@@ -184,7 +184,7 @@ async function runCommand(command: Command, args: Args) {
 
 // ---------------------------------------------------------------- init
 
-const INIT_CONFIG = `# skillunit settings. Reference: https://github.com/Elecash/skillunit#readme
+const INIT_CONFIG = `# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme
 skill: .              # folder with SKILL.md
 specs: ./specs        # folder with the spec files
 # context: "One sentence about what the skill is for."
@@ -204,7 +204,7 @@ tests:
       a: What the skill tells the agent to do
       b: A plausible thing the skill rules out
     expect: a
-    # skillunit adds a "none" option to every choice test: the reader picks it when the
+    # SkillUnit adds a "none" option to every choice test: the reader picks it when the
     # skill says something else or does not settle the question. "expect: none" is valid.
 
   - id: example-yes-no

@@ -2,7 +2,7 @@
   "name": "tinyfetch-e2e",
   "version": "0.0.0",
   "private": true,
-  "description": "Acceptance scenarios: each breaks tinyfetch or its skill in a copy of the app and checks that skillunit reports it.",
+  "description": "Acceptance scenarios: each breaks tinyfetch or its skill in a copy of the app and checks that SkillUnit reports it.",
   "type": "module",
   "nx": {
     "name": "tinyfetch-e2e",

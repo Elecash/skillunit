@@ -1,4 +1,4 @@
-# skillunit testing its own skill. From the repository root:
+# SkillUnit testing its own skill. From the repository root:
 #   npm run skill:dry     checks the specs, sends nothing
 #   npm run skill         runs them against TypeSafe (needs TYPESAFE_API_KEY)
 skill: .

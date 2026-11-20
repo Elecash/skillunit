@@ -1,13 +1,13 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`reporters > github: every layer with every kind of finding 1`] = `
-"::error file=skills/demo/features/retries.md,line=24,title=skillunit lint%3A retry-idempotent-only::breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
-::warning file=skills/demo/features/retries.md,line=3,title=skillunit lint::312 lines; above about 300, look for a split into files of one task each
-::error file=skills/demo/SKILL.md,line=12,title=skillunit sync%3A pick-a-client::\`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message
-::warning file=skills/demo/specs/retries.yaml,line=12,title=skillunit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
-::error file=skills/demo/specs/retries.yaml,line=19,title=skillunit test%3A exact-command::expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%25, none 35%25, loose 2%25%0Ascenario: The user asks to retry a POST.
-::error file=skills/demo/specs/retries.yaml,line=30,title=skillunit test%3A user-asks-for-mutations::expected explain, got none (confidence 0.53, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
-::error file=skills/demo/specs/broken.yaml,line=1,title=skillunit test::could not run: no heading "Gone" in SKILL.md
+"::error file=skills/demo/features/retries.md,line=24,title=SkillUnit lint%3A retry-idempotent-only::breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+::warning file=skills/demo/features/retries.md,line=3,title=SkillUnit lint::312 lines; above about 300, look for a split into files of one task each
+::error file=skills/demo/SKILL.md,line=12,title=SkillUnit sync%3A pick-a-client::\`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message
+::warning file=skills/demo/specs/retries.yaml,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
+::error file=skills/demo/specs/retries.yaml,line=19,title=SkillUnit test%3A exact-command::expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%25, none 35%25, loose 2%25%0Ascenario: The user asks to retry a POST.
+::error file=skills/demo/specs/retries.yaml,line=30,title=SkillUnit test%3A user-asks-for-mutations::expected explain, got none (confidence 0.53, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
+::error file=skills/demo/specs/broken.yaml,line=1,title=SkillUnit test::could not run: no heading "Gone" in SKILL.md
 FAILED  lint 1 error, 1 warning · sync 1 unit to review · test 2/4 passed (1 spec could not run, 2 borderline)
 "
 `;
@@ -244,7 +244,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
 
 exports[`reporters > junit: every layer with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="skillunit" tests="9" failures="4" errors="1">
+<testsuites name="SkillUnit" tests="9" failures="4" errors="1">
   <testsuite name="lint" tests="2" failures="1" errors="0">
     <testcase name="skills/demo/SKILL.md" classname="lint"/>
     <testcase name="skills/demo/features/retries.md" classname="lint">
@@ -317,7 +317,7 @@ OK  lint ok · sync ok · test 2/2 passed (1 borderline)
 `;
 
 exports[`reporters > table and github: a clean check 2`] = `
-"::warning file=skills/demo/specs/retries.yaml,line=12,title=skillunit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
+"::warning file=skills/demo/specs/retries.yaml,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
 OK  lint ok · sync ok · test 2/2 passed (1 borderline)
 "
 `;

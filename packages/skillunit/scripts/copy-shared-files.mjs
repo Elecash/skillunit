@@ -1,5 +1,5 @@
 // Copies the files the npm package ships but the repository keeps at its root: the README,
-// the licence and the skillunit skill. Runs on `npm pack` and `npm publish`.
+// the licence and the SkillUnit skill. Runs on `npm pack` and `npm publish`.
 import { cpSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

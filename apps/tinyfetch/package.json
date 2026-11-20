@@ -2,7 +2,7 @@
   "name": "tinyfetch",
   "version": "0.0.0",
   "private": true,
-  "description": "A small HTTP client for JSON APIs, built on fetch. The sample library skillunit tests its layers against.",
+  "description": "A small HTTP client for JSON APIs, built on fetch. The sample library SkillUnit tests its layers against.",
   "type": "module",
   "exports": "./src/index.ts",
   "nx": {

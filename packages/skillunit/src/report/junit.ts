@@ -82,7 +82,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   const all = suites.flatMap((s) => s.cases);
   const xml = [
     '<?xml version="1.0" encoding="UTF-8"?>',
-    `<testsuites name="skillunit" tests="${all.length}" failures="${count(all, 'failure')}" errors="${count(all, 'error')}">`,
+    `<testsuites name="SkillUnit" tests="${all.length}" failures="${count(all, 'failure')}" errors="${count(all, 'error')}">`,
   ];
   for (const suite of suites) {
     xml.push(

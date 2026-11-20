@@ -1,7 +1,7 @@
 /**
  * A decision model answers closed questions about a state: a yes/no question, or a choice among
- * named options. skillunit's `test` layer asks it whether a skill's text settles the decisions it
- * must. Any provider can be plugged in through this interface; `typesafe` ships with skillunit.
+ * named options. SkillUnit's `test` layer asks it whether a skill's text settles the decisions it
+ * must. Any provider can be plugged in through this interface; `typesafe` ships with SkillUnit.
  */
 
 export interface DecisionOption {
@@ -29,7 +29,7 @@ export interface DecisionAnswer {
   /** Probability of each option id; `{ yes, no }` for a yes/no question. */
   probabilities: Record<string, number>;
   /**
-   * The model's own confidence in its top option, when it reports one. Without it, skillunit
+   * The model's own confidence in its top option, when it reports one. Without it, SkillUnit
    * uses the top probability.
    */
   confidence?: number;
@@ -52,6 +52,6 @@ export interface DecisionModel {
     /** Tokens of the whole request. */
     perRequestTokens: number;
   };
-  /** Rejects on a failed request; skillunit reports it as a spec that could not run. */
+  /** Rejects on a failed request; SkillUnit reports it as a spec that could not run. */
   decide(request: DecisionRequest): Promise<DecisionResult>;
 }

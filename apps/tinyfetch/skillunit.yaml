@@ -1,4 +1,4 @@
-# skillunit settings for tinyfetch. From this folder: npx nx skill tinyfetch
+# SkillUnit settings for tinyfetch. From this folder: npx nx skill tinyfetch
 skill: ./skill
 specs: ./specs
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."

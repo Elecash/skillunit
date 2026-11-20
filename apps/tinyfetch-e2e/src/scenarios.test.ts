@@ -4,7 +4,7 @@ import { scenarios, type Expected } from './scenarios.js';
 
 afterAll(() => App.removeAll());
 
-/** What skillunit reported, in the form the scenarios list it. */
+/** What SkillUnit reported, in the form the scenarios list it. */
 function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail'>> & { specErrors: string[] } {
   const problems: any[] = report.lint?.problems ?? [];
   const show = (p: any) => [p.rule, `skill/${p.file}`, p.unit ?? '-', /TS\d+/.exec(p.message)?.[0]].filter(Boolean).join(' ');

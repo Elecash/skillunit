@@ -1,11 +1,11 @@
 ---
 name: skillunit
-description: Write and run skillunit specs, the YAML unit tests that check an agent skill (a SKILL.md) leads to the decisions it was written for. Use when asked to test a skill, to add or fix skillunit tests, or to check that a SKILL.md still says what it should.
+description: Write and run SkillUnit specs, the YAML unit tests that check an agent skill (a SKILL.md) leads to the decisions it was written for. Use when asked to test a skill, to add or fix SkillUnit tests, or to check that a SKILL.md still says what it should.
 ---
 
-# Writing skillunit specs
+# Writing SkillUnit specs
 
-skillunit tests a skill by asking a reader model closed questions about the skill's text. A spec
+SkillUnit tests a skill by asking a reader model closed questions about the skill's text. A spec
 is a YAML file with the tests for one part of a skill. Each test is a situation, a question and
 a short list of answers, one of them expected. The test passes when the text leads the reader to
 the expected answer.
@@ -83,7 +83,7 @@ Label options with short lowercase words (`stop`, `deploy`, `preview`) and put t
 description.
 
 Never define an option called `none`, and never add one that means "other" or "the skill does not
-say". skillunit adds `none` to every choice test by itself, and a spec that defines it does not
+say". SkillUnit adds `none` to every choice test by itself, and a spec that defines it does not
 load.
 
 `none` means both "the skill says something else" and "the skill says nothing". Expect it only
@@ -109,7 +109,7 @@ accepts a renamed command.
    In the last two, tell the user: the rule is written twice, or the sentence may not be
    needed at all.
 
-skillunit has no mutations. If the user asks for them, explain that step 3 does the same job.
+SkillUnit has no mutations. If the user asks for them, explain that step 3 does the same job.
 
 ## When a test fails on the real skill
 

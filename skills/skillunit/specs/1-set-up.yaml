@@ -3,7 +3,7 @@ section: Set up
 tests:
   - id: no-key-yet
     scenario:
-      - The user asks for skillunit tests for their skill, and TYPESAFE_API_KEY is not set anywhere.
+      - The user asks for SkillUnit tests for their skill, and TYPESAFE_API_KEY is not set anywhere.
       - The agent is about to test a skill, but there is no .env file and no API key in the environment.
     question: What should the agent do?
     options:

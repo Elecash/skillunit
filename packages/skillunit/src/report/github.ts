@@ -13,18 +13,18 @@ export function github(report: CheckReport, options: ReportOptions): string {
   const annotate = (level: 'error' | 'warning', file: string, line: number, title: string, message: string) =>
     out.push(`::${level} file=${prop(file)},line=${line},title=${prop(title)}::${data(message)}`);
   const problem = (layer: string, skill: string, p: Problem) =>
-    annotate(p.severity, shown(join(skill, p.file), options), p.line, `skillunit ${layer}${p.unit ? `: ${p.unit}` : ''}`, p.message);
+    annotate(p.severity, shown(join(skill, p.file), options), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, p.message);
 
   if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
   if (report.sync) for (const p of report.sync.problems) problem('sync', report.sync.skill, p);
   if (report.test) {
     for (const spec of report.test.specs) {
       const file = shown(spec.spec, options);
-      if (spec.error) annotate('error', file, 1, 'skillunit test', `could not run: ${spec.error}`);
+      if (spec.error) annotate('error', file, 1, 'SkillUnit test', `could not run: ${spec.error}`);
       for (const v of spec.verdicts) {
         const got = `expected ${v.expect}, got ${v.answer} (${decidingNumber(v, report)}): ${distribution(v, ', ')}`;
-        if (!v.pass) annotate('error', file, v.line ?? 1, `skillunit test: ${v.id}`, `${got}\nscenario: ${v.scenario}`);
-        else if (v.borderline) annotate('warning', file, v.line ?? 1, `skillunit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
+        if (!v.pass) annotate('error', file, v.line ?? 1, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}`);
+        else if (v.borderline) annotate('warning', file, v.line ?? 1, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
     }
   }

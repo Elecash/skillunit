@@ -31,10 +31,10 @@ tests:
   - id: user-asks-for-mutations
     scenario:
       - The user asks the agent to add mutations to the specs.
-      - The user wants mutation testing for their skillunit tests.
+      - The user wants mutation testing for their SkillUnit tests.
     question: What should the agent do?
     options:
-      explain: Explain that skillunit has no mutations and that deleting a rule's sentence in a copy and re-running does the same job
+      explain: Explain that SkillUnit has no mutations and that deleting a rule's sentence in a copy and re-running does the same job
       block: Add a `mutations` block to each spec
       tool: Look for a separate mutation-testing tool
     expect: explain

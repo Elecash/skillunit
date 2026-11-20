@@ -29,7 +29,7 @@ tests:
     question: How should it set the expected answer?
     options:
       add: Add an option that says to stop and say so, and expect that option
-      expect-none: Set the expected answer to skillunit's automatic `none`, since no option matches the skill
+      expect-none: Set the expected answer to SkillUnit's automatic `none`, since no option matches the skill
       closest: Expect the option closest to stopping
     expect: add
 

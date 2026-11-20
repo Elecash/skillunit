@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { isNode, isSeq, LineCounter, parseDocument } from 'yaml';
 
 /**
- * Label of the option the reader always gets on choice tests, added by skillunit.
+ * Label of the option the reader always gets on choice tests, added by SkillUnit.
  * A spec can expect it (`expect: none`) but cannot define it.
  */
 export const NONE = 'none';

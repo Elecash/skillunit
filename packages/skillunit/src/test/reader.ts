@@ -47,7 +47,7 @@ export interface ReaderResult {
   model: string;
 }
 
-/** Description of the option skillunit adds to every choice test. */
+/** Description of the option SkillUnit adds to every choice test. */
 export const NONE_DESCRIPTION =
   'None of the options above: the skill says something different, or it does not settle this';
 

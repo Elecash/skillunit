@@ -1,6 +1,6 @@
 /**
  * The acceptance scenarios: each changes tinyfetch or its skill in a copy of the app, and lists
- * what skillunit must report. Findings are written `rule file unit code`, the code being a
+ * what SkillUnit must report. Findings are written `rule file unit code`, the code being a
  * TypeScript code when there is one; sync findings are unit ids; model findings are test ids.
  * Anything reported that is not listed fails the scenario, as does anything listed that is not
  * reported.

@@ -3,11 +3,11 @@ section: Spec format
 tests:
   - id: extra-key
     scenario: The agent adds a `description` key to a test to explain it.
-    question: What happens when skillunit loads that spec?
+    question: What happens when SkillUnit loads that spec?
     options:
       error: The spec does not load, because `description` is not an allowed key
-      ignored: skillunit ignores the key and runs the test
-      shown: skillunit prints the description in the report
+      ignored: SkillUnit ignores the key and runs the test
+      shown: SkillUnit prints the description in the report
     expect: error
 
   - id: thresholds-untouched

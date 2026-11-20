@@ -137,7 +137,7 @@ function readModel(value: unknown, root: string, fail: (msg: string) => Error): 
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail(MODEL_FORMAT);
   const { provider, name, ...rest } = value as Record<string, unknown>;
-  if (provider !== 'typesafe') throw fail(`unknown model provider \`${String(provider)}\`; skillunit ships \`typesafe\`, and any other goes in a module`);
+  if (provider !== 'typesafe') throw fail(`unknown model provider \`${String(provider)}\`; SkillUnit ships \`typesafe\`, and any other goes in a module`);
   if (Object.keys(rest).length) throw fail(`unknown key \`model.${Object.keys(rest)[0]}\` (allowed: provider, name)`);
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw fail('`model.name` must be a model name');
   return name ? { provider: 'typesafe', name: name as string } : { provider: 'typesafe' };
