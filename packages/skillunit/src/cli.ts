@@ -3,8 +3,9 @@
  * The `skillunit` command. See README.md for the full reference.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
+import { loadEnv } from './env.js';
 import { ConfigError, lint } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { loadModel, ModelError } from './models/index.js';
@@ -48,7 +49,8 @@ Exit codes
   2  the command itself was wrong: unknown option, missing file, no API key, bad settings
 
 Environment
-  TYPESAFE_API_KEY    needed by test and check, except with --dry-run; also read from ./.env
+  TYPESAFE_API_KEY    needed by test and check, except with --dry-run. Also read from a .env
+                      file next to skillunit.yaml or in a folder above it, up to the git root
 `;
 
 interface Args {
@@ -124,7 +126,9 @@ function parseArgs(command: Command, argv: string[]): Args {
 }
 
 async function runCommand(command: Command, args: Args) {
-  loadDotEnv(resolve('.env'));
+  // `.env` next to the config file (the current folder without one), then up to the git root.
+  const configFile = resolve(args.config ?? CONFIG_FILE);
+  loadEnv(existsSync(configFile) ? dirname(configFile) : process.cwd());
   let config: Config;
   try {
     config = loadConfig(args.config);
@@ -145,7 +149,7 @@ async function runCommand(command: Command, args: Args) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
   if (testing && !args.dryRun && config.model.provider === 'typesafe' && !process.env.TYPESAFE_API_KEY) {
-    usage('TYPESAFE_API_KEY is not set. Add it to ./.env or the environment, or use --dry-run.');
+    usage('TYPESAFE_API_KEY is not set. Add it to the environment, or to a .env file next to skillunit.yaml or at the root of the repository, or use --dry-run.');
   }
 
   try {
@@ -227,18 +231,6 @@ function init(dir: string) {
 }
 
 // ---------------------------------------------------------------- helpers
-
-/** Reads KEY=value lines from a .env file. Variables already set in the environment win. */
-function loadDotEnv(path: string) {
-  if (!existsSync(path)) return;
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    if (line.trim().startsWith('#')) continue;
-    const m = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
-    if (!m) continue;
-    const value = m[2]!.replace(/^(['"])(.*)\1$/, '$2');
-    if (process.env[m[1]!] === undefined) process.env[m[1]!] = value;
-  }
-}
 
 function version(): string {
   try {

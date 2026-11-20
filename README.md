@@ -315,8 +315,11 @@ the reader with the vocabulary of your domain.
 exports a `DecisionModel` (as its default export or as `model`): an `id`, the model's token
 `limits`, and a `decide` function that answers the questions with a probability per option.
 
-`TYPESAFE_API_KEY` comes from the environment or from `./.env`. It never goes in a spec or in
-the config.
+`TYPESAFE_API_KEY` comes from the environment, or from a `.env` file. skillunit reads the
+`.env` next to `skillunit.yaml` (the current folder when there is none), then the `.env` of each
+folder above it up to the root of the git repository, so one `.env` at the root serves every
+project in a monorepo. A variable already set in the environment wins over every file, and a
+closer file wins over a farther one. The key never goes in a spec or in the config.
 
 ## Command line
 
