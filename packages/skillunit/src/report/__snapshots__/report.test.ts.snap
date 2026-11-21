@@ -59,7 +59,8 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "wrongCode": {
         "checked": 2,
         "unchecked": 0
-      }
+      },
+      "undeclared": []
     }
   },
   "sync": {

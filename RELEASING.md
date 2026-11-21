@@ -36,8 +36,20 @@ inputs in `packages/skillunit/package.json`). A `fix:` that changes only `.githu
 that reason. Nx decides this the way `nx affected` does, and the run's list uses the same code;
 if the list has commits that count and Nx finds nothing to release, the run stops and says so.
 
-The commits since `v0.1.0` are plain sentences, so they count for nothing: with no `fix` or
-`feat` since the last tag there is nothing to release, and the run says so.
+`CHANGELOG.md` is the workspace's, though: its entry lists every conventional commit since the
+last release, whatever it changed. A `fix:` that changes only `.github/` or `tools/` gives no
+release, and still shows up as a fix in the next one. Type those `ci:` or `chore:`.
+
+### Pull requests
+
+`main` gets one commit per pull request, a squash merge, and only the title box of the merge
+dialog reaches it: the commits of the branch do not. So the title of the pull request is the
+commit the release reads, and the
+[`pr-title` workflow](.github/workflows/pr-title.yml) fails a pull request whose title is not
+`type(scope)!: subject` with one of the types above. The repository setting "Default to pull
+request title" for squash merges fills the box with that title; it is set on GitHub, under
+Settings → General → Pull Requests, not in the repository. A title edited in the dialog
+reaches `main` as it is typed.
 
 ## A release
 

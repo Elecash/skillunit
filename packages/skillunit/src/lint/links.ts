@@ -3,7 +3,9 @@
  * `SKILL.md`, and a long file gets a warning. `#anchors` are not checked in v1.
  *
  * A reader also follows a path written as text, so a relative path to a Markdown file of the
- * skill, in a code span or in plain text, makes it reachable too (it is not checked as a link).
+ * skill, in a code span, in plain text or in a fence with no language or `text`, makes it
+ * reachable too (it is not checked as a link). So does a bare file name, `strings.md`, when
+ * exactly one file of the skill has that name.
  * A folder below the skill folder with a `SKILL.md` of its own is a skill of its own: its files
  * are reached from that `SKILL.md`. A URL to a published page does not count.
  */
@@ -32,10 +34,15 @@ export function index(skill: ParsedSkill): Problem[] {
     message,
   });
   const markdown = new Set(skill.files.map((f) => f.file));
+  const byName = new Map<string, string[]>();
+  for (const path of markdown) {
+    const name = path.slice(path.lastIndexOf('/') + 1);
+    byName.set(name, [...(byName.get(name) ?? []), path]);
+  }
   const edges = new Map<string, string[]>();
 
   for (const file of skill.files) {
-    const targets: string[] = mentions(file, markdown);
+    const targets: string[] = mentions(file, markdown, byName);
     for (const link of links(file)) {
       const path = target(file.file, link.target);
       if (path === null) continue;
@@ -90,29 +97,31 @@ function nearestIndex(path: string, markdown: Set<string>): string {
 /** A relative path to a Markdown file, as text: `rules/animations.md`, `./setup.md`, `../SKILL.md`. */
 const MENTION = /(?<![\w/.:-])((?:\.{1,2}\/)*(?:[\w@-][\w@.-]*\/)*[\w@-][\w@.-]*\.md)(?![\w/-])/g;
 
+/** Fences whose lines are read as text, such as a list of files: no language, or `text`. */
+const TEXT_FENCE = (lang: string) => lang === '' || lang === 'text';
+
 /**
- * Markdown files of the skill that `file` names by a relative path in its text, code spans
- * included and fences left out. A path counts from the file's folder, from the folder of its
- * `SKILL.md`, or from the skill folder, whichever names a file of the skill.
+ * Markdown files of the skill that `file` names by a relative path in its text: code spans
+ * included, and fences too, except those of a language, whose paths are code. A path counts
+ * from the file's folder, from the folder of its `SKILL.md`, or from the skill folder, whichever
+ * names a file of the skill. A bare file name, with no folder, counts when no folder names a
+ * file and exactly one file of the skill has that name (`byName`, file name to paths).
  */
-function mentions(file: ParsedFile, markdown: Set<string>): string[] {
+function mentions(file: ParsedFile, markdown: Set<string>, byName: Map<string, string[]>): string[] {
   const lines = file.text.split(/\r?\n/);
   const hidden = new Set<number>();
   for (let i = 0; i < file.frontmatter; i++) hidden.add(i + 1);
-  for (const f of file.fences) for (let l = f.line; l <= f.endLine; l++) hidden.add(l);
+  for (const f of file.fences) if (!TEXT_FENCE(f.lang)) for (let l = f.line; l <= f.endLine; l++) hidden.add(l);
   const index = nearestIndex(file.file, markdown);
   const bases = [dirname(file.file), dirname(index), '.'];
   const out = new Set<string>();
   lines.forEach((line, i) => {
     if (hidden.has(i + 1)) return;
     for (const m of line.matchAll(MENTION)) {
-      for (const base of bases) {
-        const path = normalize(join(base, m[1]!)).split(sep).join('/');
-        if (markdown.has(path) && path !== file.file) {
-          out.add(path);
-          break;
-        }
-      }
+      const found = bases.map((base) => normalize(join(base, m[1]!)).split(sep).join('/')).find((path) => markdown.has(path) && path !== file.file);
+      const only = !found && !m[1]!.includes('/') ? byName.get(m[1]!) : undefined;
+      const path = found ?? (only?.length === 1 && only[0] !== file.file ? only[0] : undefined);
+      if (path) out.add(path);
     }
   });
   return [...out];

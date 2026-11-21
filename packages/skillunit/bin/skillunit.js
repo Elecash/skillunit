@@ -4,8 +4,10 @@
 import { existsSync } from 'node:fs';
 
 const cli = new URL('../dist/cli.js', import.meta.url);
-if (!existsSync(cli)) {
+if (existsSync(cli)) {
+  await import(cli.href);
+} else {
+  // No `process.exit`: it can cut what stderr has not written yet when stderr is a pipe.
   process.stderr.write('skillunit: dist/cli.js is missing; build it first with `npx nx build skillunit`\n');
-  process.exit(2);
+  process.exitCode = 2;
 }
-await import(cli.href);

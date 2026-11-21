@@ -35,6 +35,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # Without the secret the steps below are skipped and the job would pass having run nothing.
+      - if: env.TYPESAFE_API_KEY == ''
+        run: echo "::warning title=Model tests did not run::TYPESAFE_API_KEY is not set for this repository, so the skill's specs and the scenarios that ask the model were skipped."
       - run: npm ci
       - run: npx nx build skillunit
       - if: env.TYPESAFE_API_KEY != ''

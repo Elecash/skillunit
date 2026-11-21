@@ -1,6 +1,6 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
 import { basename, isAbsolute, join, relative } from 'node:path';
-import type { Problem } from '../lint/types.js';
+import type { LintSummary, Problem } from '../lint/types.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -105,4 +105,19 @@ export function brief(message: string, max = 400): string {
     .split('\n')
     .map((line) => (line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`))
     .join('\n');
+}
+
+/** Where a skill declares the names its examples use. */
+export const SETUP_DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md#setup';
+
+/**
+ * The names no example or `Setup` declares, the five most frequent with their counts, and where
+ * to declare them: two lines, or none when every name is declared.
+ */
+export function undeclaredNames(summary: LintSummary): [string, string] | null {
+  const names = summary.undeclared;
+  if (!names.length) return null;
+  const top = names.slice(0, 5).map((n) => `${n.name} ${n.count}`).join(' · ');
+  const more = names.length > 5 ? `, and ${names.length - 5} more` : '';
+  return [`Names nothing declares: ${top}${more}`, `A \`Setup:\` block in \`SKILL.md\` declares them once for every file of the skill: ${SETUP_DOCS}`];
 }

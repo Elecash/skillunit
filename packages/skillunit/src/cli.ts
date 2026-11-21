@@ -187,7 +187,7 @@ async function runCommand(command: Command, args: Args) {
       ...(testResult ? { test: testResult } : {}),
     });
     print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault() }));
-    process.exit(report.ok ? 0 : 1);
+    process.exitCode = report.ok ? 0 : 1;
   } catch (e) {
     if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
     if (e instanceof Error && /^(spec path not found|no \.yaml spec files)/.test(e.message)) usage(e.message);
@@ -248,7 +248,7 @@ async function review(argv: string[]) {
       },
       { cwd: process.cwd(), color: colorByDefault() },
     );
-    process.exit(code);
+    process.exitCode = code;
   } catch (e) {
     if (e instanceof ConfigError) usage(e.message);
     throw e;
@@ -276,8 +276,19 @@ function version(): string {
   }
 }
 
+// Nothing here calls `process.exit`: a command sets `process.exitCode` and the process ends once
+// stdout and stderr are written. On a pipe those writes are asynchronous, and an exit right
+// after them cut the output at the 64 KB the pipe holds.
+
 function print(text: string) {
   process.stdout.write(text);
+}
+
+/** Thrown by `usage` and caught by `main`, so that the process ends with this code. */
+class Exit extends Error {
+  constructor(readonly code: number) {
+    super(`exit ${code}`);
+  }
 }
 
 /**
@@ -293,7 +304,10 @@ function usage(message: string): never {
     const command = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
     process.stdout.write(`${JSON.stringify({ schema: REPORT_SCHEMA, command, ok: false, error: { exit: 2, message } }, null, 2)}\n`);
   }
-  process.exit(2);
+  throw new Exit(2);
 }
 
-main();
+main().catch((e: unknown) => {
+  if (!(e instanceof Exit)) throw e;
+  process.exitCode = e.code;
+});
