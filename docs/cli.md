@@ -6,10 +6,12 @@ skillunit lint [skill] [options]    the skill's format, examples, Check rules, l
 skillunit sync [skill] [options]    units whose code changed since skillunit.lock recorded their review
 skillunit review [options]          show what changed for each unit sync reports, and accept it
 skillunit test [specs...] [options] ask a decision model the spec tests about the skill
-skillunit init [dir]                create skillunit.yaml and a first spec
+skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
 ```
 
 `skillunit` with no command, or `--help`, prints the help.
+
+Run `skillunit init skills/my-skill` from the project root. It writes `skillunit.yaml`, with `skill: ./skills/my-skill`, and `specs/example.yaml` in that root, and turns on the type-check of TypeScript examples when a `tsconfig.json` is there. `Source:` paths and `skillunit.lock` start from the same folder, so every other command runs from it with no `--config`.
 
 ## Options
 

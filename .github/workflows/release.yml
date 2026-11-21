@@ -1,0 +1,57 @@
+# Publishes packages/skillunit to npm through trusted publishing: no token, and npm attaches the
+# provenance by itself. The name of this file is part of the trusted publisher set up on
+# npmjs.com; renaming it breaks publishing. See RELEASING.md.
+#
+# - A pushed tag `v<version>` publishes that version.
+# - Run by hand (workflow_dispatch), it is a rehearsal: everything, ending in `npm publish --dry-run`.
+#
+# It makes no commit and pushes no tag.
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # trusted publishing signs in with the job's OIDC token
+
+jobs:
+  publish:
+    # Trusted publishing works only on GitHub-hosted runners.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag is v plus the package version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION=$(node -p "require('./packages/skillunit/package.json').version")
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match packages/skillunit/package.json, whose version is $VERSION: tag v$VERSION, or bump the version"
+            exit 1
+          fi
+
+      # Node 22.14.0 and npm 11.5.1 or later are needed for trusted publishing. No npm cache in a
+      # release build.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm install -g npm@latest
+      - run: npm ci
+      - run: npx nx run-many -t typecheck build test
+      - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
+      # No API key here, so the scenarios that ask the model are skipped.
+      - run: npx nx e2e tinyfetch-e2e
+
+      - name: Publish
+        if: github.event_name == 'push'
+        working-directory: packages/skillunit
+        run: npm publish
+      - name: Rehearse the publish
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: packages/skillunit
+        run: npm publish --dry-run

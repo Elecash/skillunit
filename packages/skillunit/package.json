@@ -1,8 +1,9 @@
 {
   "name": "skillunit",
   "version": "0.1.0",
-  "description": "Keeps an agent skill in sync with the code it describes. Tests that the skill text settles the decisions it must, with closed questions to a decision model.",
+  "description": "Checks that an agent skill still matches the code it describes: lint for its examples and format, sync against a lock file, and closed-question tests with a decision model.",
   "license": "MIT",
+  "author": "Raúl Jiménez",
   "homepage": "https://github.com/Elecash/skillunit#readme",
   "repository": {
     "type": "git",
@@ -14,11 +15,12 @@
   },
   "keywords": [
     "agent",
+    "agent-skills",
     "skills",
     "skill",
     "testing",
+    "lint",
     "llm",
-    "mcp",
     "typesafe",
     "ci"
   ],
@@ -40,7 +42,7 @@
     "name": "skillunit"
   },
   "scripts": {
-    "build": "node ../../tools/tsc.mjs -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && node ../../tools/tsc.mjs -p tsconfig.build.json",
     "typecheck": "node ../../tools/tsc.mjs --noEmit",
     "test": "vitest run",
     "dev": "tsx src/cli.ts",

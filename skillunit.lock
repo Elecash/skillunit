@@ -8,12 +8,12 @@
     "check-regex-in-a-code-span": { "src/units/parse.ts#parseCheck": "61d28a9a3cccac28" },
     "complete-examples": { "src/lint/tsc.ts": "a7e90f20811103cc" },
     "dry-run-first": { "src/test/runner.ts": "e2602084a7ba5c88" },
-    "dry-run-without-key": { "src/cli.ts": "e6a5e29a7855e656" },
+    "dry-run-without-key": { "src/cli.ts": "4d6fee8680e09a21" },
     "expect-none-only-for-silence": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "fix-when-asked": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "id-names-the-instruction": { "src/lint/structure.ts": "356eddf32fcf5b98" },
     "index-every-file": { "src/lint/links.ts": "5b054a7bf003c230" },
-    "init-first": { "src/cli.ts": "e6a5e29a7855e656" },
+    "init-first": { "src/init.ts": "9536ad80b35a47fb" },
     "instructions-only-in-units": { "src/units/parse.ts": "5b85b805b686c7e0" },
     "key-outside-the-repo": { "src/env.ts": "b55607ea3ac28ed0" },
     "labels-in-order": { "src/lint/structure.ts": "356eddf32fcf5b98" },
@@ -46,7 +46,7 @@
     "tempting-wrong-options": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-rule-allows": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-skill-is-silent": { "src/test/reader.ts": "9f247f47a70ffd31" },
-    "which-command": { "src/cli.ts": "e6a5e29a7855e656" },
+    "which-command": { "src/cli.ts": "4d6fee8680e09a21" },
     "with-only-what-the-agent-reads": { "src/test/skill-text.ts": "5c2fa352ca73585c" },
     "wrong-as-code": { "src/lint/lint.ts": "2cc962299846d5ff" }
   }

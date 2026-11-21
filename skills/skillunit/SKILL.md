@@ -36,7 +36,7 @@ The settings live in `skillunit.yaml`, next to the skill or at the root of the p
 
 When: a project has a skill but no `skillunit.yaml`.
 
-Do: run `npx skillunit init <skill folder>`, then set `context` in the new `skillunit.yaml` to one sentence about what the skill is for.
+Do: run `npx skillunit init <skill folder>` from the project root, then set `context` in the new `skillunit.yaml` to one sentence about what the skill is for.
 
 Right:
 
@@ -52,7 +52,7 @@ Wrong:
 
 Applies: setup
 
-Source: src/cli.ts
+Source: src/init.ts
 
 ### rule: key-outside-the-repo
 

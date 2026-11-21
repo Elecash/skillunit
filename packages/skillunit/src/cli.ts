@@ -2,10 +2,11 @@
 /**
  * The `skillunit` command. See README.md for the full reference.
  */
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
-import { CONFIG_FILE, DEFAULT_SPECS, loadConfig, type Config, type Thresholds } from './config.js';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { CONFIG_FILE, loadConfig, type Config, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
+import { init } from './init.js';
 import { ConfigError, lint } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { loadModel, ModelError } from './models/index.js';
@@ -23,7 +24,7 @@ Usage
   skillunit sync [skill] [options]    units whose code changed since skillunit.lock recorded their review
   skillunit review [options]          show what changed for each unit sync reports, and accept it
   skillunit test [specs...] [options] ask a decision model the spec tests about the skill
-  skillunit init [dir]                create skillunit.yaml and a first spec
+  skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
 
 Options
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
@@ -86,7 +87,7 @@ async function main() {
   if (argv.includes('--version') || argv.includes('-v')) return print(`${version()}\n`);
   const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'help';
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
-  if (command === 'init') return init(argv[0] ?? '.');
+  if (command === 'init') return initCommand(argv[0] ?? '.');
   if (command === 'review') return review(argv);
   if (!(command in OPTIONS)) usage(`unknown command "${command}". Run \`skillunit --help\`.`);
   await runCommand(command as Command, parseArgs(command as Command, argv));
@@ -256,50 +257,13 @@ async function review(argv: string[]) {
 
 // ---------------------------------------------------------------- init
 
-const INIT_CONFIG = `# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme
-skill: .              # folder with SKILL.md
-specs: ./specs        # folder with the spec files
-# context: "One sentence about what the skill is for."
-`;
-
-const INIT_SPEC = `# A spec lists the decisions an agent must reach after reading part of the skill.
-# Each test is a situation and a question with a fixed set of answers.
-file: SKILL.md
-# section: A heading      # test only that heading; leave out to test the whole file
-
-tests:
-  - id: example-choice
-    # unit: some-unit-id    # the unit this test is about; \`test --changed\` uses it
-    scenario: Describe the situation the agent is in.
-    question: What should the agent do?
-    options:
-      a: What the skill tells the agent to do
-      b: A plausible thing the skill rules out
-    expect: a
-    # SkillUnit adds a "none" option to every choice test: the reader picks it when the
-    # skill says something else or does not settle the question. "expect: none" is valid.
-
-  - id: example-yes-no
-    scenario: Another situation.
-    question: Does the skill allow this?
-    expect: no
-`;
-
-function init(dir: string) {
-  const root = resolve(dir);
-  const configPath = join(root, CONFIG_FILE);
-  const specPath = join(root, DEFAULT_SPECS, 'example.yaml');
-  if (existsSync(configPath)) usage(`${relative(process.cwd(), configPath)} already exists`);
-
-  mkdirSync(join(root, DEFAULT_SPECS), { recursive: true });
-  writeFileSync(configPath, INIT_CONFIG);
-  if (!existsSync(specPath)) writeFileSync(specPath, INIT_SPEC);
-
-  print(`created ${relative(process.cwd(), configPath)} and ${relative(process.cwd(), specPath)}\n`);
-  if (!existsSync(join(root, 'SKILL.md'))) {
-    print(`there is no SKILL.md here: set \`skill\` in ${CONFIG_FILE} to the folder that has it\n`);
+function initCommand(dir: string) {
+  try {
+    for (const line of init(dir)) print(`${line}\n`);
+  } catch (e) {
+    if (e instanceof ConfigError) usage(e.message);
+    throw e;
   }
-  print('next: write your tests, add TYPESAFE_API_KEY to .env, then run `skillunit check`\n');
 }
 
 // ---------------------------------------------------------------- helpers
