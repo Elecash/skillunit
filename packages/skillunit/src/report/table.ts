@@ -61,29 +61,36 @@ export function table(report: CheckReport, options: ReportOptions): string {
 
   // ---------------------------------------------------------------- sync
   if (sync) {
-    out.push('', `${c.bold('Sync')}  ${c.dim(`since ${sync.base.ref} (${sync.base.commit.slice(0, 7)})`)}`);
+    out.push('', `${c.bold('Sync')}  ${c.dim(sync.lock.found ? shown(sync.lock.path, options) : `no ${shown(sync.lock.path, options)}`)}`);
     const files = [...new Set(sync.units.map((u) => u.file))];
     const w = Math.max(24, ...files.map((f) => f.length)) + 2;
     if (files.length) {
-      out.push(c.dim(`    ${pad('FILE', w)}${padStart('TO REVIEW', 11)}${padStart('EDITED', 8)}${padStart('MARKED', 8)}`));
+      out.push(c.dim(`    ${pad('FILE', w)}${padStart('STALE', 7)}${padStart('NEW', 6)}${padStart('IN SYNC', 9)}`));
       for (const file of files) {
         const mine = sync.units.filter((u) => u.file === file);
-        const n = (status: string) => mine.filter((u) => u.status === status).length;
-        out.push(
-          `  ${mark(n('to-review') ? 'fail' : 'ok')} ${pad(file, w)}${padStart(String(n('to-review')), 11)}${padStart(String(n('edited')), 8)}${padStart(String(n('marked')), 8)}`,
-        );
+        const n = (state: string) => mine.filter((u) => u.state === state).length;
+        const state = n('stale') || n('new') ? 'fail' : 'ok';
+        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('stale')), 7)}${padStart(String(n('new')), 6)}${padStart(String(n('in-sync')), 9)}`);
       }
     }
     const s = sync.summary;
-    out.push(c.dim(`  ${plural(sync.changed.length, 'file')} changed · ${plural(s.units, 'unit')}, ${s.pointing} pointing at changed code`));
-    for (const p of sync.problems) failures.push(problemBlock(sync.skill, p));
+    const notes = [
+      `${plural(s.withSource, 'unit')} with a Source${s.withSource ? `: ${s.inSync} in sync, ${s.stale} stale, ${s.new} new` : ''}`,
+      s.orphans ? `${s.orphans} orphan ${s.orphans === 1 ? 'entry' : 'entries'} in the lock` : '',
+    ].filter(Boolean);
+    out.push(c.dim(`  ${notes.join(' · ')}`));
+    for (const p of sync.problems) {
+      if (p.severity === 'error') failures.push(problemBlock(sync.skill, p));
+      else warnings.push(`${where(sync.skill, p, options)}  ${p.unit ?? '-'}  ${p.message}`);
+    }
   }
 
   // ---------------------------------------------------------------- test
   if (test) {
     const model = test.specs.find((s) => s.model)?.model;
     const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : (model ?? '');
-    out.push('', `${c.bold('Test')}  ${c.dim(label)}`);
+    const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
+    out.push('', `${c.bold('Test')}  ${c.dim(`${label}${since}`)}`);
     const names = test.specs.map((s) => shown(s.spec, options));
     const w = Math.max(24, ...names.map((n) => n.length)) + 2;
     if (test.specs.length === 0) {

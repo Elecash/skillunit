@@ -1,7 +1,8 @@
 /**
  * Every `Source` of a unit exists, as a file or a folder, relative to the source root: the folder
- * of `skillunit.yaml`, or its `sourceRoot`. No git is needed. A code file under a `Source` that
- * the parser cannot read is a warning: its fingerprint keeps its comments until it parses.
+ * of `skillunit.yaml`, or its `sourceRoot`, and a `#name` after a path is a top-level
+ * declaration of that file. No git is needed. A code file under a `Source` that the parser cannot
+ * read is a warning: its fingerprint keeps its comments until it parses.
  */
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
@@ -22,6 +23,7 @@ export function sources(skill: ParsedSkill, sourceRoot: string): Problem[] {
         out.push(at(`\`Source\` ${source.path} does not exist in ${where}`));
       } else {
         const result = fingerprint(source, sourceRoot);
+        if (!result.ok) out.push(at(`\`Source\` ${result.message}`));
         for (const u of result.ok ? result.unparsed : []) {
           out.push(at(`\`Source\` ${u.file} could not be parsed, so a comment edit in it counts as a change until it parses: ${u.error}`, 'warning'));
         }

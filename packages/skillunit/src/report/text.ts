@@ -1,5 +1,5 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
-import { join, relative } from 'node:path';
+import { basename, join, relative } from 'node:path';
 import type { Problem } from '../lint/types.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
@@ -63,7 +63,12 @@ export function statusLine(report: CheckReport): string {
     const warnings = lint.problems.length - errors;
     parts.push(`lint ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}`);
   }
-  if (sync) parts.push(`sync ${sync.ok ? 'ok' : `${plural(sync.problems.length, 'unit')} to review`}`);
+  if (sync) {
+    const review = sync.summary.stale + sync.summary.new;
+    const orphans = sync.summary.orphans ? `, ${sync.summary.orphans} orphan ${sync.summary.orphans === 1 ? 'entry' : 'entries'}` : '';
+    if (!sync.lock.found && sync.summary.withSource) parts.push(`sync no ${basename(sync.lock.path)}`);
+    else parts.push(`sync ${review ? `${plural(review, 'unit')} to review` : 'ok'}${orphans}`);
+  }
   if (test) {
     const s = test.summary;
     const errors = test.specs.filter((x) => x.error).length;

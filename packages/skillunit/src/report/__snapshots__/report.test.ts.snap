@@ -3,18 +3,20 @@
 exports[`reporters > github: every layer with every kind of finding 1`] = `
 "::error file=skills/demo/features/retries.md,line=24,title=SkillUnit lint%3A retry-idempotent-only::breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
 ::warning file=skills/demo/features/retries.md,line=3,title=SkillUnit lint::312 lines; above about 300, look for a split into files of one task each
-::error file=skills/demo/SKILL.md,line=12,title=SkillUnit sync%3A pick-a-client::\`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message
+::error file=skills/demo/SKILL.md,line=12,title=SkillUnit sync%3A pick-a-client::\`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
+::error file=skills/demo/SKILL.md,line=30,title=SkillUnit sync%3A await-every-request::this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
+::warning file=skillunit.lock,line=5,title=SkillUnit sync%3A old-rule::skillunit.lock has an entry for \`old-rule\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it
 ::warning file=skills/demo/specs/retries.yaml,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
 ::error file=skills/demo/specs/retries.yaml,line=19,title=SkillUnit test%3A exact-command::expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%25, none 35%25, loose 2%25%0Ascenario: The user asks to retry a POST.
 ::error file=skills/demo/specs/retries.yaml,line=30,title=SkillUnit test%3A user-asks-for-mutations::expected explain, got none (confidence 0.53, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
 ::error file=skills/demo/specs/broken.yaml,line=1,title=SkillUnit test::could not run: no heading "Gone" in SKILL.md
-FAILED  lint 1 error, 1 warning · sync 1 unit to review · test 2/4 passed (1 spec could not run, 2 borderline)
+FAILED  lint 1 error, 1 warning · sync 2 units to review, 1 orphan entry · test 2/4 passed (1 spec could not run, 2 borderline)
 "
 `;
 
 exports[`reporters > json: every layer with every kind of finding 1`] = `
 "{
-  "schema": 2,
+  "schema": 3,
   "command": "check",
   "ok": false,
   "lint": {
@@ -61,36 +63,56 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
   "sync": {
     "ok": false,
     "skill": "/repo/skills/demo",
-    "base": {
-      "ref": "origin/main",
-      "commit": "0e3adc4f00000000000000000000000000000000"
+    "lock": {
+      "path": "/repo/skillunit.lock",
+      "found": true
     },
-    "changed": [
-      "skills/demo/features/retries.md",
-      "src/retry.ts",
-      "src/create.ts"
-    ],
-    "skillFiles": [
-      "features/retries.md"
-    ],
     "units": [
       {
         "id": "retry-idempotent-only",
         "file": "features/retries.md",
         "line": 20,
+        "state": "in-sync",
         "sources": [
-          "src/retry.ts"
-        ],
-        "status": "edited"
+          {
+            "source": "src/retry.ts",
+            "state": "in-sync",
+            "locked": "41d0c3e2b7a955c0",
+            "current": "41d0c3e2b7a955c0"
+          }
+        ]
       },
       {
         "id": "pick-a-client",
         "file": "SKILL.md",
         "line": 12,
+        "state": "stale",
         "sources": [
-          "src/create.ts"
-        ],
-        "status": "to-review"
+          {
+            "source": "src/create.ts#create",
+            "state": "stale",
+            "locked": "9f2c1a7b04d1e6aa",
+            "current": "0e3adc4f5a6b7c8d"
+          }
+        ]
+      },
+      {
+        "id": "await-every-request",
+        "file": "SKILL.md",
+        "line": 30,
+        "state": "new",
+        "sources": [
+          {
+            "source": "src/request.ts",
+            "state": "new",
+            "current": "1234567890abcdef"
+          }
+        ]
+      }
+    ],
+    "orphans": [
+      {
+        "unit": "old-rule"
       }
     ],
     "problems": [
@@ -100,15 +122,32 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
         "unit": "pick-a-client",
         "severity": "error",
         "rule": "sync",
-        "message": "\`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message"
+        "message": "\`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`"
+      },
+      {
+        "file": "SKILL.md",
+        "line": 30,
+        "unit": "await-every-request",
+        "severity": "error",
+        "rule": "sync",
+        "message": "this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`"
+      },
+      {
+        "file": "../../skillunit.lock",
+        "line": 5,
+        "unit": "old-rule",
+        "severity": "warning",
+        "rule": "sync",
+        "message": "skillunit.lock has an entry for \`old-rule\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it"
       }
     ],
     "summary": {
-      "units": 3,
-      "pointing": 2,
-      "edited": 1,
-      "marked": 0,
-      "toReview": 1
+      "units": 4,
+      "withSource": 3,
+      "inSync": 1,
+      "stale": 1,
+      "new": 1,
+      "orphans": 1
     }
   },
   "test": {
@@ -244,7 +283,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
 
 exports[`reporters > junit: every layer with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="SkillUnit" tests="9" failures="4" errors="1">
+<testsuites name="SkillUnit" tests="11" failures="5" errors="1">
   <testsuite name="lint" tests="2" failures="1" errors="0">
     <testcase name="skills/demo/SKILL.md" classname="lint"/>
     <testcase name="skills/demo/features/retries.md" classname="lint">
@@ -252,12 +291,16 @@ exports[`reporters > junit: every layer with every kind of finding 1`] = `
       <system-out>warning: skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each</system-out>
     </testcase>
   </testsuite>
-  <testsuite name="sync" tests="2" failures="1" errors="0">
-    <testcase name="retry-idempotent-only" classname="sync.skills/demo/features/retries.md">
-      <system-out>src/retry.ts changed; the unit was edited</system-out>
-    </testcase>
+  <testsuite name="sync" tests="4" failures="2" errors="0">
+    <testcase name="retry-idempotent-only" classname="sync.skills/demo/features/retries.md"/>
     <testcase name="pick-a-client" classname="sync.skills/demo/SKILL.md">
-      <failure message="skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message">skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message</failure>
+      <failure message="skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`">skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`</failure>
+    </testcase>
+    <testcase name="await-every-request" classname="sync.skills/demo/SKILL.md">
+      <failure message="skills/demo/SKILL.md:30  await-every-request  this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`">skills/demo/SKILL.md:30  await-every-request  this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`</failure>
+    </testcase>
+    <testcase name="old-rule" classname="sync.skillunit.lock">
+      <system-out>warning: skillunit.lock:5  old-rule  skillunit.lock has an entry for \`old-rule\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it</system-out>
     </testcase>
   </testsuite>
   <testsuite name="test skills/demo/specs/retries.yaml" tests="4" failures="2" errors="0">
@@ -299,10 +342,10 @@ Lint  skills/demo
   ✓ features/retries.md              0         0
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
-Sync  since origin/main (0e3adc4)
-    FILE                        TO REVIEW  EDITED  MARKED
-  ✓ features/retries.md                 0       1       0
-  3 files changed · 3 units, 1 pointing at changed code
+Sync  skillunit.lock
+    FILE                        STALE   NEW  IN SYNC
+  ✓ features/retries.md             0     0        1
+  1 unit with a Source: 1 in sync, 0 stale, 0 new
 
 Test  jev-1.14.0
     SPEC                              PASSING  FAILING  ERRORS  BORDERLINE
@@ -341,11 +384,11 @@ exports[`reporters > table: colour on a terminal 1`] = `
   [31m✗[0m features/retries.md              1         1
 [2m  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh[0m
 
-[1mSync[0m  [2msince origin/main (0e3adc4)[0m
-[2m    FILE                        TO REVIEW  EDITED  MARKED[0m
-  [32m✓[0m features/retries.md                 0       1       0
-  [31m✗[0m SKILL.md                            1       0       0
-[2m  3 files changed · 3 units, 2 pointing at changed code[0m
+[1mSync[0m  [2mskillunit.lock[0m
+[2m    FILE                        STALE   NEW  IN SYNC[0m
+  [32m✓[0m features/retries.md             0     0        1
+  [31m✗[0m SKILL.md                        1     1        0
+[2m  3 units with a Source: 1 in sync, 1 stale, 1 new · 1 orphan entry in the lock[0m
 
 [1mTest[0m  [2mjev-1.14.0[0m
 [2m    SPEC                              PASSING  FAILING  ERRORS  BORDERLINE[0m
@@ -357,9 +400,11 @@ exports[`reporters > table: colour on a terminal 1`] = `
 
   1) skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
 
-  2) skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message
+  2) skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
 
-  3) skills/demo/specs/retries.yaml:19  exact-command
+  3) skills/demo/SKILL.md:30  await-every-request  this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
+
+  4) skills/demo/specs/retries.yaml:19  exact-command
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
@@ -367,7 +412,7 @@ exports[`reporters > table: colour on a terminal 1`] = `
      got:       exact · confidence 0.44, threshold 0.50 · right answer, too little confidence, borderline: the next run may pass it
                 exact 63% · none 35% · loose 2%
 
-  4) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
+  5) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
@@ -376,7 +421,7 @@ exports[`reporters > table: colour on a terminal 1`] = `
                 none 66% · explain 34% · tool 0%
      phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
 
-  5) skills/demo/specs/broken.yaml  could not run
+  6) skills/demo/specs/broken.yaml  could not run
      no heading "Gone" in SKILL.md
 
 [1m[33mBorderline[0m[0m  [2mpassed, but within 0.13 of the threshold; the next run may fail them[0m
@@ -384,8 +429,9 @@ exports[`reporters > table: colour on a terminal 1`] = `
 
 [1m[33mWarnings[0m[0m
   skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each
+  skillunit.lock:5  old-rule  skillunit.lock has an entry for \`old-rule\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it
 
-[31mFAILED  lint 1 error, 1 warning · sync 1 unit to review · test 2/4 passed (1 spec could not run, 2 borderline)[0m
+[31mFAILED  lint 1 error, 1 warning · sync 2 units to review, 1 orphan entry · test 2/4 passed (1 spec could not run, 2 borderline)[0m
 "
 `;
 
@@ -397,11 +443,11 @@ Lint  skills/demo
   ✗ features/retries.md              1         1
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
-Sync  since origin/main (0e3adc4)
-    FILE                        TO REVIEW  EDITED  MARKED
-  ✓ features/retries.md                 0       1       0
-  ✗ SKILL.md                            1       0       0
-  3 files changed · 3 units, 2 pointing at changed code
+Sync  skillunit.lock
+    FILE                        STALE   NEW  IN SYNC
+  ✓ features/retries.md             0     0        1
+  ✗ SKILL.md                        1     1        0
+  3 units with a Source: 1 in sync, 1 stale, 1 new · 1 orphan entry in the lock
 
 Test  jev-1.14.0
     SPEC                              PASSING  FAILING  ERRORS  BORDERLINE
@@ -413,9 +459,11 @@ Failures
 
   1) skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
 
-  2) skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts\` changed since 0e3adc4 and this unit did not; review it, then edit it or add \`Skill-reviewed: pick-a-client\` to a commit message
+  2) skills/demo/SKILL.md:12  pick-a-client  \`src/create.ts#create\` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
 
-  3) skills/demo/specs/retries.yaml:19  exact-command
+  3) skills/demo/SKILL.md:30  await-every-request  this unit is not in skillunit.lock; read the code against the unit, edit the unit if it is wrong, then accept it with \`skillunit review\`
+
+  4) skills/demo/specs/retries.yaml:19  exact-command
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
@@ -423,7 +471,7 @@ Failures
      got:       exact · confidence 0.44, threshold 0.50 · right answer, too little confidence, borderline: the next run may pass it
                 exact 63% · none 35% · loose 2%
 
-  4) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
+  5) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
@@ -432,7 +480,7 @@ Failures
                 none 66% · explain 34% · tool 0%
      phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
 
-  5) skills/demo/specs/broken.yaml  could not run
+  6) skills/demo/specs/broken.yaml  could not run
      no heading "Gone" in SKILL.md
 
 Borderline  passed, but within 0.13 of the threshold; the next run may fail them
@@ -440,7 +488,8 @@ Borderline  passed, but within 0.13 of the threshold; the next run may fail them
 
 Warnings
   skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each
+  skillunit.lock:5  old-rule  skillunit.lock has an entry for \`old-rule\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it
 
-FAILED  lint 1 error, 1 warning · sync 1 unit to review · test 2/4 passed (1 spec could not run, 2 borderline)
+FAILED  lint 1 error, 1 warning · sync 2 units to review, 1 orphan entry · test 2/4 passed (1 spec could not run, 2 borderline)
 "
 `;

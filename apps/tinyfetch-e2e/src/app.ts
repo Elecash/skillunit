@@ -1,6 +1,7 @@
 /**
  * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is,
- * a scenario changes it and commits, and `run` calls the built SkillUnit CLI on the copy.
+ * with a `skillunit.lock` that accepts every unit, a scenario changes it and commits, and `run`
+ * calls the built SkillUnit CLI on the copy.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -43,6 +44,7 @@ export class App {
     mkdirSync(join(this.root, 'node_modules'));
     symlinkSync(typescript, join(this.root, 'node_modules', 'typescript'), 'dir');
     writeFileSync(join(this.root, '.gitignore'), 'node_modules\n');
+    this.accept();
     this.git('init', '-q');
     this.git('symbolic-ref', 'HEAD', 'refs/heads/main');
     this.commit('base');
@@ -81,14 +83,21 @@ export class App {
     this.write(path, text.replace(from, to));
   }
 
+  /** `skillunit review --accept <ids>`, or `--accept-all` with no ids. Throws when it fails. */
+  accept(...ids: string[]) {
+    const args = ids.length ? ['--accept', ...ids] : ['--accept-all'];
+    const result = spawnSync(process.execPath, [CLI, 'review', ...args], { cwd: this.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+    if (result.status !== 0) throw new Error(`skillunit review ${args.join(' ')} failed (exit ${result.status}): ${result.stdout}${result.stderr}`.trim());
+  }
+
   commit(message: string) {
     this.git('add', '-A');
     this.git('commit', '-q', '--allow-empty', '-m', message);
   }
 
-  /** Runs `skillunit <command> --reporter json` on the copy. `--base` is the base commit. */
+  /** Runs `skillunit <command> --reporter json` on the copy. With `--changed`, `--base` is the base commit. */
   run(command: 'check' | 'lint' | 'sync' | 'test', ...args: string[]): Run {
-    const base = command === 'lint' ? [] : ['--base', this.base];
+    const base = args.includes('--changed') ? ['--base', this.base] : [];
     const key = apiKey();
     const result = spawnSync(process.execPath, [CLI, command, '--reporter', 'json', ...base, ...args], {
       cwd: this.root,

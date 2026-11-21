@@ -46,6 +46,8 @@ export interface Config {
    * file, or `sourceRoot` in it; the current folder when there is no config file.
    */
   sourceRoot: string;
+  /** Absolute folder of the config file, when there is one. `skillunit.lock` sits there. */
+  configDir?: string;
 }
 
 /**
@@ -92,6 +94,7 @@ export function loadConfig(path?: string): Config {
   }
 
   const root = dirname(file);
+  config.configDir = root;
   config.skill = root;
   config.specs = [resolve(root, DEFAULT_SPECS)];
 

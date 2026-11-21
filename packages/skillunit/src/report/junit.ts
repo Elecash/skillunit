@@ -1,7 +1,7 @@
 /**
  * JUnit XML, for CI systems that show test results from it. One suite per layer: lint has one
- * case per file, sync one per unit that points at changed code, and test one suite per spec with
- * one case per test. Borderline verdicts carry a `borderline` property.
+ * case per file, sync one per unit with a `Source` (and one per finding about the lock), and test
+ * one suite per spec with one case per test. Borderline verdicts carry a `borderline` property.
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
@@ -45,19 +45,20 @@ export function junit(report: CheckReport, options: ReportOptions): string {
 
   if (report.sync) {
     const { sync } = report;
-    suites.push({
-      name: 'sync',
-      cases: sync.units.map((u) => {
-        const c: Case = { name: u.id, classname: `sync.${shown(join(sync.skill, u.file), options)}` };
-        const problem = sync.problems.find((p) => p.unit === u.id);
-        if (problem) c.failure = line(sync.skill, problem);
-        else c.out = `${u.sources.join(', ')} changed; ${u.status === 'edited' ? 'the unit was edited' : 'a Skill-reviewed trailer names it'}`;
-        return c;
-      }),
+    const cases: Case[] = sync.units.map((u) => {
+      const c: Case = { name: u.id, classname: `sync.${shown(join(sync.skill, u.file), options)}` };
+      const problem = sync.problems.find((p) => p.unit === u.id && p.severity === 'error');
+      if (problem) c.failure = line(sync.skill, problem);
+      return c;
     });
-    for (const p of sync.problems.filter((p) => !sync.units.some((u) => u.id === p.unit))) {
-      suites.at(-1)!.cases.push({ name: p.unit ?? p.file, classname: 'sync', failure: line(sync.skill, p) });
+    // Findings about the lock: a missing lock fails; an orphan entry is a warning.
+    for (const p of sync.problems.filter((p) => p.file !== sync.units.find((u) => u.id === p.unit)?.file)) {
+      const c: Case = { name: p.unit ?? p.file, classname: `sync.${shown(join(sync.skill, p.file), options)}` };
+      if (p.severity === 'error') c.failure = line(sync.skill, p);
+      else c.out = `warning: ${line(sync.skill, p)}`;
+      cases.push(c);
     }
+    suites.push({ name: 'sync', cases });
   }
 
   if (report.test) {

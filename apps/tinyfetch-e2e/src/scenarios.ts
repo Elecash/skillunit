@@ -67,7 +67,7 @@ export const scenarios: Scenario[] = [
       app.commit('Rename create to createClient');
     },
     expect: {
-      lint: ['types skill/features/clients.md - TS2305'],
+      lint: ['types skill/features/clients.md - TS2305', 'source skill/features/clients.md one-client-per-api'],
       sync: ['await-every-request', 'one-client-per-api'],
     },
   },
@@ -174,20 +174,21 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'comment-only change',
-    change: 'edit a comment in a `Source` file (known v1 limit: sync compares files, so it reports this)',
+    change: 'edit a comment in a `Source` file: its fingerprint leaves comments out',
     apply(app) {
       app.edit('src/retry.ts', 'export const DEFAULT_RETRY_DELAY = 300;', '// Milliseconds.\nexport const DEFAULT_RETRY_DELAY = 300;');
       app.commit('Comment');
     },
-    expect: { sync: ['retry-idempotent-only'] },
+    expect: {},
   },
   {
     name: 'reviewed refactor',
-    change: 'change a `Source`, and add the `Skill-reviewed` trailer',
+    change: 'change a `Source`, then `skillunit review --accept` its unit',
     apply(app) {
       app.edit('src/retry.ts', 'const retryable = !isHttpError(error) || error.status >= 500;', 'const serverSide = !isHttpError(error) || error.status >= 500;');
       app.edit('src/retry.ts', '!retryable ||', '!serverSide ||');
-      app.commit('Rename a variable\n\nThe behaviour is the same.\n\nSkill-reviewed: retry-idempotent-only');
+      app.accept('retry-idempotent-only');
+      app.commit('Rename a variable\n\nThe behaviour is the same.');
     },
     expect: {},
   },
@@ -196,7 +197,7 @@ export const scenarios: Scenario[] = [
       name: `formatter run (proseWrap: ${proseWrap})`,
       change: `run Prettier over the skill with proseWrap ${proseWrap}, next to a change in a Source file`,
       async apply(app) {
-        app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 10_000; // ms');
+        app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 10000;');
         await prettier(app, SKILL_FILES, proseWrap);
         app.commit(`Format the skill (${proseWrap})`);
       },

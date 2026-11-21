@@ -161,6 +161,19 @@ describe('Source paths', () => {
     expect(lint(join(root, 'skill')).problems.filter((p) => p.rule === 'source')).toEqual([]);
   });
 
+  it('reports a #symbol that is not a top-level declaration of its file', () => {
+    const root = skillDir({
+      'src/retry.ts': "export const retry = 1;\nexport { helper } from './helper';\n",
+      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/retry.ts#retry, src/retry.ts#gone, src/retry.ts#helper, src#retry\n',
+    });
+    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
+    expect(problems.map((p) => `${p.severity} ${p.line} ${p.unit}: ${p.message}`)).toEqual([
+      'error 13 a: `Source` src/retry.ts has no top-level declaration `gone`',
+      "error 13 a: `Source` src/retry.ts re-exports `helper` from ./helper and does not declare it; point `Source` at the file that declares it",
+      'error 13 a: `Source` src is a folder, so `#retry` names nothing',
+    ]);
+  });
+
   it('warns about a code file under a Source that cannot be parsed, alone or in a folder', () => {
     const root = skillDir({
       'src/broken.ts': 'export function f( {\n',

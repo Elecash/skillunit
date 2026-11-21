@@ -111,6 +111,24 @@ export function normalizeText(text: string, file: string, onUnparsed?: (error: s
 /** `\r\n` and a lone `\r` made `\n`. */
 const toLf = (text: string) => text.replace(/\r\n?/g, '\n');
 
+/**
+ * The lines, 1-based and inclusive, from the first to the last top-level declaration called
+ * `name`, for showing a symbol in a review. Null when the file is not code, does not parse, or
+ * has no such declaration. Line endings count as in a fingerprint: `\r\n` is one break.
+ */
+export function declarationLines(text: string, file: string, name: string): { first: number; last: number } | null {
+  if (!isCode(file)) return null;
+  const lf = toLf(text);
+  const parsed = parseCode(lf, file);
+  if ('error' in parsed) return null;
+  const parts = declarations(parsed.ast, name).flat();
+  if (!parts.length) return null;
+  const start = Math.min(...parts.map((r) => r[0]));
+  const end = Math.max(...parts.map((r) => r[1]));
+  const lineAt = (offset: number) => lf.slice(0, offset).split('\n').length;
+  return { first: lineAt(start), last: lineAt(Math.max(start, end - 1)) };
+}
+
 const hash = (data: string | Buffer) => createHash('sha256').update(data).digest('hex').slice(0, 16);
 
 const isCode = (file: string) => CODE_EXTENSIONS.includes(extname(file).toLowerCase());

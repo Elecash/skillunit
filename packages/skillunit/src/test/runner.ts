@@ -36,6 +36,8 @@ export interface Report {
   /** What the verdicts were judged with. */
   thresholds: Thresholds;
   specs: SpecReport[];
+  /** With `--changed`: the base the changed skill files were found against. */
+  changed?: { ref: string; commit: string };
   summary: {
     tests: number;
     passed: number;

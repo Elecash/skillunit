@@ -6,8 +6,11 @@ import type { LintResult } from '../lint/types.js';
 import type { SyncResult } from '../sync/sync.js';
 import type { Report as TestReport } from '../test/runner.js';
 
-/** Bumped only when a field changes meaning or disappears. 1 was the `run --json` report. */
-export const REPORT_SCHEMA = 2;
+/**
+ * Bumped only when a field changes meaning or disappears. 1 was the `run --json` report; 2 had
+ * sync compare git commits; 3 has it compare `skillunit.lock`.
+ */
+export const REPORT_SCHEMA = 3;
 
 export type Command = 'lint' | 'sync' | 'test' | 'check';
 

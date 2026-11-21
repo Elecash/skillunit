@@ -1,25 +1,43 @@
 /**
- * `skillunit sync`: reports every unit whose `Source` changed between a base commit and HEAD
- * while the unit itself did not. A unit counts as reviewed when its text changed in the same
- * range (whitespace aside), or when a commit in the range carries `Skill-reviewed: <unit-id>`.
- * Nothing is stored in the repository.
+ * `skillunit sync`: compares the fingerprint of each unit's `Source` with the one in
+ * `skillunit.lock`, taken when the unit was last reviewed. No git is needed.
+ *
+ * | State   | Meaning                                                   | Severity |
+ * |---------|-----------------------------------------------------------|----------|
+ * | in sync | every `Source` fingerprint equals the lock                | none     |
+ * | stale   | a fingerprint differs: the code changed since the review  | error    |
+ * | new     | the unit, or one of its `Source` values, is not in the lock | error  |
+ * | orphan  | the lock names a unit or a `Source` that no longer exists | warning  |
+ *
+ * Editing a unit does not clear it: a stale unit is accepted in `skillunit review`.
  */
-import { realpathSync } from 'node:fs';
-import { isAbsolute, relative, resolve, sep } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { basename, relative, resolve } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { ConfigError } from '../lint/types.js';
-import { parseFile, type Unit } from '../units/index.js';
-import { Git } from './git.js';
-
-export const TRAILER = 'Skill-reviewed';
+import { parseSkill } from '../units/index.js';
+import { fingerprint } from './fingerprint.js';
+import { LOCK_FILE, lockLine, readLock, sourceKey } from './lock.js';
 
 export interface SyncOptions {
   /** Folder of the skill. */
   skill: string;
   /** Folder `Source:` paths start from. */
   sourceRoot: string;
-  /** Ref to compare HEAD with; sync uses its merge base with HEAD. Default: the default branch. */
-  base?: string;
+  /** Path of `skillunit.lock`. */
+  lock: string;
+}
+
+export type UnitState = 'in-sync' | 'stale' | 'new';
+
+export interface SyncSource {
+  /** The `Source` as the unit writes it, and as the lock keys it. */
+  source: string;
+  state: UnitState;
+  /** The fingerprint in the lock, when there is one. */
+  locked?: string;
+  /** The fingerprint of the code now; absent when it has none, with `error` saying why. */
+  current?: string;
+  error?: string;
 }
 
 export interface SyncUnit {
@@ -27,154 +45,122 @@ export interface SyncUnit {
   /** Skill file of the unit, from the skill folder. */
   file: string;
   line: number;
-  /** `Source` paths that changed, as the unit writes them. */
-  sources: string[];
-  status: 'edited' | 'marked' | 'to-review';
+  /** Stale when a source is stale, else new when one is new, else in sync. */
+  state: UnitState;
+  sources: SyncSource[];
+}
+
+/** A lock entry with nothing left to describe: a unit, or one `Source` of a unit. */
+export interface SyncOrphan {
+  unit: string;
+  /** Absent when the whole unit is gone, or has no `Source` any more. */
+  source?: string;
 }
 
 export interface SyncResult {
+  /** No errors; orphans are warnings. */
   ok: boolean;
   /** Absolute path of the skill folder. */
   skill: string;
-  /** The ref given or found, and the merge-base commit the diff starts from. */
-  base: { ref: string; commit: string };
-  /** Files changed in the range, from the repository's top folder. */
-  changed: string[];
-  /** Of those, the files inside the skill folder, from the skill folder. */
-  skillFiles: string[];
-  /** Every unit with a `Source` that changed, and what made it reviewed or not. */
+  /** Absolute path of the lock, and whether it exists. */
+  lock: { path: string; found: boolean };
+  /** Every unit with a `Source`, in skill order. */
   units: SyncUnit[];
+  orphans: SyncOrphan[];
   problems: Problem[];
   summary: {
+    /** Units in the skill. */
     units: number;
-    /** Units with a `Source` that changed in the range. */
-    pointing: number;
-    /** Of those, units whose own text changed too. */
-    edited: number;
-    /** Of those, units a `Skill-reviewed` trailer names. */
-    marked: number;
-    /** Of those, units nobody reviewed: each one is a problem. */
-    toReview: number;
+    /** Of those, units with a `Source`: the ones sync compares. */
+    withSource: number;
+    inSync: number;
+    stale: number;
+    new: number;
+    orphans: number;
   };
 }
 
 export function sync(options: SyncOptions): SyncResult {
-  const skillDir = realpathSync(options.skill);
-  const git = new Git(skillDir);
-  const top = git.top();
-  const ref = options.base ?? defaultBase(git);
-  if (!git.commit(ref)) throw new ConfigError(`--base ${ref} is not a commit in this repository`);
-  const base = git.mergeBase(ref, 'HEAD');
-
-  const changed = git.changedFiles(base, 'HEAD');
-  const changedSet = new Set(changed);
-  const reviewed = new Set(git.trailers(TRAILER, base, 'HEAD').flatMap((v) => v.split(',')).map((id) => id.trim()).filter(Boolean));
-
-  const skillPath = toGit(top, skillDir);
-  const head = unitsAt(git, 'HEAD', skillPath);
-  const before = unitsAt(git, base, skillPath);
-  const sourceRoot = realOrResolved(options.sourceRoot);
+  const skillDir = resolve(options.skill);
+  const skill = parseSkill(skillDir);
+  const lock = readLock(options.lock);
+  const lockText = lock ? readFileSync(options.lock, 'utf8') : '';
+  // Problems point at a skill file; one about the lock points at it from the skill folder.
+  const lockFile = relative(skillDir, resolve(options.lock)).split('\\').join('/');
+  const name = basename(options.lock) || LOCK_FILE;
 
   const problems: Problem[] = [];
   const units: SyncUnit[] = [];
-  const summary = { units: head.size, pointing: 0, edited: 0, marked: 0, toReview: 0 };
-  const prefix = skillPath ? `${skillPath}/` : '';
-  const skillFiles = changed.filter((c) => c.startsWith(prefix)).map((c) => c.slice(prefix.length));
-  const short = base.slice(0, 7);
+  const seen = new Set<string>();
+  for (const unit of skill.units) {
+    if (!unit.source.length || seen.has(unit.id)) continue; // a repeated id is a lint error
+    seen.add(unit.id);
+    const locked = lock?.units[unit.id];
+    const sources = unit.source.map((ref): SyncSource => {
+      const source = sourceKey(ref);
+      const before = locked?.[source];
+      const now = fingerprint(ref, options.sourceRoot);
+      const state: UnitState = before === undefined ? 'new' : now.ok && now.fingerprint === before ? 'in-sync' : 'stale';
+      return { source, state, ...(before ? { locked: before } : {}), ...(now.ok ? { current: now.fingerprint } : { error: now.message }) };
+    });
+    const state: UnitState = sources.some((s) => s.state === 'stale') ? 'stale' : sources.some((s) => s.state === 'new') ? 'new' : 'in-sync';
+    units.push({ id: unit.id, file: unit.file, line: unit.line, state, sources });
+    if (lock && state !== 'in-sync') {
+      problems.push({ file: unit.file, line: unit.line, unit: unit.id, severity: 'error', rule: 'sync', message: unitMessage(sources, locked !== undefined, name) });
+    }
+  }
 
-  for (const unit of head.values()) {
-    const line = unit.labels.find((l) => l.name === 'Source')?.line ?? unit.line;
-    const touched: string[] = [];
-    for (const source of unit.source) {
-      if (isAbsolute(source.path)) continue; // lint reports it
-      const path = toGit(top, resolve(sourceRoot, source.path));
-      if (path.startsWith('..')) {
-        problems.push({
-          file: unit.file,
-          line,
-          unit: unit.id,
-          severity: 'error',
-          rule: 'sync',
-          message: `\`Source\` ${source.path} is outside the git repository, so sync cannot tell when it changes`,
-        });
+  const orphans: SyncOrphan[] = [];
+  if (lock) {
+    const byId = new Map(units.map((u) => [u.id, u]));
+    for (const [id, entry] of Object.entries(lock.units)) {
+      const unit = byId.get(id);
+      const at = { file: lockFile, line: lockLine(lockText, id), unit: id, severity: 'warning' as const, rule: 'sync' as const };
+      if (!unit) {
+        orphans.push({ unit: id });
+        problems.push({ ...at, message: `${name} has an entry for \`${id}\`, and no unit with a \`Source\` has that id; \`skillunit review --prune\` drops it` });
         continue;
       }
-      if (changedSet.has(path) || changed.some((c) => c.startsWith(`${path}/`))) touched.push(source.path);
+      for (const source of Object.keys(entry)) {
+        if (unit.sources.some((s) => s.source === source)) continue;
+        orphans.push({ unit: id, source });
+        problems.push({ ...at, message: `${name} has \`${source}\` for \`${id}\`, and the unit no longer lists it; \`skillunit review --prune\` drops it` });
+      }
     }
-    if (touched.length === 0) continue;
-
-    summary.pointing++;
-    const old = before.get(unit.id);
-    const status: SyncUnit['status'] = !old || normalize(old.text) !== normalize(unit.text) ? 'edited' : reviewed.has(unit.id) ? 'marked' : 'to-review';
-    units.push({ id: unit.id, file: unit.file, line: unit.line, sources: touched, status });
-    if (status === 'edited') {
-      summary.edited++;
-    } else if (status === 'marked') {
-      summary.marked++;
-    } else {
-      summary.toReview++;
-      const what = touched.map((t) => `\`${t}\``).join(', ');
-      problems.push({
-        file: unit.file,
-        line: unit.line,
-        unit: unit.id,
-        severity: 'error',
-        rule: 'sync',
-        message: `${what} changed since ${short} and this unit did not; review it, then edit it or add \`${TRAILER}: ${unit.id}\` to a commit message`,
-      });
-    }
+  } else if (units.length) {
+    problems.push({
+      file: lockFile,
+      line: 1,
+      severity: 'error',
+      rule: 'sync',
+      message: `there is no ${name} yet, and ${units.length === 1 ? '1 unit has' : `${units.length} units have`} a \`Source\`. Read each unit against its code, then run \`skillunit review --accept-all\` to write it`,
+    });
   }
 
-  problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  return { ok: problems.length === 0, skill: skillDir, base: { ref, commit: base }, changed, skillFiles, units, problems, summary };
+  const count = (state: UnitState) => units.filter((u) => u.state === state).length;
+  return {
+    ok: !problems.some((p) => p.severity === 'error'),
+    skill: skillDir,
+    lock: { path: options.lock, found: lock !== null },
+    units,
+    orphans,
+    problems,
+    summary: { units: skill.units.length, withSource: units.length, inSync: count('in-sync'), stale: count('stale'), new: count('new'), orphans: orphans.length },
+  };
 }
 
-/**
- * The branch to compare with: the pull request's target in GitHub Actions, else the remote's
- * default branch, else a local `main` or `master`.
- */
-export function defaultBase(git: Git): string {
-  const candidates: string[] = [];
-  const target = process.env.GITHUB_BASE_REF;
-  if (target) candidates.push(`origin/${target}`);
-  const remoteHead = git.run(['symbolic-ref', '--quiet', 'refs/remotes/origin/HEAD'], true)?.trim();
-  if (remoteHead) candidates.push(remoteHead.replace(/^refs\/remotes\//, ''));
-  candidates.push('origin/main', 'origin/master', 'main', 'master');
-  const found = candidates.find((c) => git.commit(c));
-  if (!found) throw new ConfigError('could not find the default branch to compare with; pass --base <ref>');
-  return found;
-}
-
-/**
- * The unit text with every run of whitespace, line breaks included, made one space. A formatter
- * that rewraps a long line, adds blank lines or changes indentation does not count as an edit.
- */
-export function normalize(text: string): string {
-  return text.replace(/\s+/g, ' ').trim();
-}
-
-/** Units of the skill as committed in `commit`, by id. The first unit wins when ids repeat. */
-function unitsAt(git: Git, commit: string, skillPath: string): Map<string, Unit> {
-  const out = new Map<string, Unit>();
-  const prefix = skillPath ? `${skillPath}/` : '';
-  for (const path of git.files(commit, skillPath)) {
-    const rel = path.slice(prefix.length);
-    if (!rel.endsWith('.md') || rel.split('/').some((part) => part.startsWith('.') || part === 'node_modules')) continue;
-    for (const unit of parseFile(git.show(commit, path), rel).units) if (!out.has(unit.id)) out.set(unit.id, unit);
-  }
-  return out;
-}
-
-/** Path from the repository's top folder, with `/`; '' for the top itself. */
-function toGit(top: string, path: string): string {
-  return relative(top, path).split(sep).join('/');
-}
-
-/** Real path when it exists, so it compares with git's top folder; resolved otherwise. */
-function realOrResolved(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolve(path);
-  }
+/** What is wrong with a unit that is not in sync, and what to do. */
+function unitMessage(sources: SyncSource[], inLock: boolean, lock: string): string {
+  const todo = 'read the code against the unit, edit the unit if it is wrong, then accept it with `skillunit review`';
+  if (!inLock) return `this unit is not in ${lock}; ${todo}`;
+  const list = (items: SyncSource[]) => items.map((s) => `\`${s.source}\``).join(', ');
+  const changed = sources.filter((s) => s.state === 'stale' && !s.error);
+  const unreadable = sources.filter((s) => s.error);
+  const added = sources.filter((s) => s.state === 'new' && !s.error);
+  const parts = [
+    changed.length ? `${list(changed)} changed since the unit was last reviewed` : '',
+    ...unreadable.map((s) => `\`${s.source}\` has no fingerprint: ${s.error}`),
+    added.length ? `${list(added)} ${added.length === 1 ? 'is a new `Source`' : 'are new `Source` values'}, not in ${lock}` : '',
+  ].filter(Boolean);
+  return `${parts.join('; ')}; ${todo}`;
 }

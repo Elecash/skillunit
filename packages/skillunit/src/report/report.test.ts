@@ -37,27 +37,30 @@ const lint: LintResult = {
   },
 };
 
+const REVIEW = 'read the code against the unit, edit the unit if it is wrong, then accept it with `skillunit review`';
 const sync: SyncResult = {
   ok: false,
   skill,
-  base: { ref: 'origin/main', commit: '0e3adc4f00000000000000000000000000000000' },
-  changed: ['skills/demo/features/retries.md', 'src/retry.ts', 'src/create.ts'],
-  skillFiles: ['features/retries.md'],
+  lock: { path: '/repo/skillunit.lock', found: true },
   units: [
-    { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, sources: ['src/retry.ts'], status: 'edited' },
-    { id: 'pick-a-client', file: 'SKILL.md', line: 12, sources: ['src/create.ts'], status: 'to-review' },
+    { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'in-sync', sources: [{ source: 'src/retry.ts', state: 'in-sync', locked: '41d0c3e2b7a955c0', current: '41d0c3e2b7a955c0' }] },
+    { id: 'pick-a-client', file: 'SKILL.md', line: 12, state: 'stale', sources: [{ source: 'src/create.ts#create', state: 'stale', locked: '9f2c1a7b04d1e6aa', current: '0e3adc4f5a6b7c8d' }] },
+    { id: 'await-every-request', file: 'SKILL.md', line: 30, state: 'new', sources: [{ source: 'src/request.ts', state: 'new', current: '1234567890abcdef' }] },
   ],
+  orphans: [{ unit: 'old-rule' }],
   problems: [
+    { file: 'SKILL.md', line: 12, unit: 'pick-a-client', severity: 'error', rule: 'sync', message: `\`src/create.ts#create\` changed since the unit was last reviewed; ${REVIEW}` },
+    { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', rule: 'sync', message: `this unit is not in skillunit.lock; ${REVIEW}` },
     {
-      file: 'SKILL.md',
-      line: 12,
-      unit: 'pick-a-client',
-      severity: 'error',
+      file: '../../skillunit.lock',
+      line: 5,
+      unit: 'old-rule',
+      severity: 'warning',
       rule: 'sync',
-      message: '`src/create.ts` changed since 0e3adc4 and this unit did not; review it, then edit it or add `Skill-reviewed: pick-a-client` to a commit message',
+      message: 'skillunit.lock has an entry for `old-rule`, and no unit with a `Source` has that id; `skillunit review --prune` drops it',
     },
   ],
-  summary: { units: 3, pointing: 2, edited: 1, marked: 0, toReview: 1 },
+  summary: { units: 4, withSource: 3, inSync: 1, stale: 1, new: 1, orphans: 1 },
 };
 
 const verdict = { scenario: 'The user asks to retry a POST.', question: 'What does the skill say?', weak: false, borderline: false };
@@ -138,7 +141,7 @@ describe('reporters', () => {
   it('table and github: a clean check', () => {
     const clean = buildReport('check', {
       lint: { ...lint, ok: true, problems: [] },
-      sync: { ...sync, ok: true, problems: [], units: [{ ...sync.units[0]! }], summary: { ...sync.summary, pointing: 1, toReview: 0 } },
+      sync: { ...sync, ok: true, problems: [], orphans: [], units: [{ ...sync.units[0]! }], summary: { ...sync.summary, withSource: 1, stale: 0, new: 0, orphans: 0 } },
       test: { ...test, ok: true, specs: [{ ...test.specs[0]!, verdicts: test.specs[0]!.verdicts.slice(0, 2) }], summary: { ...test.summary, tests: 2, passed: 2, borderline: 1, skipped: 0 } },
     });
     expect(clean.ok).toBe(true);
@@ -164,9 +167,14 @@ describe('reporters', () => {
     expect(render(none, 'table', options)).toBe('\nTest  nothing to run\n  0 tests · 7 specs left out by --changed\n\nOK  test 0/0 passed\n');
   });
 
+  it('table: test --changed names its base', () => {
+    const changed = buildReport('test', { test: { ...test, ok: true, specs: [], changed: { ref: 'origin/main', commit: '0e3adc4f00000000' } } });
+    expect(render(changed, 'table', options).split('\n')[1]).toBe('Test  nothing to run · changed since origin/main (0e3adc4)');
+  });
+
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
-    expect(json).toMatchObject({ schema: 2, command: 'check', ok: false });
+    expect(json).toMatchObject({ schema: 3, command: 'check', ok: false });
     expect(json.test.specs[0].verdicts[1].borderline).toBe(true);
   });
 
