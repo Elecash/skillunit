@@ -81,3 +81,11 @@ export function statusLine(report: CheckReport): string {
   }
   return `${report.ok ? 'OK' : 'FAILED'}  ${parts.join(' · ')}`;
 }
+
+/**
+ * A message cut to `max` characters for a terminal. A `tsc` message with its continuation
+ * lines can run to thousands; the JSON report keeps it whole.
+ */
+export function brief(message: string, max = 400): string {
+  return message.length <= max ? message : `${message.slice(0, max - 1).trimEnd()}…`;
+}

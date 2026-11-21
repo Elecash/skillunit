@@ -29,6 +29,7 @@ const lint: LintResult = {
     units: 3,
     typescript: '5.6.3',
     typeChecked: 6,
+    notParsed: 0,
     commandChecked: 0,
     unchecked: { sh: 2 },
     noCheck: 1,

@@ -48,6 +48,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "units": 3,
       "typescript": "5.6.3",
       "typeChecked": 6,
+      "notParsed": 0,
       "commandChecked": 0,
       "unchecked": {
         "sh": 2

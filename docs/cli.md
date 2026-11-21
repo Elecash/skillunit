@@ -97,6 +97,11 @@ size of each. It needs no key. `check --dry-run` also runs lint and sync in full
   each option. Colour is on in a terminal, and off with `NO_COLOR`.
 - `json`: the whole report as one object, `{ schema, command, ok, lint, sync, test }`, with only
   the layers that ran. `schema` changes only when a field changes meaning or disappears.
+  Each lint problem has `file`, `line`, `unit` when the line belongs to one, `severity`, `rule`
+  and `message`, plus `code`, such as `TS2322`, when the type-check found it. `lint.summary`
+  counts the examples that went through the type-check (`typeChecked`) apart from those that did
+  not parse (`notParsed`). The table reporter cuts a message after 400 characters; the JSON
+  keeps it whole.
 - `junit`: JUnit XML, one suite per layer and one per spec, for CI systems that read it.
 - `github`: GitHub Actions annotations, so each finding shows on its file and line in the pull
   request, then the status line.

@@ -32,6 +32,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     files: skill.files.length,
     units: skill.units.length,
     typeChecked: 0,
+    notParsed: 0,
     commandChecked: 0,
     unchecked: {},
     noCheck: 0,
@@ -120,18 +121,21 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
     severity: 'error',
     rule: 'types',
     message: `the Setup ${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`,
+    code: d.code,
   });
 
   jobs.forEach((job, i) => {
     const diagnostics = run.diagnostics[i]!;
     if (job.kind === 'example') {
-      summary.typeChecked++;
+      // A block whose code, or whose `Setup`, did not parse never reached the type-check.
+      if (diagnostics.some((d) => d.syntax)) summary.notParsed++;
+      else summary.typeChecked++;
       for (const d of diagnostics) {
         if (d.inSetup || job.isSetup) {
           report(setupProblem(job.file, d));
           continue;
         }
-        const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}` };
+        const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`, code: d.code };
         const unit = ownerUnit(job.fence.owner);
         if (unit) p.unit = unit;
         report(p);
@@ -152,6 +156,7 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
         line: syntax.line,
         severity: 'error',
         message: `this \`Wrong\` code does not parse (${syntax.code} ${syntax.message}); write it as complete code, or describe the mistake in prose`,
+        code: syntax.code,
       });
     } else if (undefinedName) {
       report({
@@ -159,6 +164,7 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
         line: undefinedName.line,
         severity: 'error',
         message: `this \`Wrong\` code uses a name that is not defined (${undefinedName.code} ${undefinedName.message}); define it in \`Setup\` or in the code, or the mistake looks caught by the types when it is not`,
+        code: undefinedName.code,
       });
     } else if (own.length === 0 && !guardedByCheck(w)) {
       report({

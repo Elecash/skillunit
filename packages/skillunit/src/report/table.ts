@@ -4,7 +4,7 @@
  */
 import type { Problem } from '../lint/types.js';
 import type { SpecReport } from '../test/runner.js';
-import { decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, where } from './text.js';
+import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function table(report: CheckReport, options: ReportOptions): string {
@@ -16,7 +16,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
   const borderline: string[] = [];
 
   /** Lint and sync findings keep the one-line form `file:line  unit-id  what is wrong`. */
-  const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${p.message}`];
+  const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`];
 
   // ---------------------------------------------------------------- lint
   const { lint, sync, test } = report;
@@ -41,6 +41,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
     const notes = [
       plural(s.units, 'unit'),
       s.typeChecked ? `${plural(s.typeChecked, 'example')} type-checked with TypeScript ${s.typescript}` : '',
+      s.notParsed ? `${s.notParsed} did not parse, so their types were not checked` : '',
       s.commandChecked ? `${plural(s.commandChecked, 'example')} run through a command` : '',
       s.noCheck ? `${s.noCheck} marked no-check` : '',
       s.notConfigured ? `${s.notConfigured} ts/js not type-checked: set \`examples.ts\` in skillunit.yaml` : '',
@@ -55,7 +56,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
     out.push(c.dim(`  ${notes.join(' · ')}`));
     for (const p of lint.problems) {
       if (p.severity === 'error') failures.push(problemBlock(lint.skill, p));
-      else warnings.push(`${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${p.message}`);
+      else warnings.push(`${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
     }
   }
 
@@ -81,7 +82,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
     out.push(c.dim(`  ${notes.join(' · ')}`));
     for (const p of sync.problems) {
       if (p.severity === 'error') failures.push(problemBlock(sync.skill, p));
-      else warnings.push(`${where(sync.skill, p, options)}  ${p.unit ?? '-'}  ${p.message}`);
+      else warnings.push(`${where(sync.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
     }
   }
 

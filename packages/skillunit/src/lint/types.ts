@@ -14,6 +14,8 @@ export interface Problem {
   severity: Severity;
   rule: LintRule;
   message: string;
+  /** The TypeScript code, such as `TS2322`, of a problem the type-check found. */
+  code?: string;
 }
 
 export interface LintSummary {
@@ -21,8 +23,10 @@ export interface LintSummary {
   units: number;
   /** TypeScript version that type-checked the examples, when it ran. */
   typescript?: string;
-  /** `ts`, `tsx`, `js` and `jsx` fences type-checked, `Setup` blocks included. */
+  /** `ts`, `tsx`, `js` and `jsx` fences that went through the type-check, `Setup` blocks included. */
   typeChecked: number;
+  /** `ts`, `tsx`, `js` and `jsx` fences that did not parse, or whose `Setup` did not: their types were not checked. */
+  notParsed: number;
   /** Fences of other languages run through their configured command. */
   commandChecked: number;
   /** Example fences of other languages that nothing checked, per language: no command is set. */
