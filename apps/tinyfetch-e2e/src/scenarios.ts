@@ -281,6 +281,65 @@ export const scenarios: Scenario[] = [
       ],
     },
   },
+  // The experiments of the README's "Try it" section, change for change, so CI fails when one
+  // stops reporting what the README shows. Its fifth, the contradicting sentence, is the
+  // scenario `contradicting prose` above.
+  {
+    name: 'README 1: renamed option',
+    change: 'in `src/types.ts`, rename the option `retryDelay` to `backoff`',
+    apply(app) {
+      app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
+      app.commit('Rename retryDelay to backoff');
+    },
+    // No unit has `src/types.ts` as its `Source`, so sync reports nothing.
+    expect: { lint: ['types skill/features/retries.md - TS2353'] },
+  },
+  {
+    name: 'README 2: Right example that breaks its rule',
+    change: 'turn the `Right` example of `retry-idempotent-only` into a retried POST',
+    apply(app) {
+      app.edit(
+        'skill/features/retries.md',
+        'Right:\n\n```ts\nawait tf.get("https://api.example.com/users", { retry: 3 });\n```',
+        'Right:\n\n```ts\nawait tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });\n```',
+      );
+      app.commit('Retry a POST in the Right example');
+    },
+    expect: { lint: ['check skill/features/retries.md retry-idempotent-only'] },
+  },
+  {
+    name: 'README 3: comment reworded',
+    change: 'in `src/timeout.ts`, reword the comment above `withTimeout`',
+    apply(app) {
+      app.edit(
+        'src/timeout.ts',
+        ' * A signal that aborts after `timeout` milliseconds, or when `signal` aborts. A timeout of 0\n * never fires.',
+        ' * Returns a signal that aborts once `timeout` milliseconds pass, or as soon as `signal` aborts.\n * A timeout of 0 never fires.',
+      );
+      app.commit('Reword a comment');
+    },
+    expect: {},
+  },
+  {
+    name: 'README 4: default changed',
+    change: 'in `src/timeout.ts`, change `DEFAULT_TIMEOUT` from `10_000` to `5_000`',
+    apply(app) {
+      app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
+      app.commit('Lower the default timeout');
+    },
+    expect: { sync: ['default-timeout', 'never-disable-timeout'] },
+  },
+  {
+    name: 'README 4: default changed, unit edited and accepted',
+    change: 'the same change, then edit `default-timeout` and `skillunit review --accept` both units',
+    apply(app) {
+      app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
+      app.edit('skill/features/timeouts.md', 'Value: 10 seconds (`timeout: 10_000`), for every method.', 'Value: 5 seconds (`timeout: 5_000`), for every method.');
+      app.accept('default-timeout', 'never-disable-timeout');
+      app.commit('Lower the default timeout');
+    },
+    expect: {},
+  },
   {
     name: 'clean',
     change: 'no change',
