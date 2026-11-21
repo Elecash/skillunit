@@ -24,7 +24,7 @@ interface Node {
 }
 
 /** The `Setup` to put in front of `code`: as written, less the declarations `code` makes itself. */
-export function setupFor(setup: string, code: string, lang: Lang): string {
+export function trimSetup(setup: string, code: string, lang: Lang): string {
   const example = statements(code, lang);
   if (!example) return setup;
   const names = new Set(example.flatMap(bound));

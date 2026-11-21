@@ -2,7 +2,7 @@
 
 How to write the code in a skill so lint can check it against the current API.
 
-Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
+Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md` above it that has one, up to the skill folder. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
 
 ```yaml
 examples:

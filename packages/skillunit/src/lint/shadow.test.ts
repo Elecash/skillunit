@@ -1,11 +1,11 @@
 /** What of a `Setup` an example's own declarations leave out, and that what is left still parses. */
 import { parse } from '@babel/parser';
 import { describe, expect, it } from 'vitest';
-import { setupFor } from './shadow.js';
+import { trimSetup } from './shadow.js';
 
 const parses = (code: string) => parse(code, { sourceType: 'module', plugins: ['typescript'] }).program.body.length >= 0;
 const trimmed = (setup: string, example: string) => {
-  const out = setupFor(setup, example, 'ts');
+  const out = trimSetup(setup, example, 'ts');
   expect(out.split('\n')).toHaveLength(setup.split('\n').length);
   expect(out).toHaveLength(setup.length);
   expect(parses(out)).toBe(true);
@@ -46,8 +46,8 @@ describe('the Setup an example gets', () => {
   });
 
   it('gives the whole Setup to an example that does not parse, and with a Setup that does not parse', () => {
-    expect(setupFor('declare const a: A;', 'const a = ;', 'ts')).toBe('declare const a: A;');
-    expect(setupFor('declare const a: A =;', 'const a = 1;', 'ts')).toBe('declare const a: A =;');
+    expect(trimSetup('declare const a: A;', 'const a = ;', 'ts')).toBe('declare const a: A;');
+    expect(trimSetup('declare const a: A =;', 'const a = 1;', 'ts')).toBe('declare const a: A =;');
   });
 
   it('reads a top-level return or await in an example', () => {

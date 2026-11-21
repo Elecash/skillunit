@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
 import { removeTemp } from '../temp.js';
-import { setupFor } from './shadow.js';
+import { trimSetup } from './shadow.js';
 import { ConfigError } from './types.js';
 
 export interface TsBlock {
@@ -58,7 +58,7 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
     blocks.forEach((b, i) => {
       // The `Setup` less what the block declares itself; as many lines as written, so the lines
       // of a diagnostic map back the same way.
-      const text = b.setup ? `${setupFor(b.setup.code, b.code, b.lang)}\n${b.code}\n` : `${b.code}\n`;
+      const text = b.setup ? `${trimSetup(b.setup.code, b.code, b.lang)}\n${b.code}\n` : `${b.code}\n`;
       writeFileSync(join(dir, names[i]!), text);
     });
     const diagnostics: TsDiagnostic[][] = blocks.map(() => []);

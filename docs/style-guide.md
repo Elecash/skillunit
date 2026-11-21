@@ -214,9 +214,11 @@ import { tf } from "tinyfetch";
 - `Setup` goes after the intro lines and before the first example, never inside `## Rules`.
 - One `Setup` per file and language. The agent reads it once and knows where each name comes
   from. The linter puts it in front of every example of that language before type-checking.
-- A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`, the
-  nearest one above it. Write the imports most files need once there. A file with its own
-  `Setup` uses only that one, so it repeats what it needs from `SKILL.md`. This works in a
+- A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
+  above it that has one for that language, up to the skill folder. A nested skill, a folder
+  with a `SKILL.md` of its own, so uses the root's `Setup` until it writes its own. Write the
+  imports most files need once, in the root `SKILL.md`. A file or a `SKILL.md` with its own
+  `Setup` uses only that one, so it repeats what it needs from the one above. This works in a
   skill that is not written in units too.
 - An example that needs more (another import, a declared value) carries it inside its own
   block. A complete example, one meant to be copied whole, may import and create again what
