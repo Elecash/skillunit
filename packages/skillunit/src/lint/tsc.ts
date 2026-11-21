@@ -1,15 +1,17 @@
 /**
  * Runs the project's own `tsc` over code blocks of a skill, once for the whole skill. The
  * compiler API is not used: `typescript@7` (the native port) no longer has it. Each block becomes
- * one file: its `Setup`, then its code. The files and a tsconfig that `extends` the configured
- * one go in a fresh folder under the nearest `node_modules/.cache/skillunit/`, so imports of
- * installed packages resolve as they do for the project. The folder is removed afterwards; when
+ * one file: its `Setup`, less what the block declares itself (see `shadow.ts`), then its code.
+ * The files and a tsconfig that `extends` the configured one go in a fresh folder under the
+ * nearest `node_modules/.cache/skillunit/`, so imports of installed packages resolve as they do
+ * for the project. The folder is removed afterwards; when
  * it cannot be, the run warns and keeps its result.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
 import { removeTemp } from '../temp.js';
+import { trimSetup } from './shadow.js';
 import { ConfigError } from './types.js';
 
 export interface TsBlock {
@@ -54,7 +56,9 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
   try {
     const names = blocks.map((b, i) => `block${i}.${b.lang}`);
     blocks.forEach((b, i) => {
-      const text = b.setup ? `${b.setup.code}\n${b.code}\n` : `${b.code}\n`;
+      // The `Setup` less what the block declares itself; as many lines as written, so the lines
+      // of a diagnostic map back the same way.
+      const text = b.setup ? `${trimSetup(b.setup.code, b.code, b.lang)}\n${b.code}\n` : `${b.code}\n`;
       writeFileSync(join(dir, names[i]!), text);
     });
     const diagnostics: TsDiagnostic[][] = blocks.map(() => []);

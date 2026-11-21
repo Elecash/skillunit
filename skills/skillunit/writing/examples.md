@@ -2,7 +2,7 @@
 
 How to write the code in a skill so lint can check it against the current API.
 
-Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
+Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md` above it that has one, up to the skill folder. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
 
 ```yaml
 examples:
@@ -10,7 +10,7 @@ examples:
   py: { command: "python3 -m py_compile {file}" }
 ```
 
-The tsconfig named in `examples.ts` resolves the library's own name, usually with a `paths` entry, so an example's import reaches the current source. Without `examples.ts`, lint skips those blocks and says how many it skipped.
+The tsconfig named in `examples.ts` resolves the library's own name, usually with a `paths` entry, so an example's import reaches the current source. Without `examples.ts`, lint skips those blocks and says how many it skipped. Types that only generated code has, such as a Prisma client or a TanStack Router route tree, come from the tsconfig too: it includes the generated code, or a small fixture checked in for it, and the `Setup` imports it; a `Setup` cannot write them.
 
 ## Rules
 
@@ -43,6 +43,22 @@ Wrong:
 Applies: examples, setup
 
 Source: src/lint/setup.ts, src/lint/examples.ts#setupFor
+
+### rule: setup-per-version
+
+When: a file shows code of another library or of an older version under a name the `Setup` it uses declares, such as the "before" blocks of a migration guide.
+
+Do: give that file a `Setup` of its own that declares the names its examples need, or mark the "before" blocks `no-check`.
+
+Wrong:
+
+- Doing: leaving a migration guide under the `Setup` of `SKILL.md`, which types `redis` as the new client.
+
+  Because: lint checks the old code against the new types, and every finding it reports there is false.
+
+Applies: examples, setup
+
+Source: src/lint/examples.ts#setupFor
 
 ### rule: complete-examples
 

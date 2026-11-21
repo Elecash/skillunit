@@ -42,8 +42,9 @@ lint:
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
   An example that uses names it does not declare fails with "Cannot find name": declare them
   once in a `Setup:` block, which lint puts in front of every example of that language in the
-  file. A file with no `Setup` of its own uses the one of its skill's `SKILL.md`. This works in a
-  skill that is not written in units too. A block marked `no-check` after its language is not
+  file. A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
+  above it that has one, so a `Setup` in the root `SKILL.md` covers the skills nested in it too.
+  This works in a skill that is not written in units too. A block marked `no-check` after its language is not
   checked. The [style guide](style-guide.md#setup) has the details.
 - `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
   the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `wrong-code`, `command`,

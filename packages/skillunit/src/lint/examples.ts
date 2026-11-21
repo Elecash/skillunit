@@ -26,19 +26,20 @@ export function ownSetup(file: ParsedFile, lang: string): Fence | undefined {
 const indexes = new WeakMap<ParsedSkill, Map<string, ParsedFile>>();
 
 /**
- * The `SKILL.md` a file belongs to: the nearest one at or above its folder, so a skill nested in
- * another has its own. Undefined for a `SKILL.md` itself and for a file with none above it.
+ * The `SKILL.md` files above a file, the nearest first: the one of its folder, then those of the
+ * folders above, up to the skill folder. A `SKILL.md` starts from the folder above its own, so a
+ * nested skill's list goes on with the skill it is nested in.
  */
-export function skillIndexOf(skill: ParsedSkill, file: ParsedFile): ParsedFile | undefined {
+export function skillIndexesOf(skill: ParsedSkill, file: ParsedFile): ParsedFile[] {
   if (!indexes.has(skill)) indexes.set(skill, new Map(skill.files.map((f) => [f.file, f])));
   const byPath = indexes.get(skill)!;
   const parts = file.file.split('/');
-  if (parts.at(-1) === 'SKILL.md') return undefined;
-  for (let n = parts.length - 1; n >= 0; n--) {
+  const out: ParsedFile[] = [];
+  for (let n = parts.length - (parts.at(-1) === 'SKILL.md' ? 2 : 1); n >= 0; n--) {
     const index = byPath.get([...parts.slice(0, n), 'SKILL.md'].join('/'));
-    if (index) return index;
+    if (index) out.push(index);
   }
-  return undefined;
+  return out;
 }
 
 /** A `Setup` and the file that declares it. */
@@ -49,20 +50,20 @@ export interface SetupSource {
 
 /**
  * The `Setup` a block of `lang` in `file` uses: the file's own (see `ownSetup`), or when it has
- * none for that language, the one of its skill's `SKILL.md`. The two are never added together.
+ * none for that language, the one of the nearest `SKILL.md` above it that has one. One `Setup`,
+ * never two added together.
  */
 export function setupFor(skill: ParsedSkill, file: ParsedFile, lang: string): SetupSource | undefined {
-  const own = ownSetup(file, lang);
-  if (own) return { fence: own, file };
-  const index = skillIndexOf(skill, file);
-  const inherited = index && ownSetup(index, lang);
-  return inherited ? { fence: inherited, file: index } : undefined;
+  for (const source of [file, ...skillIndexesOf(skill, file)]) {
+    const fence = ownSetup(source, lang);
+    if (fence) return { fence, file: source };
+  }
+  return undefined;
 }
 
-/** The languages that have a `Setup` for `file`, its own or inherited from `SKILL.md`. */
+/** The languages that have a `Setup` for `file`, its own or one of a `SKILL.md` above it. */
 export function setupLanguages(skill: ParsedSkill, file: ParsedFile): string[] {
-  const index = skillIndexOf(skill, file);
-  return Object.keys({ ...(index?.setup ?? {}), ...file.setup });
+  return [...new Set([file, ...skillIndexesOf(skill, file)].flatMap((f) => Object.keys(f.setup)))];
 }
 
 /** Code of a `Wrong` item: its `Doing` when that is one code span, or a fence inside the item. */

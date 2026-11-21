@@ -42,7 +42,7 @@ function project(typescript: string, skill: string, tsconfig: object = TSCONFIG)
   mkdirSync(join(root, 'src'));
   writeFileSync(
     join(root, 'src', 'lib.ts'),
-    'export const named = 1;\nexport function pick(a: { id: number }): number;\nexport function pick(a: { name: string }): string;\nexport function pick(a: { id?: number; name?: string }): number | string { return a.id ?? a.name ?? 0; }\n',
+    'export const named = 1;\nexport class Client { send(to: string): number { return to.length; } }\nexport function pick(a: { id: number }): number;\nexport function pick(a: { name: string }): string;\nexport function pick(a: { id?: number; name?: string }): number | string { return a.id ?? a.name ?? 0; }\n',
   );
   // Lets `<div />` type-check with no React installed.
   writeFileSync(join(root, 'src', 'jsx.d.ts'), 'declare global { namespace JSX { interface IntrinsicElements { [name: string]: unknown } } }\nexport {};\n');
@@ -163,5 +163,67 @@ describe.each(COMPILERS)('parse or type errors, with %s', (_, typescript) => {
     const first = lineOf(skill, 'const first');
     expect(r.problems.map((p) => `${p.line} ${p.code}`)).toEqual([`${first} TS2339`, `${lineOf(skill, 'import { extra }', first)} TS2305`]);
     expect(r.summary).toMatchObject({ typeChecked: 3, notParsed: 0 });
+  });
+});
+
+/** A file whose `Setup` declares `Client` and `client`, then the examples. */
+const withSetup = (setup: string, ...examples: string[]) =>
+  [`# Skill`, `Setup:`, `${F}ts\n${setup}\n${F}`, ...examples.map((e) => `${F}ts\n${e}\n${F}`)].join('\n\n') + '\n';
+const SETUP = 'import { Client, named } from "lib";\ndeclare const client: Client;';
+const complete = 'import { Client } from "lib";\nconst client = new Client();\nclient.send("a");';
+const fragment = 'client.send("b");\nconst n: number = named;';
+const codes = (r: LintResult) => r.problems.map((p) => `${p.line} ${p.code ?? p.rule}`);
+
+describe.each(COMPILERS)('an example that declares a name of the Setup, with %s', (_, typescript) => {
+  it('takes the name from the example: no duplicate, and a fragment next to it still gets the Setup', () => {
+    const r = run(project(typescript, withSetup(SETUP, complete, fragment)));
+    expect(codes(r)).toEqual([]);
+    expect(r.summary.typeChecked).toBe(3);
+  });
+
+  it('keeps the other specifier of an import the example declares one of', () => {
+    const skill = withSetup(SETUP, `${complete}\nconst m: string = named;`);
+    // `named` still comes from the Setup: a number, so the one error is its type.
+    expect(codes(run(project(typescript, skill)))).toEqual([`${lineOf(skill, 'const m: string')} TS2322`]);
+  });
+
+  it('leaves the Setup whole when the example declares the name inside a function', () => {
+    const skill = withSetup(SETUP, 'function local() {\n  const client = 1;\n  return client;\n}\nclient.send(local());');
+    expect(codes(run(project(typescript, skill)))).toEqual([`${lineOf(skill, 'client.send(local())')} TS2345`]);
+  });
+
+  it('still reports an example that declares a name twice itself', () => {
+    const skill = withSetup(SETUP, 'const twice = 1;\nconst twice = 2;');
+    expect(codes(run(project(typescript, skill)))).toEqual([`${lineOf(skill, 'const twice = 1')} TS2451`, `${lineOf(skill, 'const twice = 2')} TS2451`]);
+  });
+
+  it('keeps every line where it was: errors after a declaration it leaves out are on their own lines', () => {
+    const setup = 'import { Client } from "lib";\ndeclare const client:\n  Client;\nconst broken: string = 1;';
+    const skill = withSetup(setup, `${complete}\nconst s: string = client.send("c");`);
+    expect(codes(run(project(typescript, skill)))).toEqual([`${lineOf(skill, 'const broken')} TS2322`, `${lineOf(skill, 'const s: string')} TS2322`]);
+  });
+
+  it('reports an error inside the Setup once, at the Setup, whichever examples show it', () => {
+    const skill = withSetup(`${SETUP}\nconst broken: string = 1;`, complete, fragment, 'client.send("d");');
+    const r = run(project(typescript, skill));
+    expect(codes(r)).toEqual([`${lineOf(skill, 'const broken')} TS2322`]);
+    expect(r.problems[0]!.message).toMatch(/^the Setup does not type-check/);
+  });
+
+  it('gives Wrong code the same treatment', () => {
+    const unit = [
+      '# Rules',
+      'Setup:',
+      `${F}ts\n${SETUP}\n${F}`,
+      '## Rules',
+      '### rule: one-client',
+      'When: code sends a message.',
+      'Do: use `client`.',
+      `Wrong:\n\n- Doing: creating a client of its own.\n\n  ${F}ts\n  import { Client } from "lib";\n  const client = new Client();\n  client.send("x");\n  ${F}\n\n  Because: it opens a second connection.`,
+      'Applies: lib',
+    ].join('\n\n') + '\n';
+    const r = run(project(typescript, unit));
+    // It compiles once `client` is its own, so the types do not catch the mistake, and lint says so.
+    expect(r.problems.map((p) => `${p.rule} ${p.severity}`)).toEqual(['wrong-code warning']);
   });
 });

@@ -214,12 +214,18 @@ import { tf } from "tinyfetch";
 - `Setup` goes after the intro lines and before the first example, never inside `## Rules`.
 - One `Setup` per file and language. The agent reads it once and knows where each name comes
   from. The linter puts it in front of every example of that language before type-checking.
-- A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`, the
-  nearest one above it. Write the imports most files need once there. A file with its own
-  `Setup` uses only that one, so it repeats what it needs from `SKILL.md`. This works in a
+- A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
+  above it that has one for that language, up to the skill folder. A nested skill, a folder
+  with a `SKILL.md` of its own, so uses the root's `Setup` until it writes its own. Write the
+  imports most files need once, in the root `SKILL.md`. A file or a `SKILL.md` with its own
+  `Setup` uses only that one, so it repeats what it needs from the one above. This works in a
   skill that is not written in units too.
 - An example that needs more (another import, a declared value) carries it inside its own
-  block. It does not import again what `Setup` already imports.
+  block. A complete example, one meant to be copied whole, may import and create again what
+  `Setup` declares: a name an example declares at its top level is taken from the example, and
+  lint leaves the `Setup`'s declaration of that name out for that example. So a skill in prose
+  can have `import { Resend } from 'resend'` and `declare const resend: Resend` in `Setup`
+  for its fragments, next to examples that import `Resend` and create `resend` themselves.
 - A fragment that cannot type-check on purpose gets `no-check` after the language on its
   fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale. Lint
   warns about any other bare word there, so a typo such as `nocheck` does not leave the block
@@ -227,6 +233,20 @@ import { tf } from "tinyfetch";
 - JSX goes in a `tsx` or `jsx` fence. In a `ts` fence it does not parse, and lint says so.
 - A `declare module` or `declare global` in an example is checked apart from the other
   examples, so it changes no type outside its own block.
+
+#### When a `Setup` is not enough
+
+- **Code of another library under the same name.** A migration guide shows the old client as
+  `redis` too, and the `Setup` of `SKILL.md` types `redis` as the new one, so lint checks the
+  old code against the new types and reports findings that are not mistakes (nine in
+  Upstash's two migration files). Give that file a `Setup` of its own, which then is the one
+  its examples use, or mark the "before" blocks `no-check`.
+- **Types that come from generated code.** `createFileRoute('/posts')` in TanStack Router and
+  `prisma.user` in Prisma type-check only against code a generator writes, and a `Setup`
+  cannot supply it. In a project that has the generated code, point `examples.ts.tsconfig` at
+  a tsconfig that includes it, and import it in the `Setup`. A library's own skill repository
+  has no generated code: check in a small fixture that the tsconfig includes, or mark those
+  blocks `no-check`.
 
 ### Short examples
 

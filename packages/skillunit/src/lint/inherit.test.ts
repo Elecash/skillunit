@@ -1,4 +1,7 @@
-/** A file with no `Setup` of its own uses the one of its skill's `SKILL.md`. */
+/**
+ * A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md` above it
+ * that has one for that language.
+ */
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -77,6 +80,41 @@ describe.each(COMPILERS)('the Setup of SKILL.md, with %s', (_, typescript) => {
     // Type-checked with `answer` in scope: the mistake is caught by the types, so there is no warning.
     expect(r.summary.wrongCode).toEqual({ checked: 1, unchecked: 0 });
     expect(r.problems.filter((p) => p.file === 'features/rules.md')).toEqual([]);
+  });
+});
+
+describe.each(COMPILERS)('a nested skill with no Setup, with %s', (_, typescript) => {
+  // `answer` is a number: when the root's Setup applies, the error is TS2322, not TS2304.
+  const uses = `${F}ts\nconst s: string = answer;\n${F}\n`;
+  const root = `# Skill\n\nSee [outer](outer/SKILL.md).\n\nSetup:\n\n${F}ts\nimport { answer } from "lib";\n${F}\n`;
+
+  it('uses the Setup of the skill above it, in its SKILL.md and in its files', () => {
+    const nested = `# Outer\n\nSee [d](d.md).\n\n${uses}`;
+    const r = run(project(typescript, { 'SKILL.md': root, 'outer/SKILL.md': nested, 'outer/d.md': `# D\n\n${uses}` }));
+    expect(types(r)).toEqual(['outer/d.md:4 TS2322', `outer/SKILL.md:${lineOf(nested, 'const s')} TS2322`]);
+  });
+
+  it('finds it two levels down, through a SKILL.md that has none', () => {
+    const r = run(
+      project(typescript, {
+        'SKILL.md': root,
+        'outer/SKILL.md': '# Outer\n\nSee [inner](inner/SKILL.md).\n',
+        'outer/inner/SKILL.md': '# Inner\n\nSee [deep](deep.md).\n',
+        'outer/inner/deep.md': `# Deep\n\n${uses}`,
+      }),
+    );
+    expect(types(r)).toEqual(['outer/inner/deep.md:4 TS2322']);
+  });
+
+  it('takes it per language: its own ts Setup, and the sh Setup of the skill above', () => {
+    const files = {
+      'SKILL.md': `${root}\nSetup:\n\n${F}sh\nGREETING=hello\n${F}\n`,
+      'outer/SKILL.md': `# Outer\n\nSetup:\n\n${F}ts\ndeclare const thing: number;\n${F}\n\n${F}ts\nthing.toFixed(1);\nconsole.log(answer);\n${F}\n\n${F}sh\ntest "$GREETING" = hello\n${F}\n`,
+    };
+    const dir = project(typescript, files);
+    // `thing` from its own ts Setup, and not `answer` from the root's: one Setup, never two.
+    expect(types(run(dir))).toEqual([`outer/SKILL.md:${lineOf(files['outer/SKILL.md'], 'console.log(answer)')} TS2304`]);
+    expect(runCommands(parseSkill(join(dir, 'skill')), { commands: { sh: 'sh {file}' }, cwd: dir }).problems).toEqual([]);
   });
 });
 

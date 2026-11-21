@@ -30,6 +30,16 @@ tests:
       only-new: Only `TimeoutError`; `tf` comes from `SKILL.md`
     expect: both
 
+  - id: migration-guide
+    unit: setup-per-version
+    scenario: "`SKILL.md` has a `Setup` that declares `redis` as the client of version 2. A migration guide with no `Setup` of its own shows version 1 fragments that call `redis.hmset(...)`, which version 1 has and version 2 removed. Lint reports `Property 'hmset' does not exist` on each of them."
+    question: What should the agent do?
+    options:
+      own-setup: Give the migration guide a `Setup` of its own that declares the version 1 client
+      rewrite: Update the version 1 fragments to the version 2 API, so that lint passes
+      report: Leave them and report the findings as examples that no longer match the API
+    expect: own-setup
+
   - id: undefined-name
     unit: complete-examples
     scenario: An example calls `api.get("users")`, and nothing in the file declares `api`.
