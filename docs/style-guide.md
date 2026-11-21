@@ -30,9 +30,12 @@ skill/
 To translate a calendar, the agent reads `widgets/calendar.md`, then `features/i18n.md`.
 
 - `SKILL.md` has an index table, from a task or a thing to its file. Every file is reachable
-  from it; lint reports a file that no link or path leads to. A relative path to the file, in a
-  code span or in plain text, counts as well as a link, and a folder with its own `SKILL.md` is a
-  skill of its own, reached from that `SKILL.md`.
+  from it; lint reports a file that no link or path leads to. A relative path to the file counts
+  as well as a link: in a code span, in plain text, or in a fence with no language or `text`,
+  such as a list of files, one per line. A path in a fence of a language is code, and does not
+  count. A bare file name, `strings.md`, counts when no other file of the skill has that name;
+  when two do, write the path. A folder with its own `SKILL.md` is a skill of its own, reached
+  from that `SKILL.md`.
 - A rule about one thing lives in that thing's file. A rule that crosses two (how i18n applies
   to the calendar) lives in the more specific file, and the other links to it.
 - Lint warns about a file above about 300 lines.

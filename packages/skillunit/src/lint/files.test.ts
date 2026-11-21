@@ -69,6 +69,31 @@ describe('index', () => {
     ).toEqual(['rules/web.md:1 error: no link or path leads here from `SKILL.md`; add this file to its index']);
   });
 
+  it('counts a path in a fence with no language or `text`, but not in a code example', () => {
+    const lost = 'no link or path leads here from `SKILL.md`; add this file to its index';
+    expect(
+      indexOf({
+        'SKILL.md': `# T\n\n${F}\nreferences/filters.md            - Filter conditions and operators\n${F}\n\nSee references/more.md.\n`,
+        'references/filters.md': '# Filters\n',
+        'references/more.md': `# More\n\n${F}text\nreferences/fields.md   - Fields\n${F}\n\n${F}ts\nimport text from "./code.md";\n${F}\n`,
+        'references/fields.md': '# Fields\n',
+        'references/code.md': '# Code\n',
+      }),
+    ).toEqual([`references/code.md:1 error: ${lost}`]);
+  });
+
+  it('counts a bare file name when exactly one file of the skill has it', () => {
+    const lost = 'no link or path leads here from `SKILL.md`; add this file to its index';
+    expect(
+      indexOf({
+        'SKILL.md': '# T\n\n### Data Structures (data-structures/)\n\n- **strings.md** - GET, SET\n- **notes.md** - which one?\n',
+        'data-structures/strings.md': '# Strings\n',
+        'a/notes.md': '# Notes\n',
+        'b/notes.md': '# Notes\n',
+      }),
+    ).toEqual([`a/notes.md:1 error: ${lost}`, `b/notes.md:1 error: ${lost}`]);
+  });
+
   it('treats a folder with its own SKILL.md as a skill of its own, and names it', () => {
     expect(
       indexOf({
