@@ -13,7 +13,6 @@ jobs:
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }   # sync needs the history back to the base branch
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
@@ -21,8 +20,12 @@ jobs:
       - run: npx skillunit check --reporter github
 ```
 
-- `fetch-depth: 0`: sync compares HEAD with its merge base on the target branch, so it needs that
-  history. A shallow clone stops it with an error.
+- Sync compares the committed `skillunit.lock` with the code, so the default shallow clone is
+  enough. Only `check --changed` reads git history: with it, add `with: { fetch-depth: 0 }` to
+  the checkout step.
+- When sync fails, a unit's code changed since it was last reviewed, or a unit is new. The
+  author runs `skillunit review` on the branch, reads each change, and commits the lock with the
+  change.
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
 - The dry run needs no key. It runs lint and sync in full, and checks that every spec loads and
   fits, so a renamed heading or a broken spec fails it before the model is asked.
@@ -45,6 +48,6 @@ request carries the text under test once. Measured in November 2026:
 | Skill | Specs | Tests | Input tokens | Output tokens |
 | --- | --- | --- | --- | --- |
 | [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 15 | about 8,400 | about 730 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 7 | 49 | about 27,800 | about 2,400 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 7 | 52 | about 29,100 | about 2,600 |
 
 Lint and sync make no request. `test --changed` sends only the specs a change touches.

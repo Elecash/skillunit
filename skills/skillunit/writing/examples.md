@@ -56,6 +56,39 @@ Applies: examples
 
 Source: src/lint/tsc.ts
 
+### rule: short-complete-examples
+
+When: an example would need more code than the point it makes.
+
+Do: declare what every example assumes in `Setup`, stand-in values included, without a body (`declare const user: User;`); leave a part out with a comment such as `// handle the other cases`; show only the call the rule is about.
+
+Right:
+
+````md
+Setup:
+
+```ts
+import { tf } from "tinyfetch";
+
+interface Order { id: number; item: number }
+declare const draft: { item: number };
+```
+
+```ts
+const order = await tf.post<Order>("https://api.example.com/orders", draft);
+```
+````
+
+Wrong:
+
+- Doing: three dots where the part left out would be.
+
+  Because: three dots do not parse, so lint reports the block, and marking it `no-check` leaves the rest of it unchecked.
+
+Applies: examples, setup
+
+Source: src/lint/tsc.ts
+
 ### rule: signatures-in-tables
 
 When: the agent shows a signature or the shape of an object rather than code to copy.

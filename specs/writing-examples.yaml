@@ -21,6 +21,26 @@ tests:
       leave: Leave it; readers can guess what `api` is
     expect: declare
 
+  - id: leave-a-part-out
+    unit: short-complete-examples
+    scenario: An example's `catch` block would need ten lines that have nothing to do with the rule it shows.
+    question: How should the agent leave those lines out?
+    options:
+      comment: A comment such as `// handle the other cases` in their place
+      dots: Three dots in their place
+      no-check: Keep the lines out and mark the block `no-check`
+    expect: comment
+
+  - id: stand-in-value
+    unit: short-complete-examples
+    scenario: Every example of a file sends a `user` object the reader is meant to already have.
+    question: Where should `user` come from?
+    options:
+      setup: "A declaration without a body in `Setup`, such as `declare const user: User;`"
+      each: A full object literal at the top of each example
+      nowhere: Nowhere; the reader knows what `user` is
+    expect: setup
+
   - id: signature-block
     unit: signatures-in-tables
     scenario: The agent wants to show the signature `get(path, options)` of a method.

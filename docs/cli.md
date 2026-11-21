@@ -3,7 +3,8 @@
 ```
 skillunit check [options]           lint, sync and test: what CI runs
 skillunit lint [skill] [options]    the skill's format, examples, Check rules, links and Source paths
-skillunit sync [skill] [options]    units whose Source changed while the unit did not
+skillunit sync [skill] [options]    units whose code changed since skillunit.lock recorded their review
+skillunit review [options]          show what changed for each unit sync reports, and accept it
 skillunit test [specs...] [options] ask a decision model the spec tests about the skill
 skillunit init [dir]                create skillunit.yaml and a first spec
 ```
@@ -18,29 +19,64 @@ skillunit init [dir]                create skillunit.yaml and a first spec
 | `--skill <dir>` | all | the folder with `SKILL.md`, instead of the one in the settings |
 | `--reporter <name>` | all | `table` (the default), `json`, `junit` or `github` |
 | `--json` | all | the same as `--reporter json` |
-| `--base <ref>` | sync, test, check | compare HEAD with its merge base with this ref |
 | `--dry-run` | test, check | check that specs load, headings exist and requests fit; send nothing |
-| `--changed` | test, check | test only what changed since `--base` |
+| `--changed` | test, check | test only what changed in git since `--base` |
+| `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
 | `--model <name>` | test, check | the model name of the `typesafe` adapter |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
 
 A command rejects an option it does not take.
 
-Without `--base`, sync uses the pull request's target branch in GitHub Actions, then the
-remote's default branch, then `origin/main`, `origin/master`, `main` or `master`. It always
-compares HEAD with the merge base of that ref and HEAD, so commits that landed on the main
-branch after the branch point do not count.
+Sync compares `skillunit.lock` with the code and needs no git (see
+[the lock](configuration.md#skillunitlock)), so it takes no `--base`. Only `--changed` reads git
+history.
 
-`test --changed` runs the specs of the skill files that changed since `--base` (a spec runs when
-its `file`, or a file in its `with`, changed), and the tests whose `unit` names a unit that sync
-reports for review.
+`test --changed` runs the specs of the skill files that changed in git since `--base` (a spec
+runs when its `file`, or a file in its `with`, changed), and the tests whose `unit` names a unit
+that sync reports as stale or new. Without `--base` it uses the pull request's target branch in
+GitHub Actions, then the remote's default branch, then `origin/main`, `origin/master`, `main` or
+`master`, and compares HEAD with the merge base of that ref and HEAD, so commits that landed on
+the main branch after the branch point do not count.
+
+## Review
+
+`skillunit review` clears the units sync reports. It groups the units by source file,
+and for each file shows what changed, then each unit with its `file:line` and its text. Inside a
+git repository, what changed is the diff from the merge base with the default branch to the
+working tree, cut down to the declaration when the `Source` names a `#symbol`; outside git it is
+only the path. A new unit has no diff: review prints where its code is, `path:line`, to open in
+an editor. Every path is printed from the folder the command runs in, so an editor's terminal
+can open it. A unit whose text differs from the merge base is marked "edited in this change",
+as a hint; it still has to be accepted.
+
+At a terminal, review asks about each unit: `a` accept, `e` open the unit in `$VISUAL` or
+`$EDITOR` at its line and ask again, `s` skip, `A` accept the rest of this file, `q` quit and
+keep what was accepted. Without a terminal, or for an agent:
+
+| Option | Meaning |
+| --- | --- |
+| `--list` | print the units to review and what changed; change nothing. The default without a terminal |
+| `--json` | the same as `--list`, as JSON, with `path`, `line` and the line range of each `Source` |
+| `--accept <id>...` | accept these units: write the fingerprints of their code as it is now |
+| `--accept-all` | accept every unit to review |
+| `--prune` | drop lock entries for units, or `Source` values, that no longer exist |
+
+Review writes `skillunit.lock`, says what it changed, and never commits. On the first run there
+is no lock and every unit is new; `review --accept-all` writes it, which records every unit as
+reviewed, so read the units once before running it.
+
+For `e`, VS Code and its forks get `--goto file:line`, Sublime Text and Zed `file:line`,
+JetBrains IDEs `--line <n> file`, and other editors `+<n> file`. The editor command must wait
+until the file is closed, such as `code --wait`.
 
 ## Exit codes
 
 - `0`: every check passed. Lint warnings and borderline verdicts do not fail a run.
-- `1`: a check failed.
+- `1`: a check failed. For `review --list`, and `review` without a terminal: some unit needs
+  review.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
-  for a run that needs one, or a `tsc` that rejects the tsconfig.
+  for a run that needs one, a `tsc` that rejects the tsconfig, a lock this version cannot read,
+  or `review --accept` with an id that is not a unit.
 
 Reports go to stdout, and errors about the command to stderr.
 

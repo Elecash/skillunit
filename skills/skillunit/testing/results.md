@@ -139,22 +139,23 @@ Source: src/report/table.ts
 
 ### rule: review-what-sync-reports
 
-When: sync reports a unit whose `Source` changed.
+When: sync reports a unit as stale or new.
 
-Do: read the change and the unit; if the unit is now wrong, edit it, and if it still holds, add `Skill-reviewed: <unit-id>` as a trailer to a commit message in the range.
+Do: list the units with `npx skillunit review --list`, read each change next to its unit, edit the unit if it is now wrong, then accept it with `npx skillunit review --accept <unit-id>` and commit `skillunit.lock` with the change.
 
 Right:
 
 ```sh
-git commit -m "Rename an internal variable" -m "Skill-reviewed: retry-idempotent-only"
+npx skillunit review --list
+npx skillunit review --accept retry-idempotent-only
 ```
 
 Wrong:
 
-- Doing: adding the trailer without reading the change.
+- Doing: `npx skillunit review --accept-all` before reading the changes.
 
-  Because: the trailer is the only record that someone checked the unit against the new code.
+  Because: the lock is the only record that someone checked each unit against its code; accepting units nobody read records a check that never happened.
 
 Applies: sync, review
 
-Source: src/sync/sync.ts
+Source: src/review/review.ts

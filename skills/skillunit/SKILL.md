@@ -10,12 +10,14 @@ SkillUnit keeps an agent skill in sync with the code it describes. A skill is wr
 | Layer | Command | What it finds | Needs the API key |
 | --- | --- | --- | --- |
 | lint | `npx skillunit lint` | a malformed unit, an example that does not compile or breaks a rule, a broken link, a `Source` that does not exist | no |
-| sync | `npx skillunit sync` | a unit whose `Source` code changed while the unit did not | no |
+| sync | `npx skillunit sync` | a unit whose `Source` code changed since it was last reviewed, or that was never reviewed | no |
 | test | `npx skillunit test` | text that does not settle a decision: closed questions to a decision model, from YAML specs | yes |
 
 `npx skillunit check` runs all three; it is what CI runs. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
 
-The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
+Sync compares each unit's code with `skillunit.lock`, which records a fingerprint of the code each unit was last reviewed against; comments and formatting do not count. `npx skillunit review` shows what changed for each unit sync reports and writes the lock when a unit is accepted. The lock is committed with the change.
+
+The settings live in `skillunit.yaml`, next to the skill or at the root of the project, with `skillunit.lock` beside it. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
 
 ## Where to look
 
@@ -108,7 +110,7 @@ Decide: which layer to run.
 
 - **lint** — the skill's files changed: `npx skillunit lint`.
 
-- **sync** — the code changed: `npx skillunit sync`, which lists the units to review.
+- **sync** — the code changed: `npx skillunit sync`, which lists the units to review, then `npx skillunit review` to read and accept them.
 
 - **test** — what a unit says changed, or its specs did: `npx skillunit test`, or `npx skillunit test --changed` for only the specs those changes touch.
 

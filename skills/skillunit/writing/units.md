@@ -221,7 +221,7 @@ Source: src/lint/lint.ts
 
 When: the agent writes the `Source` of a unit.
 
-Do: write the path of the file the unit describes relative to the folder of `skillunit.yaml`, or to its `sourceRoot`, optionally with `#symbol`.
+Do: write the path of the file the unit describes relative to the folder of `skillunit.yaml`, or to its `sourceRoot`, optionally with `#symbol` for one top-level declaration, so a change elsewhere in the file leaves the unit in sync.
 
 Right:
 

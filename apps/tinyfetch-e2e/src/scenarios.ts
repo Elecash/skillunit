@@ -1,7 +1,8 @@
 /**
  * The acceptance scenarios: each changes tinyfetch or its skill in a copy of the app, and lists
  * what SkillUnit must report. Findings are written `rule file unit code`, the code being a
- * TypeScript code when there is one; sync findings are unit ids; model findings are test ids.
+ * TypeScript code when there is one; sync findings are unit ids (`lock` for one about the lock
+ * itself); model findings are test ids.
  * Anything reported that is not listed fails the scenario, as does anything listed that is not
  * reported.
  */
@@ -12,8 +13,10 @@ export interface Expected {
   /** Lint errors. */
   lint?: string[];
   lintWarnings?: string[];
-  /** Units sync reports for review. */
+  /** Units sync reports for review: stale or new, and `lock` when there is no lock. */
   sync?: string[];
+  /** Orphan entries sync warns about, by unit id. */
+  syncWarnings?: string[];
   /** Tests that must fail. Only scenarios that need the model. */
   failing?: string[];
   /** Tests that may fail too: the change touches what they ask about. */
@@ -180,6 +183,60 @@ export const scenarios: Scenario[] = [
       app.commit('Comment');
     },
     expect: {},
+  },
+  {
+    name: 'other declaration of a #symbol file',
+    change: 'change `HttpError` in `src/errors.ts`, where a unit points at `#isHttpError` only',
+    apply(app) {
+      app.edit('src/errors.ts', 'super(`HTTP ${status}`);', 'super(`HTTP status ${status}`);');
+      app.commit('Reword the HttpError message');
+    },
+    expect: {},
+  },
+  {
+    name: 'changed symbol',
+    change: 'change `isHttpError` itself, which a unit points at with `#isHttpError`',
+    apply(app) {
+      app.edit('src/errors.ts', "error.name === 'HttpError' &&", "(error.name === 'HttpError' || error instanceof HttpError) &&");
+      app.commit('Accept a local HttpError too');
+    },
+    expect: { sync: ['check-with-is-http-error'] },
+  },
+  {
+    name: 'unit added without a review',
+    change: 'add a unit with a `Source`, and do not accept it',
+    apply(app) {
+      const unit =
+        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n\nApplies: timeouts, errors\n\nSource: src/errors.ts#TimeoutError\n';
+      app.write('skill/features/timeouts.md', app.read('skill/features/timeouts.md') + unit);
+      app.commit('Add a unit about TimeoutError');
+    },
+    expect: { sync: ['timeout-error-names-its-limit'] },
+  },
+  {
+    name: 'orphan entry',
+    change: 'delete a unit and its test; the lock still has its entry',
+    apply(app) {
+      const file = app.read('skill/features/timeouts.md');
+      const start = file.indexOf('### rule: never-disable-timeout');
+      const end = file.indexOf('Source: src/timeout.ts', start) + 'Source: src/timeout.ts\n'.length;
+      app.write('skill/features/timeouts.md', file.slice(0, start) + file.slice(end));
+      const spec = app.read('specs/timeouts.yaml');
+      const test = spec.indexOf('  - id: long-upload');
+      const next = spec.indexOf('\n  - id:', test + 1);
+      app.write('specs/timeouts.yaml', spec.slice(0, test) + (next < 0 ? '' : spec.slice(next + 1)));
+      app.commit('Drop the never-disable-timeout rule');
+    },
+    expect: { syncWarnings: ['never-disable-timeout'] },
+  },
+  {
+    name: 'missing lock',
+    change: 'delete `skillunit.lock`',
+    apply(app) {
+      app.remove('skillunit.lock');
+      app.commit('Drop the lock');
+    },
+    expect: { sync: ['lock'] },
   },
   {
     name: 'reviewed refactor',

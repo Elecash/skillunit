@@ -4,7 +4,7 @@ Which specs a skill needs, what each one sends to the decision model, and how a 
 
 A spec is a YAML file of tests about one file of the skill. The test layer sends that file (or some of its headings, with `section`) to the decision model as the state, and asks each test as a closed question about it. A spec with `with` also sends other files of the skill, the ones an agent reads together with it. Each spec is one request, whatever the number of tests in it.
 
-A test that names its unit with `unit:` runs with `test --changed` when sync reports that unit. A spec runs whole with `test --changed` when its file, or a file in its `with`, changed.
+A test that names its unit with `unit:` runs with `test --changed` when sync reports that unit as stale or new. A spec runs whole with `test --changed` when its file, or a file in its `with`, changed.
 
 ## Rules
 

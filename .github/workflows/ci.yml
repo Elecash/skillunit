@@ -8,10 +8,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # No history needed: sync compares skillunit.lock. Only `check --changed` would need
+      # `fetch-depth: 0`.
       - uses: actions/checkout@v4
-        with:
-          # sync compares HEAD with its merge base with the target branch: it needs the history.
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -19,7 +18,7 @@ jobs:
       - run: npm ci
       - run: npx nx run-many -t typecheck build test
       # Needs no API key: lint, sync, and the specs load, their headings exist and requests fit.
-      - run: node packages/skillunit/dist/cli.js check --dry-run --config skills/skillunit/skillunit.yaml --reporter github
+      - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
       # The acceptance scenarios that need no model. Those that do are skipped without a key.
       - run: npx nx e2e tinyfetch-e2e
 
@@ -32,8 +31,6 @@ jobs:
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -41,7 +38,7 @@ jobs:
       - run: npm ci
       - run: npx nx build skillunit
       - if: env.TYPESAFE_API_KEY != ''
-        run: node packages/skillunit/dist/cli.js check --config skills/skillunit/skillunit.yaml --reporter github
+        run: node packages/skillunit/dist/cli.js check --reporter github
       - if: env.TYPESAFE_API_KEY != ''
         working-directory: apps/tinyfetch
         run: node ../../packages/skillunit/dist/cli.js check --reporter github

@@ -1,6 +1,6 @@
 // Copies the files the npm package ships but the repository keeps at its root: the README,
-// the licence and the Markdown files of the SkillUnit skill (not its specs or tools). Runs on
-// `npm pack` and `npm publish`.
+// the licence and the SkillUnit skill, which holds only what an agent reads (its config,
+// lock and specs are at the repository root). Runs on `npm pack` and `npm publish`.
 import { cpSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +12,7 @@ const root = join(pkg, '..', '..');
 function markdown(dir) {
   return readdirSync(join(root, dir)).flatMap((name) => {
     const path = join(dir, name);
-    if (statSync(join(root, path)).isDirectory()) return name === 'specs' || name === 'tools' ? [] : markdown(path);
+    if (statSync(join(root, path)).isDirectory()) return markdown(path);
     return name.endsWith('.md') ? [path] : [];
   });
 }

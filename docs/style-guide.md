@@ -151,9 +151,10 @@ Footer:
   the unit's own `Wrong` code, or the linter reports it as a regex that guards nothing. The
   flags `g` and `y` are not allowed. Any kind of unit may have a `Check`.
 - **Source**: the code the unit describes, `path` or `path#symbol`, relative to the folder of
-  `skillunit.yaml` or to its `sourceRoot`. When that file changes, `skillunit sync` reports the
-  unit until it is edited or a commit carries `Skill-reviewed: <unit-id>`, and
-  `skillunit test --changed` runs the tests that name it.
+  `skillunit.yaml` or to its `sourceRoot`. When that code changes, comments and formatting
+  aside, `skillunit sync` reports the unit until someone reads the change and accepts the unit
+  in `skillunit review`, and `skillunit test --changed` runs the tests that name it. With
+  `#symbol`, only that declaration counts; list every declaration the unit relies on.
 
 ### Naming
 
@@ -212,6 +213,20 @@ import { tf } from "tinyfetch";
   block. It does not import again what `Setup` already imports.
 - A fragment that cannot type-check on purpose gets `no-check` after the language on its
   fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale.
+
+### Short examples
+
+Docs leave things out of their examples, and an example in a skill still has to type-check.
+Three ways to keep it short and complete:
+
+- Put what every example of the file assumes in `Setup`, stand-in values included, declared
+  without a body: `declare const user: User;` or `declare function render(user: User): void;`.
+  The example then uses `user` as if the code around it had made one.
+- Leave a part out with a comment, such as `// handle the other cases` inside a `catch`. A
+  comment parses; three dots do not, and lint reports the block.
+- Show only the call the rule is about, not the function around it.
+
+`no-check` stays the last resort, for a fragment none of these can make compile.
 
 ## Example file
 

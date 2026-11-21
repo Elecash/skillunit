@@ -12,7 +12,8 @@ function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail'
   return {
     lint: problems.filter((p) => p.severity === 'error').map(show).sort(),
     lintWarnings: problems.filter((p) => p.severity === 'warning').map(show).sort(),
-    sync: (report.sync?.problems ?? []).map((p: any) => p.unit).sort(),
+    sync: (report.sync?.problems ?? []).filter((p: any) => p.severity === 'error').map((p: any) => p.unit ?? 'lock').sort(),
+    syncWarnings: (report.sync?.problems ?? []).filter((p: any) => p.severity === 'warning').map((p: any) => p.unit).sort(),
     failing: report.test?.dryRun ? [] : verdicts.filter((v) => !v.pass).map((v) => v.id).sort(),
     specErrors: (report.test?.specs ?? []).filter((s: any) => s.error).map((s: any) => `${s.spec}: ${s.error}`),
   };
@@ -37,12 +38,14 @@ describe('tinyfetch scenarios', () => {
         lint: seen.lint,
         lintWarnings: seen.lintWarnings,
         sync: seen.sync,
+        syncWarnings: seen.syncWarnings,
         // A test in `mayFail` may fail or pass; any other failure, or a pass in `failing`, is a finding.
         failing: seen.failing.filter((id) => !allowed.has(id) || (want.failing ?? []).includes(id)),
       }).toEqual({
         lint: [...(want.lint ?? [])].sort(),
         lintWarnings: [...(want.lintWarnings ?? [])].sort(),
         sync: [...(want.sync ?? [])].sort(),
+        syncWarnings: [...(want.syncWarnings ?? [])].sort(),
         failing: real ? [...(want.failing ?? [])].sort() : [],
       });
       const clean = !want.lint?.length && !want.sync?.length && !want.failing?.length;

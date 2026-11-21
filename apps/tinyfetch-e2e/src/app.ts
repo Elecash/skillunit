@@ -1,7 +1,7 @@
 /**
  * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is,
- * with a `skillunit.lock` that accepts every unit, a scenario changes it and commits, and `run`
- * calls the built SkillUnit CLI on the copy.
+ * with its committed `skillunit.lock`, a scenario changes it and commits, and `run` calls the
+ * built SkillUnit CLI on the copy.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -37,14 +37,13 @@ export class App {
 
   private constructor(name: string) {
     this.root = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
-    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'tsconfig.json', 'package.json']) {
+    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'skillunit.lock', 'tsconfig.json', 'package.json']) {
       cpSync(join(appSource, part), join(this.root, part), { recursive: true });
     }
     // The type-check runs the project's own tsc, found in node_modules at or above the tsconfig.
     mkdirSync(join(this.root, 'node_modules'));
     symlinkSync(typescript, join(this.root, 'node_modules', 'typescript'), 'dir');
     writeFileSync(join(this.root, '.gitignore'), 'node_modules\n');
-    this.accept();
     this.git('init', '-q');
     this.git('symbolic-ref', 'HEAD', 'refs/heads/main');
     this.commit('base');
@@ -74,6 +73,10 @@ export class App {
 
   write(path: string, text: string) {
     writeFileSync(join(this.root, path), text);
+  }
+
+  remove(path: string) {
+    rmSync(join(this.root, path));
   }
 
   /** Replaces `from` with `to` in a file. Throws when `from` is not there, so a stale scenario fails loudly. */

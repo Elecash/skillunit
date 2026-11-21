@@ -32,8 +32,7 @@ examples:
   marked borderline. The default margin, 0.13, is the largest move measured across six runs of
   SkillUnit's own specs with no change, among tests whose answer stayed the same.
 - `sourceRoot`: the folder `Source:` paths start from. Set it when the code is not next to
-  `skillunit.yaml`. SkillUnit's own skill sits in `skills/skillunit/` and describes
-  `packages/skillunit/`, so its config says `sourceRoot: ../../packages/skillunit`.
+  `skillunit.yaml`, as in the layout below.
 - `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,
   `js` and `jsx` example is type-checked with the project's own `tsc` (TypeScript 5 or later,
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
@@ -41,6 +40,78 @@ examples:
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
 
 Any other key is an error.
+
+## A library with one skill
+
+SkillUnit's own repository keeps its settings at the root, next to `package-lock.json`, and the
+skill folder holds only what an agent reads, which is what someone who installs the skill gets:
+
+```
+skillunit.yaml       skill: ./skills/skillunit, specs: ./specs, sourceRoot: ./packages/skillunit
+skillunit.lock
+specs/               the spec files
+skills/skillunit/    SKILL.md and the files it links to
+packages/skillunit/  the code the units describe
+```
+
+From the root, every command runs with no `--config`.
+
+## skillunit.lock
+
+`skillunit.lock` sits next to `skillunit.yaml`, or in the skill folder when there is no
+config file, and is committed. It has one entry per unit with a `Source`: each `Source` as the
+unit writes it, and the fingerprint of that code when the unit was last reviewed.
+
+```json
+{
+  "version": 1,
+  "units": {
+    "check-with-is-http-error": { "src/errors.ts#isHttpError": "3683aa817c8469a4" },
+    "retry-idempotent-only": { "src/retry.ts": "f303dfe1b57c6c92" }
+  }
+}
+```
+
+Units are sorted by id, one per line, so two branches conflict only when both reviewed the same
+unit. It stores no commit, date or author. Only `skillunit review` writes it; nobody edits it by
+hand. The name has no `.json` extension, so a formatter leaves it alone.
+
+| State | Meaning | Severity |
+| --- | --- | --- |
+| in sync | every `Source` fingerprint equals the lock | none |
+| stale | a fingerprint differs: the code changed since the last review | error |
+| new | the unit, or one of its `Source` values, is not in the lock | error |
+| orphan | the lock names a unit or a `Source` that no longer exists | warning |
+
+No lock while some unit has a `Source` is one error, which says to read the units and run
+`skillunit review --accept-all`.
+
+A fingerprint is the first 16 hex characters of a SHA-256 of the code:
+
+- A file: in `ts`, `tsx`, `js`, `jsx`, `mts`, `cts`, `mjs` and `cjs`, its tokens without the
+  comments, so a comment-only edit or a reformat that keeps the tokens leaves it as it was. In
+  any other file, the text with every run of whitespace made one space. Line endings do not
+  count.
+- `path#name`: only the top-level declarations with that name (a function with its overloads,
+  a class, a `const`, `let` or `var`, an interface, a type, an enum, a namespace), so a change
+  elsewhere in the file leaves it as it was.
+- A folder: the sorted list of its files' paths and fingerprints, without dot folders and
+  `node_modules`.
+
+What it does not catch:
+
+- A symbol's fingerprint does not follow the helpers it calls. A unit that depends on two
+  declarations lists both: `Source: src/errors.ts#isHttpError, src/errors.ts#HttpError`.
+- A formatter that changes tokens (quote style, added semicolons, trailing commas) changes the
+  fingerprint, and the units that point at the file come up for review.
+- A code file that does not parse falls back to whitespace only, comments included; lint warns
+  about it.
+
+The way a fingerprint is computed is fixed by the lock's `version`. A lock with a higher
+version than this SkillUnit knows is an error that says to upgrade.
+
+A merge conflict in the lock: take either side, then run `skillunit review`. Any unit whose
+fingerprint the other side changed comes up as stale, and accepting it writes the lock again.
 
 ## The API key
 

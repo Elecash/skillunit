@@ -9,21 +9,26 @@ Failures
 
   1) skill/features/clients.md:28  -  breaks `body-as-object`: `JSON.stringify` matches its `Check` (features/requests.md:84)
 
-  2) skill/features/errors.md:13  check-with-is-http-error  `src/errors.ts` changed since 8691035 and this unit did not; review it, then edit it or add `Skill-reviewed: check-with-is-http-error` to a commit message
+  2) skill/features/errors.md:13  check-with-is-http-error  `src/errors.ts#isHttpError` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with `skillunit review`
 
   3) specs/retries.yaml:4  post-no-retry
      skill:     skill/features/retries.md   unit: retry-idempotent-only
-     scenario:  A payment is sent with `tf.post` to an API that sometimes answers 503.
+     scenario:  An order is created with `tf.post`, and the network drops now and then.
      question:  Should the agent pass `retry` to that call?
      expected:  no-retry
-     got:       retry · confidence 0.02, threshold 0.50 · wrong answer, borderline: the next run may pass it
-                retry 35% · none 34% · no-retry 31%
-     phrasings: 0.32  0.31 (probability of "no-retry" for each; the median decides)
+     got:       no-retry · confidence 0.26, threshold 0.50 · right answer, too little confidence
+                no-retry 51% · none 27% · retry 22%
+     phrasings: 0.51  0.54 (probability of "no-retry" for each; the median decides)
 
-Borderline  passed, but within 0.13 of the threshold; the next run may fail them
-  specs/retries.yaml:15  patch-no-retry  no-retry, confidence 0.52, threshold 0.50
+  4) specs/retries.yaml:15  patch-no-retry
+     skill:     skill/features/retries.md   unit: retry-idempotent-only
+     scenario:  A user profile is updated with `tf.patch`, and the API sometimes answers 503.
+     question:  Should the agent pass `retry` to that call?
+     expected:  no-retry
+     got:       no-retry · confidence 0.37, threshold 0.50 · right answer, too little confidence
+                no-retry 58% · none 26% · retry 16%
 
-FAILED  lint 1 error, 0 warnings · sync 1 unit to review · test 14/15 passed (2 borderline)
+FAILED  lint 1 error, 0 warnings · sync 1 unit to review · test 13/15 passed
 ```
 
 ## How it works
@@ -46,11 +51,13 @@ skill/features/clients.md:28  -  breaks `body-as-object`: `JSON.stringify` match
 
 ### Sync
 
-Sync catches a unit whose code changed while the unit did not. Each unit names its code with `Source:`, such as `Source: src/errors.ts#isHttpError`. Sync compares HEAD with its merge base on the main branch and reports every unit whose source file changed. Editing the unit, or a `Skill-reviewed: <unit-id>` trailer in a commit message, marks it reviewed.
+Sync catches a unit whose code changed since someone last checked the unit against it. Each unit names its code with `Source:`, such as `Source: src/errors.ts#isHttpError`, and `skillunit.lock`, committed next to `skillunit.yaml`, keeps a fingerprint of that code from the last review. Comments and formatting do not count, and with `#isHttpError` only that declaration does, so a change elsewhere in the file reports nothing. Sync needs no git history.
 
 ```
-skill/features/errors.md:13  check-with-is-http-error  `src/errors.ts` changed since 8691035 and this unit did not; review it, then edit it or add `Skill-reviewed: check-with-is-http-error` to a commit message
+skill/features/errors.md:13  check-with-is-http-error  `src/errors.ts#isHttpError` changed since the unit was last reviewed; read the code against the unit, edit the unit if it is wrong, then accept it with `skillunit review`
 ```
+
+`skillunit review` shows the diff of each unit it reports, next to the unit, and accepting a unit writes its new fingerprint to the lock. Like other tools that commit a state file, SkillUnit keeps one, but its sync works per unit and per symbol, so one change reports only the units whose code it touched.
 
 ### Test
 
@@ -71,8 +78,8 @@ The test layer catches text that does not settle a decision, such as a sentence 
 
 ```
 expected:  no-retry
-got:       retry · confidence 0.02, threshold 0.50 · wrong answer, borderline: the next run may pass it
-           retry 35% · none 34% · no-retry 31%
+got:       no-retry · confidence 0.26, threshold 0.50 · right answer, too little confidence
+           no-retry 51% · none 27% · retry 22%
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -84,10 +91,11 @@ npm install --save-dev skillunit
 npx skillunit init skills/my-skill
 ```
 
-`init` writes `skillunit.yaml` and a first spec. Lint and sync need no model and no key, so two of the three layers work at once:
+`init` writes `skillunit.yaml` and a first spec. Lint and sync need no model and no key, so two of the three layers work at once. Sync needs a lock: read the units once, then let `review --accept-all` write `skillunit.lock`, and commit it.
 
 ```sh
 npx skillunit lint
+npx skillunit review --accept-all
 npx skillunit sync
 ```
 
