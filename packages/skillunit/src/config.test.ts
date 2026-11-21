@@ -57,3 +57,15 @@ describe('sourceRoot', () => {
     expect(() => load('sourceRoot: 3\n')).toThrow(/`sourceRoot` must be a folder/);
   });
 });
+
+describe('lint', () => {
+  it('reads the rules to turn off', () => {
+    expect(load('lint:\n  off: [length, index]\n').lint).toEqual({ off: ['length', 'index'] });
+    expect(load('lint: { off: length }\n').lint).toEqual({ off: ['length'] });
+  });
+
+  it('rejects a rule it does not know, and names the ones it does', () => {
+    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, wrong-code, command, index, length, source, fence\)/);
+    expect(() => load('lint: { on: [index] }\n')).toThrow(/unknown key `lint.on`/);
+  });
+});

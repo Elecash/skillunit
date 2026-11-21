@@ -40,5 +40,33 @@
       "cache": true
     }
   },
-  "analytics": true
+  "analytics": true,
+  "release": {
+    "projects": [
+      "skillunit"
+    ],
+    "projectsRelationship": "fixed",
+    "releaseTag": {
+      "pattern": "v{version}"
+    },
+    "version": {
+      "conventionalCommits": true,
+      "versionActionsOptions": {
+        "skipLockFileUpdate": true
+      }
+    },
+    "conventionalCommits": {
+      "useCommitScope": false
+    },
+    "changelog": {
+      "workspaceChangelog": {
+        "file": "{workspaceRoot}/CHANGELOG.md",
+        "createRelease": "github"
+      },
+      "projectChangelogs": false,
+      "git": {
+        "commitMessage": "chore(release): publish {version}"
+      }
+    }
+  }
 }

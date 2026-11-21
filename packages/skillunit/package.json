@@ -1,6 +1,6 @@
 {
   "name": "skillunit",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Checks that an agent skill still matches the code it describes: lint for its examples and format, sync against a lock file, and closed-question tests with a decision model.",
   "license": "MIT",
   "author": "Raúl Jiménez",
@@ -29,17 +29,31 @@
     "node": "^22.18.0 || >=24.11.0"
   },
   "bin": {
-    "skillunit": "./bin/skillunit.js"
+    "skillunit": "bin/skillunit.js"
   },
   "files": [
     "bin",
     "dist",
+    "docs",
     "skills/skillunit",
     "README.md",
     "LICENSE"
   ],
   "nx": {
-    "name": "skillunit"
+    "name": "skillunit",
+    "namedInputs": {
+      "shipped": [
+        "{workspaceRoot}/README.md",
+        "{workspaceRoot}/LICENSE",
+        "{workspaceRoot}/docs/**/*",
+        "{workspaceRoot}/skills/skillunit/**/*"
+      ]
+    },
+    "targets": {
+      "build": {
+        "inputs": ["production", "^production", "shipped"]
+      }
+    }
   },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && node ../../tools/tsc.mjs -p tsconfig.build.json",

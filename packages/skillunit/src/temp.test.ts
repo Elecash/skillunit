@@ -91,11 +91,15 @@ describe('a run whose temporary folder cannot be removed', () => {
 
   it.skipIf(!canLock)('the type-check keeps its result and warns', () => {
     const root = scratch();
-    // A stand-in `typescript` whose `tsc` finds nothing wrong and makes its run folder read-only.
+    // A stand-in `typescript` whose `tsc` finds nothing wrong in the examples and makes its run folder read-only.
     const ts = join(root, 'node_modules', 'typescript');
     mkdirSync(join(ts, 'bin'), { recursive: true });
     writeFileSync(join(ts, 'package.json'), JSON.stringify({ name: 'typescript', version: '0.0.0-test', bin: { tsc: 'bin/tsc' } }));
-    writeFileSync(join(ts, 'bin', 'tsc'), "require('node:fs').chmodSync(process.cwd(), 0o555);\n");
+    // It prints the error of SkillUnit's sentinel file, as a real `tsc` that reached the type-check does.
+    writeFileSync(
+      join(ts, 'bin', 'tsc'),
+      "if (process.argv.includes('--showConfig')) process.exit(0);\nrequire('node:fs').chmodSync(process.cwd(), 0o555);\nconsole.log('skillunit-sentinel.ts(1,7): error TS2322: Type \\'string\\' is not assignable to type \\'number\\'.');\nprocess.exitCode = 2;\n",
+    );
     writeFileSync(join(root, 'tsconfig.json'), '{}');
     const { result, stderr } = stderrOf(() => runTsc(join(root, 'tsconfig.json'), [{ lang: 'ts', code: 'const a = 1;', line: 3 }]));
     expect(result).toEqual({ version: '0.0.0-test', diagnostics: [[]] });

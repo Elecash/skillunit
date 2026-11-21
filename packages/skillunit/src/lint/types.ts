@@ -2,8 +2,14 @@
 
 export type Severity = 'error' | 'warning';
 
+/**
+ * The lint rules, by the name each problem is reported under. Any of them can be turned off with
+ * `lint: { off: [...] }` in `skillunit.yaml`.
+ */
+export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'wrong-code', 'command', 'index', 'length', 'source', 'fence'] as const;
+
 /** The rule that found a problem, for filtering and for reporters. `sync` comes from `skillunit sync`. */
-export type LintRule = 'parse' | 'structure' | 'check' | 'setup' | 'types' | 'wrong-code' | 'command' | 'index' | 'source' | 'sync';
+export type LintRule = (typeof LINT_RULES)[number] | 'sync';
 
 export interface Problem {
   /** Path in the skill folder, with `/`. */
@@ -14,6 +20,10 @@ export interface Problem {
   severity: Severity;
   rule: LintRule;
   message: string;
+  /** The TypeScript code, such as `TS2322`, of a problem the type-check found. */
+  code?: string;
+  /** Markdown line where the example (or `Setup`, or `Wrong` code) the problem is in starts. */
+  example?: number;
 }
 
 export interface LintSummary {
@@ -21,8 +31,10 @@ export interface LintSummary {
   units: number;
   /** TypeScript version that type-checked the examples, when it ran. */
   typescript?: string;
-  /** `ts`, `tsx`, `js` and `jsx` fences type-checked, `Setup` blocks included. */
+  /** `ts`, `tsx`, `js` and `jsx` fences that went through the type-check, `Setup` blocks included. */
   typeChecked: number;
+  /** `ts`, `tsx`, `js` and `jsx` fences that did not parse, or whose `Setup` did not: their types were not checked. */
+  notParsed: number;
   /** Fences of other languages run through their configured command. */
   commandChecked: number;
   /** Example fences of other languages that nothing checked, per language: no command is set. */
@@ -31,6 +43,8 @@ export interface LintSummary {
   noCheck: number;
   /** `ts`, `tsx`, `js` and `jsx` fences skipped because `examples.ts` is not set. */
   notConfigured: number;
+  /** Rules turned off in `skillunit.yaml`: their problems are not reported. */
+  off: string[];
   wrongCode: {
     /** `Wrong` code that was type-checked or matched by a `Check`. */
     checked: number;

@@ -80,7 +80,9 @@ until the file is closed, such as `code --wait`.
   for a run that needs one, a `tsc` that rejects the tsconfig, a lock this version cannot read,
   or `review --accept` with an id that is not a unit.
 
-Reports go to stdout, and errors about the command to stderr.
+Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
+an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so
+a script that parses stdout gets an object rather than nothing.
 
 ## Dry runs
 
@@ -95,8 +97,19 @@ size of each. It needs no key. `check --dry-run` also runs lint and sync in full
   `file:line  unit-id  what is wrong`, with `-` when the line belongs to no unit. A test failure
   shows the scenario, the question, the expected answer, the answer given and the probability of
   each option. Colour is on in a terminal, and off with `NO_COLOR`.
+
+  To keep a skill of fragments readable, lint findings come in one block per file, at most three
+  per example with the rest counted ("+2 more in this example"), each line and message once, and
+  the type problems are counted by code at the end. Clean files get no row, only their number. A
+  message is cut after 400 characters. Paths start from the current folder, or from the skill
+  folder, which the header names, when the skill is outside it.
 - `json`: the whole report as one object, `{ schema, command, ok, lint, sync, test }`, with only
   the layers that ran. `schema` changes only when a field changes meaning or disappears.
+  Each lint problem has `file`, `line`, `unit` when the line belongs to one, `severity`, `rule`
+  and `message`, plus `code`, such as `TS2322`, and `example`, the line where the example
+  starts, when the type-check found it. `lint.summary`
+  counts the examples that went through the type-check (`typeChecked`) apart from those that did
+  not parse (`notParsed`). The JSON keeps every finding, whole.
 - `junit`: JUnit XML, one suite per layer and one per spec, for CI systems that read it.
 - `github`: GitHub Actions annotations, so each finding shows on its file and line in the pull
   request, then the status line.

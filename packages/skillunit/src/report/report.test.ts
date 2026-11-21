@@ -29,6 +29,8 @@ const lint: LintResult = {
     units: 3,
     typescript: '5.6.3',
     typeChecked: 6,
+    notParsed: 0,
+    off: [],
     commandChecked: 0,
     unchecked: { sh: 2 },
     noCheck: 1,
@@ -147,6 +149,54 @@ describe('reporters', () => {
     expect(clean.ok).toBe(true);
     expect(render(clean, 'table', options)).toMatchSnapshot();
     expect(render(clean, 'github', options)).toMatchSnapshot();
+  });
+
+  it('table: lint findings by file, at most three per example, each line once, and counted by code', () => {
+    const type = (line: number, code: string, example: number): LintResult['problems'][number] => ({
+      file: 'features/fragments.md',
+      line,
+      severity: 'error',
+      rule: 'types',
+      message: `does not type-check: ${code} message for line ${line}`,
+      code,
+      example,
+    });
+    const many = buildReport('lint', {
+      lint: {
+        ...lint,
+        files: ['SKILL.md', 'features/retries.md', 'features/fragments.md'],
+        problems: [
+          ...lint.problems,
+          // Five findings in the example at line 10, one of them twice; one in the example at line 20.
+          type(11, 'TS2304', 10),
+          type(11, 'TS2304', 10),
+          type(12, 'TS2304', 10),
+          type(13, 'TS2451', 10),
+          type(14, 'TS2304', 10),
+          type(15, 'TS2322', 10),
+          type(21, 'TS2322', 20),
+        ],
+      },
+    });
+    const out = render(many, 'table', options);
+    expect(out).toContain(
+      [
+        '  2) skills/demo/features/fragments.md:11  -  does not type-check: TS2304 message for line 11',
+        '     skills/demo/features/fragments.md:12  -  does not type-check: TS2304 message for line 12',
+        '     skills/demo/features/fragments.md:13  -  does not type-check: TS2451 message for line 13',
+        '       +2 more in this example',
+        '     skills/demo/features/fragments.md:21  -  does not type-check: TS2322 message for line 21',
+      ].join('\n'),
+    );
+    expect(out).toContain('Type problems by code: TS2304 4 · TS2322 2 · TS2451 1');
+    expect(out).toContain('  ✓ 1 other file clean');
+  });
+
+  it('table: a skill outside the current folder is named once, and its findings start from it', () => {
+    const out = render(full, 'table', { cwd: '/elsewhere/project', color: false });
+    expect(out).toContain('Lint  /repo/skills/demo');
+    expect(out).toContain('1) features/retries.md:24  retry-idempotent-only');
+    expect(out).not.toContain('../');
   });
 
   it('table: a dry run', () => {

@@ -29,7 +29,11 @@ export interface TsDiagnostic {
   message: string;
   /** The diagnostic is in the `Setup` lines, not in the block's own code. */
   inSetup: boolean;
-  /** A syntax error (TS1000 to TS1999): the code does not parse. */
+  /**
+   * The code does not parse: the diagnostic came from a pass where `tsc` stopped before
+   * checking types. Decided by what `tsc` did, not by the code: TS2657 is a parse error, and
+   * TS1108 is reported while checking types.
+   */
   syntax: boolean;
 }
 
@@ -45,6 +49,7 @@ const GLOBAL_DIAGNOSTIC = /^error (TS\d+): (.*)$/;
 export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
   if (!existsSync(tsconfig)) throw new ConfigError(`\`examples.ts.tsconfig\` points to ${tsconfig}, which does not exist`);
   const { tsc, version } = findTsc(tsconfig);
+  const types = relativeTypes(tsc, tsconfig);
   const dir = cacheFolder(tsconfig);
   try {
     const names = blocks.map((b, i) => `block${i}.${b.lang}`);
@@ -54,19 +59,22 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
     });
     const diagnostics: TsDiagnostic[][] = blocks.map(() => []);
 
-    // `tsc` checks no types at all when any file has a syntax error. A block with one keeps its
-    // syntax diagnostics and leaves the next pass, until a pass has no syntax error. Each pass
-    // drops at least one block, so this ends.
-    let active = blocks.map((_, i) => i);
-    while (active.length > 0) {
-      const pass = runPass(tsc, tsconfig, dir, blocks, names, active);
-      const broken = active.filter((i) => pass.get(i)?.some((d) => d.syntax));
-      if (broken.length === 0) {
-        for (const i of active) diagnostics[i] = pass.get(i) ?? [];
-        break;
+    // `tsc` checks no types at all when any file does not parse, and then reports only the parse
+    // errors. A pass that stopped there drops the blocks it reported, which keep those errors,
+    // and the rest run again. A pass that reached the type-check is final. A syntax-only pass
+    // with no error in a block is a settings problem (see `runPass`), so each pass that does
+    // not end the loop drops at least one block.
+    for (let active of groups(blocks)) {
+      while (active.length > 0) {
+        const pass = runPass(tsc, tsconfig, dir, blocks, names, active, types);
+        if (pass.typeChecked) {
+          for (const i of active) diagnostics[i] = pass.diagnostics.get(i) ?? [];
+          break;
+        }
+        const broken = active.filter((i) => pass.diagnostics.has(i));
+        for (const i of broken) diagnostics[i] = pass.diagnostics.get(i)!;
+        active = active.filter((i) => !broken.includes(i));
       }
-      for (const i of broken) diagnostics[i] = pass.get(i)!.filter((d) => d.syntax);
-      active = active.filter((i) => !broken.includes(i));
     }
     return { version, diagnostics };
   } finally {
@@ -74,7 +82,57 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
   }
 }
 
-/** One `tsc` run over the blocks in `active`. Returns the diagnostics of each block that has some. */
+/** `declare module "x"` or `declare global`: a change to declarations outside the block. */
+const AUGMENTS = /^\s*(?:export\s+)?declare\s+(?:module\s+['"]|global\b)/m;
+
+/**
+ * The blocks to compile together. A `declare module` or `declare global` changes the types of
+ * every file in the program, so a block that has one gets a pass of its own, and blocks whose
+ * shared `Setup` has one get a pass together; every other block shares one pass.
+ */
+function groups(blocks: TsBlock[]): number[][] {
+  const out = new Map<string, number[]>();
+  blocks.forEach((b, i) => {
+    const key = AUGMENTS.test(b.code) ? `block ${i}` : b.setup && AUGMENTS.test(b.setup.code) ? `setup ${b.setup.line}:${b.setup.code}` : '';
+    out.set(key, [...(out.get(key) ?? []), i]);
+  });
+  return [...out.values()];
+}
+
+/**
+ * The project's `types` with its relative entries made absolute, or undefined when it has none.
+ * `tsc` resolves a relative entry from the folder of the config it was given, which for the
+ * examples is the generated one under `node_modules/.cache`, so `./types/globals` would not be
+ * found. `--showConfig` gives the entries the project ends up with, `extends` followed.
+ */
+function relativeTypes(tsc: string, tsconfig: string): string[] | undefined {
+  const run = spawnSync(process.execPath, [tsc, '--showConfig', '-p', tsconfig], { cwd: dirname(tsconfig), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  let types: unknown;
+  try {
+    types = JSON.parse(run.stdout ?? '').compilerOptions?.types;
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(types) || !types.some((t) => typeof t === 'string' && /^\.{1,2}[\\/]/.test(t))) return undefined;
+  return types.map((t: string) => (/^\.{1,2}[\\/]/.test(t) ? resolve(dirname(tsconfig), t) : t));
+}
+
+/**
+ * A file with a type error that every pass compiles. `tsc` reports type errors only when every
+ * file parsed, so its error coming back is how a pass is known to have reached the type-check.
+ * Its diagnostic is never reported.
+ */
+const SENTINEL = 'skillunit-sentinel.ts';
+const SENTINEL_CODE = 'const __skillunit_sentinel__: number = "";\n';
+
+interface Pass {
+  /** `tsc` reached the type-check: every diagnostic is final. Otherwise each one is a parse error. */
+  typeChecked: boolean;
+  /** Diagnostics of each block that has some. */
+  diagnostics: Map<number, TsDiagnostic[]>;
+}
+
+/** One `tsc` run over the blocks in `active`. */
 function runPass(
   tsc: string,
   tsconfig: string,
@@ -82,7 +140,8 @@ function runPass(
   blocks: TsBlock[],
   names: string[],
   active: number[],
-): Map<number, TsDiagnostic[]> {
+  types: string[] | undefined,
+): Pass {
   const hasJs = active.some((i) => blocks[i]!.lang === 'js' || blocks[i]!.lang === 'jsx');
   let base = relative(dir, tsconfig).split(sep).join('/');
   if (!base.startsWith('.')) base = `./${base}`;
@@ -100,10 +159,12 @@ function runPass(
       // The generated files sit outside any `rootDir` the project sets.
       rootDir: parse(dir).root,
       ...(hasJs ? { allowJs: true, checkJs: true } : {}),
+      ...(types ? { types } : {}),
     },
-    files: active.map((i) => names[i]!),
+    files: [SENTINEL, ...active.map((i) => names[i]!)],
     include: [],
   };
+  writeFileSync(join(dir, SENTINEL), SENTINEL_CODE);
   writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify(config, null, 2));
 
   const run = spawnSync(process.execPath, [tsc, '-p', 'tsconfig.json', '--pretty', 'false'], {
@@ -114,41 +175,59 @@ function runPass(
   if (run.error) throw new ConfigError(`could not run ${tsc}: ${run.error.message}`);
   const output = `${run.stdout ?? ''}${run.stderr ?? ''}`;
 
-  const out = new Map<number, TsDiagnostic[]>();
+  // Each diagnostic is a line, followed by its continuation lines, indented: "No overload
+  // matches this call." is followed by the line that names the property.
+  const sentinel = resolve(dir, SENTINEL);
   const index = new Map(active.map((i) => [resolve(dir, names[i]!), i]));
-  let named = 0;
+  type Found = { block: number; line: number; code: string; message: string[] };
+  const found: Found[] = [];
+  let last: Found | null = null;
+  let typeChecked = false;
   // Errors with no file, or in a tsconfig, are about the settings. Errors in the project's own
   // source files are not the skill's to report, and are left out.
   const settings: string[] = [];
   for (const line of output.split(/\r?\n/)) {
+    if (last && /^\s+\S/.test(line)) {
+      last.message.push(line.trim());
+      continue;
+    }
+    last = null;
     if (GLOBAL_DIAGNOSTIC.test(line)) {
       settings.push(line);
       continue;
     }
     const m = DIAGNOSTIC.exec(line);
     if (!m) continue;
-    const i = index.get(resolve(dir, m[1]!));
+    const file = resolve(dir, m[1]!);
+    if (file === sentinel) {
+      typeChecked = true;
+      continue;
+    }
+    const i = index.get(file);
     if (i === undefined) {
       if (m[1]!.endsWith('.json')) settings.push(line);
       continue;
     }
-    named++;
-    if (!out.has(i)) out.set(i, []);
-    out.get(i)!.push(mapDiagnostic(blocks[i]!, Number(m[2]), m[4]!, m[5]!));
+    last = { block: i, line: Number(m[2]), code: m[4]!, message: [m[5]!] };
+    found.push(last);
   }
   if (settings.length) throw new ConfigError(`tsc rejected the settings from ${tsconfig}:\n${settings.join('\n')}`);
-  if (run.status !== 0 && named === 0) {
-    throw new ConfigError(`tsc failed without an error in an example. What it said:\n${output.trim().slice(0, 4000)}`);
+  if (!typeChecked && found.length === 0) {
+    throw new ConfigError(
+      `tsc did not check types, and reported no error in an example: a file of the project may not parse, or ${tsconfig} may set \`noCheck\`. What it said:\n${output.trim().slice(0, 4000) || '(nothing)'}`,
+    );
   }
-  return out;
+
+  const diagnostics = new Map<number, TsDiagnostic[]>();
+  for (const d of found) {
+    if (!diagnostics.has(d.block)) diagnostics.set(d.block, []);
+    diagnostics.get(d.block)!.push(mapDiagnostic(blocks[d.block]!, d.line, d.code, d.message.join(' '), !typeChecked));
+  }
+  return { typeChecked, diagnostics };
 }
 
-/** Syntax errors are TS1000 to TS1999. */
-const isSyntax = (code: string) => /^TS1\d{3}$/.test(code);
-
-function mapDiagnostic(block: TsBlock, genLine: number, code: string, message: string): TsDiagnostic {
+function mapDiagnostic(block: TsBlock, genLine: number, code: string, message: string, syntax: boolean): TsDiagnostic {
   const setupLines = block.setup ? block.setup.code.split('\n').length : 0;
-  const syntax = isSyntax(code);
   if (block.setup && genLine <= setupLines) {
     return { line: block.setup.line + genLine - 1, code, message, inSetup: true, syntax };
   }

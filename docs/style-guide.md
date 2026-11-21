@@ -30,7 +30,9 @@ skill/
 To translate a calendar, the agent reads `widgets/calendar.md`, then `features/i18n.md`.
 
 - `SKILL.md` has an index table, from a task or a thing to its file. Every file is reachable
-  from it; lint reports a file no link leads to.
+  from it; lint reports a file that no link or path leads to. A relative path to the file, in a
+  code span or in plain text, counts as well as a link, and a folder with its own `SKILL.md` is a
+  skill of its own, reached from that `SKILL.md`.
 - A rule about one thing lives in that thing's file. A rule that crosses two (how i18n applies
   to the calendar) lives in the more specific file, and the other links to it.
 - Lint warns about a file above about 300 lines.
@@ -209,10 +211,19 @@ import { tf } from "tinyfetch";
 - `Setup` goes after the intro lines and before the first example, never inside `## Rules`.
 - One `Setup` per file and language. The agent reads it once and knows where each name comes
   from. The linter puts it in front of every example of that language before type-checking.
+- A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`, the
+  nearest one above it. Write the imports most files need once there. A file with its own
+  `Setup` uses only that one, so it repeats what it needs from `SKILL.md`. This works in a
+  skill that is not written in units too.
 - An example that needs more (another import, a declared value) carries it inside its own
   block. It does not import again what `Setup` already imports.
 - A fragment that cannot type-check on purpose gets `no-check` after the language on its
-  fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale.
+  fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale. Lint
+  warns about any other bare word there, so a typo such as `nocheck` does not leave the block
+  checked by surprise; `key=value` and `{...}`, which other tools read, are left alone.
+- JSX goes in a `tsx` or `jsx` fence. In a `ts` fence it does not parse, and lint says so.
+- A `declare module` or `declare global` in an example is checked apart from the other
+  examples, so it changes no type outside its own block.
 
 ### Short examples
 

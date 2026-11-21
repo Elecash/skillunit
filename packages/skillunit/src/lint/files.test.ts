@@ -54,7 +54,30 @@ describe('index', () => {
         'sub/b.md': '# B\n',
         'orphan.md': '# O\n\n[a](a.md)\n',
       }),
-    ).toEqual(['orphan.md:1 error: no link leads here from `SKILL.md`; add this file to the index']);
+    ).toEqual(['orphan.md:1 error: no link or path leads here from `SKILL.md`; add this file to its index']);
+  });
+
+  it('counts a path written in a code span or in plain text, but not a URL', () => {
+    expect(
+      indexOf({
+        'SKILL.md': '# T\n\n| Rule | File |\n|---|---|\n| Timing | `rules/timing.md` |\n\nRead rules/fonts.md first. Online: https://example.com/rules/web.md\n',
+        'rules/timing.md': '# Timing\n\nSee also `rules/easing.md`.\n',
+        'rules/easing.md': '# Easing\n',
+        'rules/fonts.md': '# Fonts\n',
+        'rules/web.md': '# Web\n',
+      }),
+    ).toEqual(['rules/web.md:1 error: no link or path leads here from `SKILL.md`; add this file to its index']);
+  });
+
+  it('treats a folder with its own SKILL.md as a skill of its own, and names it', () => {
+    expect(
+      indexOf({
+        'SKILL.md': '# T\n',
+        'nested/SKILL.md': '# Nested\n\n[a](a.md)\n',
+        'nested/a.md': '# A\n',
+        'nested/lost.md': '# Lost\n',
+      }),
+    ).toEqual(['nested/lost.md:1 error: no link or path leads here from `nested/SKILL.md`; add this file to its index']);
   });
 
   it('reports a skill with no SKILL.md, and warns about a long file', () => {
@@ -63,6 +86,15 @@ describe('index', () => {
       'SKILL.md:1 warning: 301 lines; above about 300, look for a split into files of one task each',
     ]);
     expect(indexOf({ 'SKILL.md': `# T\n${'line\n'.repeat(299)}` })).toEqual([]);
+  });
+
+  it('reports the long-file warning as `length`, which `off` turns off', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n${'line\n'.repeat(300)}`, 'orphan.md': '# O\n' });
+    expect(lint(root).problems.map((p) => p.rule).sort()).toEqual(['index', 'length']);
+    const off = lint(root, { off: ['length'] });
+    expect(off.problems.map((p) => p.rule)).toEqual(['index']);
+    expect(off.summary.off).toEqual(['length']);
+    expect(lint(root, { off: ['length', 'index'] }).ok).toBe(true);
   });
 });
 
@@ -98,7 +130,19 @@ ${F}
     expect(result.checked).toBe(3);
     expect(result.noCheck).toBe(1);
     expect(result.problems.map((p) => `${p.line} ${p.rule}`)).toEqual(['13 command']);
-    expect(result.problems[0]!.message).toMatch(/^this `sh` example fails `sh -n \{file\}` \(exit 2\): /);
+    expect(result.problems[0]!.message).toMatch(/^this `sh` example fails `sh -n \{file\}` \(exit 2\):\n/);
+    // The temp file is gone, so the output names the example in the skill.
+    expect(result.problems[0]!.message).toContain('SKILL.md:13');
+    expect(result.problems[0]!.message).not.toMatch(/skillunit-examples-/);
+  });
+
+  it('keeps every line the command prints, up to twelve', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n\n${F}sh\necho hi\n${F}\n` });
+    const banner = 'printf "Banner line\\n\\nError: the schema is invalid\\n  at %s\\n" {file}; exit 1';
+    const result = runCommands(parseSkill(root), { commands: { sh: banner }, cwd: root });
+    expect(result.problems[0]!.message).toBe('this `sh` example fails `' + banner + '` (exit 1):\nBanner line\nError: the schema is invalid\n  at SKILL.md:3');
+    const long = runCommands(parseSkill(root), { commands: { sh: 'seq 1 20; exit 1' }, cwd: root });
+    expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
   it('reports a failing Setup', () => {

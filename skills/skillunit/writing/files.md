@@ -66,7 +66,7 @@ Wrong:
 
 - Doing: linking the new file only from the file next to it.
 
-  Because: an agent starts at `SKILL.md`; lint reports a file no link leads to from there.
+  Because: an agent starts at `SKILL.md` and looks the task up in its table; a file reached only through another file is found only by an agent that already opened that one.
 
 Applies: files, index
 

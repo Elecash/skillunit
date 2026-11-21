@@ -37,6 +37,7 @@ export interface Scenario {
 }
 
 const RETRY_SETUP = 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```\n\n';
+const TIMEOUT_SETUP = 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```\n\n';
 
 /** Prettier over every Markdown file of the skill. */
 async function prettier(app: App, files: string[], proseWrap: 'preserve' | 'always' | 'never') {
@@ -105,18 +106,33 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'example without its import',
-    change: "delete a file's `Setup`",
+    change: "delete the `Setup` of a file that needs more than the `Setup` of `SKILL.md`",
+    apply(app) {
+      app.edit('skill/features/timeouts.md', TIMEOUT_SETUP, '');
+      app.commit('Drop the timeouts Setup');
+    },
+    // `tf` still comes from `SKILL.md`; `TimeoutError` does not, so `instanceof` no longer
+    // narrows `error` either.
+    expect: { lint: ['types skill/features/timeouts.md - TS18046', 'types skill/features/timeouts.md - TS2304'] },
+  },
+  {
+    name: 'Setup moved to SKILL.md',
+    change: "move a file's `Setup` to `SKILL.md`, which then covers that file",
+    apply(app) {
+      app.edit('skill/features/timeouts.md', TIMEOUT_SETUP, '');
+      app.edit('skill/SKILL.md', 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```', 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```');
+      app.commit('One Setup for the skill');
+    },
+    expect: {},
+  },
+  {
+    name: 'Setup the same as SKILL.md',
+    change: "delete a file's `Setup` that only repeats the one of `SKILL.md`",
     apply(app) {
       app.edit('skill/features/retries.md', RETRY_SETUP, '');
       app.commit('Drop the retries Setup');
     },
-    expect: {
-      lint: [
-        'types skill/features/retries.md - TS2304',
-        'types skill/features/retries.md retry-idempotent-only TS2304',
-        'wrong-code skill/features/retries.md retry-idempotent-only TS2304',
-      ],
-    },
+    expect: {},
   },
   {
     name: 'wrong package',
