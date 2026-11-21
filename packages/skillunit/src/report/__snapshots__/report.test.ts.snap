@@ -49,6 +49,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "typescript": "5.6.3",
       "typeChecked": 6,
       "notParsed": 0,
+      "off": [],
       "commandChecked": 0,
       "unchecked": {
         "sh": 2
@@ -338,9 +339,7 @@ question: What does the skill say?</failure>
 exports[`reporters > table and github: a clean check 1`] = `
 "
 Lint  skills/demo
-    FILE                        ERRORS  WARNINGS
-  ✓ SKILL.md                         0         0
-  ✓ features/retries.md              0         0
+  ✓ 2 files, all clean
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
 Sync  skillunit.lock
@@ -381,8 +380,8 @@ exports[`reporters > table: colour on a terminal 1`] = `
 "
 [1mLint[0m  [2mskills/demo[0m
 [2m    FILE                        ERRORS  WARNINGS[0m
-  [32m✓[0m SKILL.md                         0         0
   [31m✗[0m features/retries.md              1         1
+  [32m✓[0m 1 other file clean
 [2m  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh[0m
 
 [1mSync[0m  [2mskillunit.lock[0m
@@ -440,8 +439,8 @@ exports[`reporters > table: every layer with every kind of finding 1`] = `
 "
 Lint  skills/demo
     FILE                        ERRORS  WARNINGS
-  ✓ SKILL.md                         0         0
   ✗ features/retries.md              1         1
+  ✓ 1 other file clean
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
 Sync  skillunit.lock

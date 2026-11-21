@@ -15,10 +15,13 @@
  *   examples:                    # how lint checks the code examples of the skill
  *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
  *     py: { command: "python3 -m py_compile {file}" }   # any other language
+ *   lint:
+ *     off: [length]              # lint rules not to report, by the name they are reported under
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse } from 'yaml';
+import { LINT_RULES, type LintRule } from './lint/types.js';
 
 export interface Thresholds {
   choice: number;
@@ -41,6 +44,8 @@ export interface Config {
   model: ModelConfig;
   thresholds: Thresholds;
   examples?: ExamplesConfig;
+  /** Lint rules turned off. */
+  lint?: { off: LintRule[] };
   /**
    * Absolute folder that the `Source:` paths of units start from: the folder of the config
    * file, or `sourceRoot` in it; the current folder when there is no config file.
@@ -71,7 +76,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, 
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'sourceRoot']);
+const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'sourceRoot', 'lint']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -128,7 +133,21 @@ export function loadConfig(path?: string): Config {
     config.sourceRoot = resolve(root, raw.sourceRoot);
   }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
+  if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);
   return config;
+}
+
+function readLint(value: unknown, fail: (msg: string) => Error): { off: LintRule[] } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`lint` must be a mapping, such as `lint: { off: [length] }`');
+  const { off, ...rest } = value as Record<string, unknown>;
+  if (Object.keys(rest).length) throw fail(`unknown key \`lint.${Object.keys(rest)[0]}\` (allowed: off)`);
+  const list = off === undefined ? [] : Array.isArray(off) ? off : [off];
+  for (const rule of list) {
+    if (typeof rule !== 'string' || !(LINT_RULES as readonly string[]).includes(rule)) {
+      throw fail(`\`lint.off\`: unknown rule \`${String(rule)}\` (rules: ${LINT_RULES.join(', ')})`);
+    }
+  }
+  return { off: list as LintRule[] };
 }
 
 const MODEL_FORMAT = '`model` is `{ provider: typesafe, name: <model name> }`, or the path of a module that exports a DecisionModel, starting with `./` or `/`';

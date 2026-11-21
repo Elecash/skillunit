@@ -1,9 +1,9 @@
 /**
  * Lint item 3, `Setup`: at most one per file and language, outside `## Rules`, and before the
- * first example that uses it.
+ * first example of the file that uses it. A `Setup` inherited from `SKILL.md` is placed there.
  */
 import type { ParsedSkill } from '../units/index.js';
-import { setupFor } from './examples.js';
+import { ownSetup } from './examples.js';
 import type { Problem } from './types.js';
 
 export function setups(skill: ParsedSkill): Problem[] {
@@ -26,7 +26,7 @@ export function setups(skill: ParsedSkill): Problem[] {
     const late = new Set<number>();
     for (const fence of file.fences) {
       if (fence.owner.kind === 'setup' || fence.owner.kind === 'misplaced' || fence.owner.kind === 'skipped') continue;
-      const setup = setupFor(file, fence.lang);
+      const setup = ownSetup(file, fence.lang);
       if (!setup || setup.line < fence.line || late.has(setup.line)) continue;
       late.add(setup.line);
       out.push(at(setup.line, `this \`${setup.lang}\` Setup comes after a \`${fence.lang}\` example at line ${fence.line}; move it above the first example`));

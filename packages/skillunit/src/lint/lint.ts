@@ -12,12 +12,14 @@ import { setups } from './setup.js';
 import { sources } from './sources.js';
 import { structure } from './structure.js';
 import { runTsc, type TsBlock, type TsDiagnostic } from './tsc.js';
-import type { LintResult, LintSummary, Problem } from './types.js';
+import type { LintResult, LintRule, LintSummary, Problem } from './types.js';
 
 export interface LintOptions {
   examples?: ExamplesConfig;
   /** Folder that `Source:` paths start from. Without it, `Source` paths are not checked. */
   sourceRoot?: string;
+  /** Rules whose problems are not reported. */
+  off?: LintRule[];
 }
 
 /** An undefined name in `Wrong` code would make the mistake look caught by the types. */
@@ -37,6 +39,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     unchecked: {},
     noCheck: 0,
     notConfigured: 0,
+    off: [...(options.off ?? [])],
     wrongCode: { checked: 0, unchecked: 0 },
   };
   const wrong = collectWrongCode(skill);
@@ -53,13 +56,18 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
 
   countUnchecked(skill, options.examples, summary);
 
+  if (options.off?.length) {
+    const off = new Set<string>(options.off);
+    problems.splice(0, problems.length, ...problems.filter((p) => !off.has(p.rule)));
+  }
   problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
   return { skill: skill.root, files: skill.files.map((f) => f.file), ok: !problems.some((p) => p.severity === 'error'), problems, summary };
 }
 
+/** `setupFile` is the file whose `Setup` the block uses: its own, or its skill's `SKILL.md`. */
 type Job =
-  | { kind: 'example'; file: ParsedFile; fence: Fence; isSetup: boolean }
-  | { kind: 'wrong'; wrong: WrongCode };
+  | { kind: 'example'; file: ParsedFile; fence: Fence; isSetup: boolean; setupFile?: ParsedFile }
+  | { kind: 'wrong'; wrong: WrongCode; setupFile?: ParsedFile };
 
 function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesConfig | undefined, summary: LintSummary): Problem[] {
   const ts = examples?.ts;
@@ -67,8 +75,8 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
   const blocks: TsBlock[] = [];
   const tsLang = (lang: string | null): lang is TsBlock['lang'] => lang !== null && TS_LANGS.includes(lang);
   const setupOf = (file: ParsedFile, lang: string) => {
-    const s = setupFor(file, lang);
-    return s ? { code: s.code, line: s.line + 1 } : undefined;
+    const s = setupFor(skill, file, lang);
+    return s ? { block: { code: s.fence.code, line: s.fence.line + 1 }, file: s.file } : undefined;
   };
 
   for (const file of skill.files) {
@@ -83,8 +91,9 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
         summary.notConfigured++;
         continue;
       }
-      jobs.push({ kind: 'example', file, fence, isSetup });
-      blocks.push({ lang: fence.lang, code: fence.code, line: fence.line + 1, ...(isSetup ? {} : { setup: setupOf(file, fence.lang) }) });
+      const setup = isSetup ? undefined : setupOf(file, fence.lang);
+      jobs.push({ kind: 'example', file, fence, isSetup, ...(setup ? { setupFile: setup.file } : {}) });
+      blocks.push({ lang: fence.lang, code: fence.code, line: fence.line + 1, ...(setup ? { setup: setup.block } : {}) });
     }
   }
 
@@ -95,8 +104,9 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
       continue;
     }
     if (ts && tsLang(w.lang)) {
-      jobs.push({ kind: 'wrong', wrong: w });
-      blocks.push({ lang: w.lang, code: w.code, line: w.line, setup: setupOf(w.file, w.lang) });
+      const setup = setupOf(w.file, w.lang);
+      jobs.push({ kind: 'wrong', wrong: w, ...(setup ? { setupFile: setup.file } : {}) });
+      blocks.push({ lang: w.lang, code: w.code, line: w.line, ...(setup ? { setup: setup.block } : {}) });
       continue;
     }
     // Not type-checked: a Check that matches still guards it, but "compiles" cannot be told.
@@ -115,13 +125,14 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
     reported.add(key);
     problems.push(p);
   };
-  const setupProblem = (file: ParsedFile, d: TsDiagnostic): Problem => ({
+  const setupProblem = (file: ParsedFile, d: TsDiagnostic, example: number): Problem => ({
     file: file.file,
     line: d.line,
     severity: 'error',
     rule: 'types',
     message: `the Setup ${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`,
     code: d.code,
+    example,
   });
 
   jobs.forEach((job, i) => {
@@ -132,10 +143,12 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
       else summary.typeChecked++;
       for (const d of diagnostics) {
         if (d.inSetup || job.isSetup) {
-          report(setupProblem(job.file, d));
+          // Once, at the `Setup` itself: an inherited one is in `SKILL.md`.
+          const setup = d.inSetup ? blocks[i]!.setup!.line - 1 : job.fence.line;
+          report(setupProblem(d.inSetup ? job.setupFile! : job.file, d, setup));
           continue;
         }
-        const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`, code: d.code };
+        const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`, code: d.code, example: job.fence.line };
         const unit = ownerUnit(job.fence.owner);
         if (unit) p.unit = unit;
         report(p);
@@ -146,10 +159,10 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
     const w = job.wrong;
     summary.wrongCode.checked++;
     const own = diagnostics.filter((d) => !d.inSetup);
-    for (const d of diagnostics.filter((d) => d.inSetup)) report(setupProblem(w.file, d));
+    for (const d of diagnostics.filter((d) => d.inSetup)) report(setupProblem(job.setupFile!, d, blocks[i]!.setup!.line - 1));
     const syntax = own.find((d) => d.syntax);
     const undefinedName = own.find((d) => d.code === UNDEFINED_NAME);
-    const base = { file: w.file.file, unit: w.unit.id, rule: 'wrong-code' as const };
+    const base = { file: w.file.file, unit: w.unit.id, rule: 'wrong-code' as const, example: w.line };
     if (syntax) {
       report({
         ...base,

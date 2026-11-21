@@ -2,8 +2,14 @@
 
 export type Severity = 'error' | 'warning';
 
+/**
+ * The lint rules, by the name each problem is reported under. Any of them can be turned off with
+ * `lint: { off: [...] }` in `skillunit.yaml`.
+ */
+export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'wrong-code', 'command', 'index', 'length', 'source'] as const;
+
 /** The rule that found a problem, for filtering and for reporters. `sync` comes from `skillunit sync`. */
-export type LintRule = 'parse' | 'structure' | 'check' | 'setup' | 'types' | 'wrong-code' | 'command' | 'index' | 'source' | 'sync';
+export type LintRule = (typeof LINT_RULES)[number] | 'sync';
 
 export interface Problem {
   /** Path in the skill folder, with `/`. */
@@ -16,6 +22,8 @@ export interface Problem {
   message: string;
   /** The TypeScript code, such as `TS2322`, of a problem the type-check found. */
   code?: string;
+  /** Markdown line where the example (or `Setup`, or `Wrong` code) the problem is in starts. */
+  example?: number;
 }
 
 export interface LintSummary {
@@ -35,6 +43,8 @@ export interface LintSummary {
   noCheck: number;
   /** `ts`, `tsx`, `js` and `jsx` fences skipped because `examples.ts` is not set. */
   notConfigured: number;
+  /** Rules turned off in `skillunit.yaml`: their problems are not reported. */
+  off: string[];
   wrongCode: {
     /** `Wrong` code that was type-checked or matched by a `Check`. */
     checked: number;

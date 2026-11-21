@@ -1,5 +1,5 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
-import { basename, join, relative } from 'node:path';
+import { basename, isAbsolute, join, relative } from 'node:path';
 import type { Problem } from '../lint/types.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
@@ -25,14 +25,28 @@ export const padStart = (s: string, n: number) => ' '.repeat(Math.max(0, n - wid
 export const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 export const pct = (p: number) => `${Math.round(p * 100)}%`;
 
-/** A path for people: relative to the folder the command ran in, with `/`. */
-export function shown(path: string, options: ReportOptions): string {
-  return relative(options.cwd, path).split('\\').join('/') || '.';
+/** `path` from the folder the command ran in, with `/`, or null when that needs `..`. */
+function inside(path: string, options: ReportOptions): string | null {
+  const rel = relative(options.cwd, path).split('\\').join('/');
+  return rel === '..' || rel.startsWith('../') || isAbsolute(rel) ? null : rel || '.';
 }
 
-/** Where a lint or sync problem is, for people: `skills/x/SKILL.md:12`. */
+/**
+ * A path for people: from the folder the command ran in, or the whole path when it is outside
+ * that folder, where a run of `../` would only hide where it is.
+ */
+export function shown(path: string, options: ReportOptions): string {
+  return inside(path, options) ?? path.split('\\').join('/');
+}
+
+/**
+ * Where a lint or sync problem is, for people: `skills/x/SKILL.md:12` from the folder the command
+ * ran in, or from the skill folder, which the layer's header names, when the skill is outside it.
+ */
 export function where(skill: string, p: Problem, options: ReportOptions): string {
-  return `${shown(join(skill, p.file), options)}:${p.line}`;
+  const path = join(skill, p.file);
+  // A file above the skill folder, such as a lock next to `skillunit.yaml`, gets its whole path.
+  return `${inside(path, options) ?? (p.file.startsWith('../') ? path.split('\\').join('/') : p.file)}:${p.line}`;
 }
 
 /** Options from most to least likely, e.g. "stop 96% · none 3% · local 1%". */

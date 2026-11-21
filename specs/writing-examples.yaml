@@ -11,6 +11,25 @@ tests:
       nowhere: Nowhere; the reader knows where `tf` comes from
     expect: setup
 
+  - id: setup-in-skill-md
+    unit: setup-once-per-file
+    scenario: Twenty files of a skill have examples, and every one of them uses `tf` from the library.
+    question: Where should the import of `tf` go?
+    options:
+      skill-md: Once, in a `Setup` in `SKILL.md`
+      each-file: In a `Setup` in each of the twenty files
+      each-example: At the top of every example
+    expect: skill-md
+
+  - id: own-setup-repeats
+    unit: setup-once-per-file
+    scenario: "`SKILL.md` has a `Setup` that imports `tf`. One file also needs `TimeoutError`, so it gets a `Setup` of its own."
+    question: What should that file's `Setup` import?
+    options:
+      both: Both `tf` and `TimeoutError`
+      only-new: Only `TimeoutError`; `tf` comes from `SKILL.md`
+    expect: both
+
   - id: undefined-name
     unit: complete-examples
     scenario: An example calls `api.get("users")`, and nothing in the file declares `api`.

@@ -1,11 +1,16 @@
 /**
  * The default reporter, for people: per layer, one row per file or spec with counts, then one
- * block per failure, the borderline verdicts, the warnings, and a status line.
+ * block per failure, the borderline verdicts, the warnings, and a status line. Lint findings
+ * come in one block per file, at most `PER_EXAMPLE` per example and each line once, so a skill
+ * of fragments stays readable; the JSON report keeps every finding.
  */
 import type { Problem } from '../lint/types.js';
 import type { SpecReport } from '../test/runner.js';
 import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
+
+/** Findings shown for one example; the rest are counted. */
+export const PER_EXAMPLE = 3;
 
 export function table(report: CheckReport, options: ReportOptions): string {
   const c = painter(options.color);
@@ -14,6 +19,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
   const failures: string[][] = [];
   const warnings: string[] = [];
   const borderline: string[] = [];
+  let codes = '';
 
   /** Lint and sync findings keep the one-line form `file:line  unit-id  what is wrong`. */
   const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`];
@@ -31,12 +37,16 @@ export function table(report: CheckReport, options: ReportOptions): string {
     for (const p of lint.problems) {
       if (!rows.some((r) => r.file === p.file)) rows.push({ file: p.file, errors: p.severity === 'error' ? 1 : 0, warnings: p.severity === 'warning' ? 1 : 0 });
     }
-    const w = Math.max(24, ...rows.map((r) => r.file.length)) + 2;
-    out.push(c.dim(`    ${pad('FILE', w)}${padStart('ERRORS', 8)}${padStart('WARNINGS', 10)}`));
-    for (const r of rows) {
-      const state = r.errors ? 'fail' : r.warnings ? 'warn' : 'ok';
+    // A row for each file with a finding; clean files are only counted.
+    const found = rows.filter((r) => r.errors || r.warnings);
+    const clean = rows.length - found.length;
+    const w = Math.max(24, ...found.map((r) => r.file.length)) + 2;
+    if (found.length) out.push(c.dim(`    ${pad('FILE', w)}${padStart('ERRORS', 8)}${padStart('WARNINGS', 10)}`));
+    for (const r of found) {
+      const state = r.errors ? 'fail' : 'warn';
       out.push(`  ${mark(state)} ${pad(r.file, w)}${padStart(String(r.errors), 8)}${padStart(String(r.warnings), 10)}`);
     }
+    if (clean) out.push(`  ${mark('ok')} ${found.length ? `${plural(clean, 'other file')} clean` : `${plural(clean, 'file')}, all clean`}`);
     const s = lint.summary;
     const notes = [
       plural(s.units, 'unit'),
@@ -52,12 +62,14 @@ export function table(report: CheckReport, options: ReportOptions): string {
             .join(', ')}`
         : '',
       s.wrongCode.unchecked ? `${s.wrongCode.unchecked} Wrong code not checked` : '',
+      s.off.length ? `off: ${s.off.join(', ')}` : '',
     ].filter(Boolean);
     out.push(c.dim(`  ${notes.join(' · ')}`));
-    for (const p of lint.problems) {
-      if (p.severity === 'error') failures.push(problemBlock(lint.skill, p));
-      else warnings.push(`${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
-    }
+    const line = (p: Problem) => problemBlock(lint.skill, p)[0]!;
+    // One failure per file: its first finding, then the others under it.
+    for (const lines of byFile(lint.problems.filter((p) => p.severity === 'error'), line)) failures.push([lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
+    for (const lines of byFile(lint.problems.filter((p) => p.severity === 'warning'), line)) warnings.push(...lines);
+    codes = codeCounts(lint.problems);
   }
 
   // ---------------------------------------------------------------- sync
@@ -141,6 +153,7 @@ export function table(report: CheckReport, options: ReportOptions): string {
     out.push(...borderline.map((l) => `  ${l}`));
   }
   if (warnings.length) out.push('', c.bold(c.yellow('Warnings')), ...warnings.map((l) => `  ${l}`));
+  if (codes) out.push('', c.dim(`Type problems by code: ${codes}`));
 
   out.push('', report.ok ? c.green(statusLine(report)) : c.red(statusLine(report)), '');
   return out.join('\n');
@@ -162,4 +175,49 @@ function testFailure(spec: SpecReport, v: SpecReport['verdicts'][number], at: st
     `              ${distribution(v)}`,
     ...(v.variants ? [`   phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
   ];
+}
+
+/**
+ * Lint findings as one block per file: each line and message once, and at most `PER_EXAMPLE`
+ * findings per example, with the rest counted under the last one shown.
+ */
+function byFile(problems: Problem[], line: (p: Problem) => string): string[][] {
+  const files = new Map<string, Problem[]>();
+  for (const p of problems) files.set(p.file, [...(files.get(p.file) ?? []), p]);
+  return [...files.values()].map((list) => {
+    const lines: string[] = [];
+    const seen = new Set<string>();
+    const shown = new Map<number, number>();
+    const hidden = new Map<number, number>();
+    const lastShown = new Map<number, number>();
+    for (const p of list) {
+      const key = `${p.line}\0${p.message}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (p.example !== undefined) {
+        const n = shown.get(p.example) ?? 0;
+        if (n >= PER_EXAMPLE) {
+          hidden.set(p.example, (hidden.get(p.example) ?? 0) + 1);
+          continue;
+        }
+        shown.set(p.example, n + 1);
+        lastShown.set(p.example, lines.length);
+      }
+      lines.push(line(p));
+    }
+    // From the end, so the indexes still point at the right lines.
+    const notes = [...hidden].map(([example, n]) => ({ at: lastShown.get(example)!, text: `  +${n} more in this example` }));
+    for (const note of notes.sort((a, b) => b.at - a.at)) lines.splice(note.at + 1, 0, note.text);
+    return lines;
+  });
+}
+
+/** `TS2304 512 · TS2322 40`: the type problems by code, the most frequent first. */
+function codeCounts(problems: Problem[]): string {
+  const counts = new Map<string, number>();
+  for (const p of problems) if (p.code) counts.set(p.code, (counts.get(p.code) ?? 0) + 1);
+  return [...counts]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([code, n]) => `${code} ${n}`)
+    .join(' · ');
 }

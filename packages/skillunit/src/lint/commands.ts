@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import type { ExamplesConfig } from '../config.js';
 import { removeTemp } from '../temp.js';
 import type { ParsedSkill } from '../units/index.js';
-import { isExample, isNoCheck, ownerUnit, snippet } from './examples.js';
+import { isExample, isNoCheck, ownerUnit, setupFor, snippet } from './examples.js';
 import type { Problem } from './types.js';
 
 export interface CommandResult {
@@ -32,7 +32,7 @@ export function runCommands(skill: ParsedSkill, examples: ExamplesConfig): Comma
           result.noCheck++;
           continue;
         }
-        const setup = fence.owner.kind === 'setup' ? undefined : file.setup[fence.lang];
+        const setup = fence.owner.kind === 'setup' ? undefined : setupFor(skill, file, fence.lang)?.fence;
         const path = join(dir, `example${n++}.${fence.lang}`);
         writeFileSync(path, setup ? `${setup.code}\n${fence.code}\n` : `${fence.code}\n`);
         result.checked++;
@@ -42,6 +42,7 @@ export function runCommands(skill: ParsedSkill, examples: ExamplesConfig): Comma
         const p: Problem = {
           file: file.file,
           line: fence.line,
+          example: fence.line,
           severity: 'error',
           rule: 'command',
           message: `this \`${fence.lang}\` example fails \`${command}\` (exit ${run.status ?? 'none'})${said ? `: ${snippet(said, 160)}` : ''}`,

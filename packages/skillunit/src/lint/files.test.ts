@@ -54,7 +54,30 @@ describe('index', () => {
         'sub/b.md': '# B\n',
         'orphan.md': '# O\n\n[a](a.md)\n',
       }),
-    ).toEqual(['orphan.md:1 error: no link leads here from `SKILL.md`; add this file to the index']);
+    ).toEqual(['orphan.md:1 error: no link or path leads here from `SKILL.md`; add this file to its index']);
+  });
+
+  it('counts a path written in a code span or in plain text, but not a URL', () => {
+    expect(
+      indexOf({
+        'SKILL.md': '# T\n\n| Rule | File |\n|---|---|\n| Timing | `rules/timing.md` |\n\nRead rules/fonts.md first. Online: https://example.com/rules/web.md\n',
+        'rules/timing.md': '# Timing\n\nSee also `rules/easing.md`.\n',
+        'rules/easing.md': '# Easing\n',
+        'rules/fonts.md': '# Fonts\n',
+        'rules/web.md': '# Web\n',
+      }),
+    ).toEqual(['rules/web.md:1 error: no link or path leads here from `SKILL.md`; add this file to its index']);
+  });
+
+  it('treats a folder with its own SKILL.md as a skill of its own, and names it', () => {
+    expect(
+      indexOf({
+        'SKILL.md': '# T\n',
+        'nested/SKILL.md': '# Nested\n\n[a](a.md)\n',
+        'nested/a.md': '# A\n',
+        'nested/lost.md': '# Lost\n',
+      }),
+    ).toEqual(['nested/lost.md:1 error: no link or path leads here from `nested/SKILL.md`; add this file to its index']);
   });
 
   it('reports a skill with no SKILL.md, and warns about a long file', () => {
@@ -63,6 +86,15 @@ describe('index', () => {
       'SKILL.md:1 warning: 301 lines; above about 300, look for a split into files of one task each',
     ]);
     expect(indexOf({ 'SKILL.md': `# T\n${'line\n'.repeat(299)}` })).toEqual([]);
+  });
+
+  it('reports the long-file warning as `length`, which `off` turns off', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n${'line\n'.repeat(300)}`, 'orphan.md': '# O\n' });
+    expect(lint(root).problems.map((p) => p.rule).sort()).toEqual(['index', 'length']);
+    const off = lint(root, { off: ['length'] });
+    expect(off.problems.map((p) => p.rule)).toEqual(['index']);
+    expect(off.summary.off).toEqual(['length']);
+    expect(lint(root, { off: ['length', 'index'] }).ok).toBe(true);
   });
 });
 

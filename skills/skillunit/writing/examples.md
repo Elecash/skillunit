@@ -2,7 +2,7 @@
 
 How to write the code in a skill so lint can check it against the current API.
 
-Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
+Agents copy examples before they read rules, so an example that breaks a rule or no longer compiles teaches the mistake. Lint type-checks every `ts`, `tsx`, `js` and `jsx` block with the project's own `tsc`, after the file's `Setup` block of the same language. A `tsx` block uses the `tsx` Setup, or the `ts` one when the file has none. A file with no `Setup` of its own for a language uses the one of its skill's `SKILL.md`. Blocks in other languages run through a command, when `skillunit.yaml` sets one.
 
 ```yaml
 examples:
@@ -18,7 +18,7 @@ The tsconfig named in `examples.ts` resolves the library's own name, usually wit
 
 When: the examples of a file need imports or declarations.
 
-Do: write them once, as `Setup:` followed by a fenced block, after the file's introduction, before its first example and outside `## Rules`.
+Do: write them once, as `Setup:` followed by a fenced block, after the file's introduction, before its first example and outside `## Rules`; when most files of the skill need the same ones, write that `Setup` once in `SKILL.md`, which covers every file with no `Setup` of its own. A file that has its own `Setup` uses only that one, so its `Setup` imports again what the file needs from `SKILL.md`'s.
 
 Right:
 
@@ -36,9 +36,13 @@ Wrong:
 
   Because: the agent reads the noise each time, and an example that forgets it fails to compile.
 
+- Doing: a `Setup` in a file that imports only what `SKILL.md`'s `Setup` does not.
+
+  Because: a file with its own `Setup` uses only that one, so the names `SKILL.md` declares are missing from its examples.
+
 Applies: examples, setup
 
-Source: src/lint/setup.ts
+Source: src/lint/setup.ts, src/lint/examples.ts#setupFor
 
 ### rule: complete-examples
 

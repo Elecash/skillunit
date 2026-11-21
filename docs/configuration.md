@@ -20,6 +20,8 @@ sourceRoot: .                # where `Source:` paths start (default: the folder 
 examples:
   ts: { tsconfig: ./tsconfig.json }                 # ts, tsx, js and jsx, with the project's tsc
   sh: { command: "sh -n {file}" }                   # any other language: a command with {file}
+lint:
+  off: [length]              # lint rules not to report
 ```
 
 - `skill`: the folder with `SKILL.md`. `--skill` overrides it.
@@ -38,6 +40,10 @@ examples:
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
   name to its source, usually with a `paths` entry. Any other language takes a `command` with
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
+- `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
+  the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `wrong-code`, `command`,
+  `index`, `length` and `source`. `length` is the warning about a file above about 300 lines,
+  the first to turn off on a skill someone else wrote. The summary says which rules are off.
 
 Any other key is an error.
 

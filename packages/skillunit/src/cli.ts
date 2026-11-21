@@ -168,7 +168,7 @@ async function runCommand(command: Command, args: Args) {
     let syncResult: SyncResult | undefined;
     let testResult: Report | undefined;
     if (command === 'lint' || command === 'check') {
-      lintResult = lint(config.skill, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}) });
+      lintResult = lint(config.skill, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
     }
     if (command === 'sync' || command === 'check' || (command === 'test' && args.changed)) {
       syncResult = sync({ skill: config.skill, sourceRoot: config.sourceRoot, lock: lockPath(config) });
