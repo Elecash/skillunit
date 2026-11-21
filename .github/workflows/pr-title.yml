@@ -1,0 +1,27 @@
+# A pull request reaches main as one squash commit, titled after the pull request, and the
+# release works out the version from those commits (see RELEASING.md). A title that is not a
+# conventional commit releases nothing and stays out of the changelog, so this check fails it.
+name: pr-title
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize]
+
+permissions: {}
+
+jobs:
+  title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: The title is a conventional commit
+        # The title goes through env, never into the script itself.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|docs|chore|refactor|test|ci|build|perf|style|revert'
+          pattern="^($types)(\([^)]+\))?!?: [^[:space:]]"
+          if [[ "$TITLE" =~ $pattern ]]; then
+            echo "ok: $TITLE"
+            exit 0
+          fi
+          echo "::error title=Pull request title::\"$TITLE\" is not a conventional commit. The squash merge makes the title the commit on main, and the release reads it: write it as type(scope): subject, such as fix(lint): ..., with type one of ${types//|/, }. See RELEASING.md."
+          exit 1
