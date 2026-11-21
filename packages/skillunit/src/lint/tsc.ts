@@ -49,6 +49,7 @@ const GLOBAL_DIAGNOSTIC = /^error (TS\d+): (.*)$/;
 export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
   if (!existsSync(tsconfig)) throw new ConfigError(`\`examples.ts.tsconfig\` points to ${tsconfig}, which does not exist`);
   const { tsc, version } = findTsc(tsconfig);
+  const types = relativeTypes(tsc, tsconfig);
   const dir = cacheFolder(tsconfig);
   try {
     const names = blocks.map((b, i) => `block${i}.${b.lang}`);
@@ -63,21 +64,57 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
     // and the rest run again. A pass that reached the type-check is final. A syntax-only pass
     // with no error in a block is a settings problem (see `runPass`), so each pass that does
     // not end the loop drops at least one block.
-    let active = blocks.map((_, i) => i);
-    while (active.length > 0) {
-      const pass = runPass(tsc, tsconfig, dir, blocks, names, active);
-      if (pass.typeChecked) {
-        for (const i of active) diagnostics[i] = pass.diagnostics.get(i) ?? [];
-        break;
+    for (let active of groups(blocks)) {
+      while (active.length > 0) {
+        const pass = runPass(tsc, tsconfig, dir, blocks, names, active, types);
+        if (pass.typeChecked) {
+          for (const i of active) diagnostics[i] = pass.diagnostics.get(i) ?? [];
+          break;
+        }
+        const broken = active.filter((i) => pass.diagnostics.has(i));
+        for (const i of broken) diagnostics[i] = pass.diagnostics.get(i)!;
+        active = active.filter((i) => !broken.includes(i));
       }
-      const broken = active.filter((i) => pass.diagnostics.has(i));
-      for (const i of broken) diagnostics[i] = pass.diagnostics.get(i)!;
-      active = active.filter((i) => !broken.includes(i));
     }
     return { version, diagnostics };
   } finally {
     removeTemp(dir);
   }
+}
+
+/** `declare module "x"` or `declare global`: a change to declarations outside the block. */
+const AUGMENTS = /^\s*(?:export\s+)?declare\s+(?:module\s+['"]|global\b)/m;
+
+/**
+ * The blocks to compile together. A `declare module` or `declare global` changes the types of
+ * every file in the program, so a block that has one gets a pass of its own, and blocks whose
+ * shared `Setup` has one get a pass together; every other block shares one pass.
+ */
+function groups(blocks: TsBlock[]): number[][] {
+  const out = new Map<string, number[]>();
+  blocks.forEach((b, i) => {
+    const key = AUGMENTS.test(b.code) ? `block ${i}` : b.setup && AUGMENTS.test(b.setup.code) ? `setup ${b.setup.line}:${b.setup.code}` : '';
+    out.set(key, [...(out.get(key) ?? []), i]);
+  });
+  return [...out.values()];
+}
+
+/**
+ * The project's `types` with its relative entries made absolute, or undefined when it has none.
+ * `tsc` resolves a relative entry from the folder of the config it was given, which for the
+ * examples is the generated one under `node_modules/.cache`, so `./types/globals` would not be
+ * found. `--showConfig` gives the entries the project ends up with, `extends` followed.
+ */
+function relativeTypes(tsc: string, tsconfig: string): string[] | undefined {
+  const run = spawnSync(process.execPath, [tsc, '--showConfig', '-p', tsconfig], { cwd: dirname(tsconfig), encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 });
+  let types: unknown;
+  try {
+    types = JSON.parse(run.stdout ?? '').compilerOptions?.types;
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(types) || !types.some((t) => typeof t === 'string' && /^\.{1,2}[\\/]/.test(t))) return undefined;
+  return types.map((t: string) => (/^\.{1,2}[\\/]/.test(t) ? resolve(dirname(tsconfig), t) : t));
 }
 
 /**
@@ -103,6 +140,7 @@ function runPass(
   blocks: TsBlock[],
   names: string[],
   active: number[],
+  types: string[] | undefined,
 ): Pass {
   const hasJs = active.some((i) => blocks[i]!.lang === 'js' || blocks[i]!.lang === 'jsx');
   let base = relative(dir, tsconfig).split(sep).join('/');
@@ -121,6 +159,7 @@ function runPass(
       // The generated files sit outside any `rootDir` the project sets.
       rootDir: parse(dir).root,
       ...(hasJs ? { allowJs: true, checkJs: true } : {}),
+      ...(types ? { types } : {}),
     },
     files: [SENTINEL, ...active.map((i) => names[i]!)],
     include: [],

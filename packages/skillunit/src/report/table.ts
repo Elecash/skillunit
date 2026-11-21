@@ -22,7 +22,8 @@ export function table(report: CheckReport, options: ReportOptions): string {
   let codes = '';
 
   /** Lint and sync findings keep the one-line form `file:line  unit-id  what is wrong`. */
-  const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`];
+  // A message of several lines, such as a command's output, goes on under the finding, indented.
+  const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`];
 
   // ---------------------------------------------------------------- lint
   const { lint, sync, test } = report;

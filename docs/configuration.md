@@ -40,10 +40,16 @@ lint:
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
   name to its source, usually with a `paths` entry. Any other language takes a `command` with
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
+  An example that uses names it does not declare fails with "Cannot find name": declare them
+  once in a `Setup:` block, which lint puts in front of every example of that language in the
+  file. A file with no `Setup` of its own uses the one of its skill's `SKILL.md`. This works in a
+  skill that is not written in units too. A block marked `no-check` after its language is not
+  checked. The [style guide](style-guide.md#setup) has the details.
 - `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
   the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `wrong-code`, `command`,
-  `index`, `length` and `source`. `length` is the warning about a file above about 300 lines,
-  the first to turn off on a skill someone else wrote. The summary says which rules are off.
+  `index`, `length`, `source` and `fence`. `length` is the warning about a file above about 300 lines,
+  the first to turn off on a skill someone else wrote; `fence` is the warning about a word after
+  a fence's language that SkillUnit does not know. The summary says which rules are off.
 
 Any other key is an error.
 

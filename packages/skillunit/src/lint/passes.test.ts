@@ -110,4 +110,38 @@ describe.each(COMPILERS)('parse or type errors, with %s', (_, typescript) => {
     expect(() => run(root)).toThrow(ConfigError);
     expect(() => run(root)).toThrow(/did not check types/);
   });
+
+  it('says a ts block that does not parse and looks like JSX should be tsx', () => {
+    const skill = `# Skill\n\n${F}ts\nconst a = <div className="x">hi</div>;\n${F}\n\n${F}ts\nconst list: Array<string> = [1];\n${F}\n`;
+    const r = run(project(typescript, skill));
+    const parse = r.problems.filter((p) => /does not parse/.test(p.message));
+    expect(parse.length).toBeGreaterThan(0);
+    expect(parse[0]!.message).toMatch(/this block looks like JSX, which parses only in a `tsx` fence\)$/);
+    expect(parse.slice(1).every((p) => !p.message.includes('looks like JSX'))).toBe(true);
+    // The generic in the other block is not JSX; that block reaches the type-check.
+    expect(r.problems.find((p) => p.code === 'TS2322')?.message).not.toContain('JSX');
+  });
+
+  it('finds a relative entry of `types` from the folder of the tsconfig', () => {
+    const tsconfig = { ...TSCONFIG, compilerOptions: { ...TSCONFIG.compilerOptions, types: ['./types/globals'] } };
+    const root = project(typescript, `# Skill\n\n${F}ts\nconst s: number = GLOBAL_NAME;\n${F}\n`, tsconfig);
+    mkdirSync(join(root, 'types', 'globals'), { recursive: true });
+    writeFileSync(join(root, 'types', 'globals', 'index.d.ts'), 'declare const GLOBAL_NAME: string;\n');
+    // GLOBAL_NAME is found, so the one error is the string assigned to a number.
+    expect(show(run(root))).toEqual(['4 TS2322 types']);
+  });
+
+  it('runs a block with `declare module` or `declare global` on its own, so it changes no other block', () => {
+    const skill = [
+      '# Skill',
+      `${F}ts\ndeclare global { interface Array<T> { first(): T } }\nexport {};\nconst a: number = [1].first();\n${F}`,
+      `${F}ts\ndeclare module "lib" { export const extra: number; }\nimport { extra } from "lib";\nconst e: number = extra;\n${F}`,
+      // Compiles alone only without the two declarations above.
+      `${F}ts\nconst first = [1].first;\nimport { extra } from "lib";\n${F}`,
+    ].join('\n\n') + '\n';
+    const r = run(project(typescript, skill));
+    const first = lineOf(skill, 'const first');
+    expect(r.problems.map((p) => `${p.line} ${p.code}`)).toEqual([`${first} TS2339`, `${lineOf(skill, 'import { extra }', first)} TS2305`]);
+    expect(r.summary).toMatchObject({ typeChecked: 3, notParsed: 0 });
+  });
 });

@@ -101,5 +101,8 @@ export function statusLine(report: CheckReport): string {
  * lines can run to thousands; the JSON report keeps it whole.
  */
 export function brief(message: string, max = 400): string {
-  return message.length <= max ? message : `${message.slice(0, max - 1).trimEnd()}…`;
+  return message
+    .split('\n')
+    .map((line) => (line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`))
+    .join('\n');
 }

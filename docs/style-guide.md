@@ -218,7 +218,12 @@ import { tf } from "tinyfetch";
 - An example that needs more (another import, a declared value) carries it inside its own
   block. It does not import again what `Setup` already imports.
 - A fragment that cannot type-check on purpose gets `no-check` after the language on its
-  fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale.
+  fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale. Lint
+  warns about any other bare word there, so a typo such as `nocheck` does not leave the block
+  checked by surprise; `key=value` and `{...}`, which other tools read, are left alone.
+- JSX goes in a `tsx` or `jsx` fence. In a `ts` fence it does not parse, and lint says so.
+- A `declare module` or `declare global` in an example is checked apart from the other
+  examples, so it changes no type outside its own block.
 
 ### Short examples
 

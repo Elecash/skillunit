@@ -163,6 +163,30 @@ Put the key in the environment, or in a `.env` file next to `skillunit.yaml` or 
 npx skillunit check
 ```
 
+## Check the examples of a skill
+
+`skillunit.yaml` says how lint checks the code in a skill. `init` writes the `ts` entry when the project has a `tsconfig.json`:
+
+```yaml
+skill: ./skills/my-skill
+examples:
+  ts: { tsconfig: ./tsconfig.json }   # ts, tsx, js and jsx, with the project's tsc
+  sh: { command: "bash -n {file}" }   # any other language: a command that must exit 0
+```
+
+Most examples in a skill use names they never declare, and fail with "Cannot find name". Declare those names once in a `Setup:` block; lint puts it in front of every example of that language in the file:
+
+````md
+Setup:
+
+```ts
+import { tf } from "tinyfetch";
+declare const user: { id: number };
+```
+````
+
+A file with no `Setup` of its own uses the one of `SKILL.md`, so one block can cover a whole skill. This works in any skill, written in units or not. A block that cannot compile on purpose gets `no-check` after its language (```` ```ts no-check ````), and `lint: { off: [length] }` in `skillunit.yaml` turns a rule off. The [configuration](https://github.com/Elecash/skillunit/blob/main/docs/configuration.md) lists every key.
+
 ## Let your agent write the skill and the specs
 
 SkillUnit ships a skill that teaches an agent to write a skill in units, to write its examples and specs, and to act on a report. Install it with [skills.sh](https://skills.sh):

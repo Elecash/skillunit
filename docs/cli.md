@@ -80,7 +80,9 @@ until the file is closed, such as `code --wait`.
   for a run that needs one, a `tsc` that rejects the tsconfig, a lock this version cannot read,
   or `review --accept` with an id that is not a unit.
 
-Reports go to stdout, and errors about the command to stderr.
+Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
+an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so
+a script that parses stdout gets an object rather than nothing.
 
 ## Dry runs
 

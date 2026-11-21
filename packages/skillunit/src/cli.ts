@@ -10,7 +10,7 @@ import { init } from './init.js';
 import { ConfigError, lint } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { loadModel, ModelError } from './models/index.js';
-import { buildReport, colorByDefault, render, REPORTERS, type Command, type ReporterName } from './report/index.js';
+import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { openEditor, runReview, type ReviewArgs } from './review/index.js';
 import { lockPath, sync, type SyncResult } from './sync/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
@@ -280,9 +280,19 @@ function print(text: string) {
   process.stdout.write(text);
 }
 
-/** A usage or configuration error: a diagnostic on stderr, and exit 2. */
+/**
+ * A usage or configuration error: a diagnostic on stderr, and exit 2. When the arguments ask for
+ * JSON, stdout gets a JSON object with the error too, so a script that parses stdout does not
+ * read an empty string.
+ */
 function usage(message: string): never {
   process.stderr.write(`skillunit: ${message}\n`);
+  const argv = process.argv.slice(2);
+  const json = argv.includes('--json') || argv.some((a, i) => a === '--reporter' && argv[i + 1] === 'json');
+  if (json) {
+    const command = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
+    process.stdout.write(`${JSON.stringify({ schema: REPORT_SCHEMA, command, ok: false, error: { exit: 2, message } }, null, 2)}\n`);
+  }
   process.exit(2);
 }
 

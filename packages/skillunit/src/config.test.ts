@@ -65,7 +65,7 @@ describe('lint', () => {
   });
 
   it('rejects a rule it does not know, and names the ones it does', () => {
-    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, wrong-code, command, index, length, source\)/);
+    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, wrong-code, command, index, length, source, fence\)/);
     expect(() => load('lint: { on: [index] }\n')).toThrow(/unknown key `lint.on`/);
   });
 });

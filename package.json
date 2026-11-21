@@ -17,6 +17,7 @@
     "skill:dry": "nx build skillunit && node packages/skillunit/dist/cli.js check --dry-run"
   },
   "devDependencies": {
+    "@nx/js": "^24.0.6",
     "nx": "^24.0.6"
   }
 }

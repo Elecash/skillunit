@@ -8,6 +8,7 @@ import { checks, guardedByCheck } from './check.js';
 import { runCommands } from './commands.js';
 import { collectWrongCode, isExample, isNoCheck, ownerUnit, setupFor, type WrongCode } from './examples.js';
 import { index } from './links.js';
+import { fenceFlags } from './fences.js';
 import { setups } from './setup.js';
 import { sources } from './sources.js';
 import { structure } from './structure.js';
@@ -43,7 +44,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     wrongCode: { checked: 0, unchecked: 0 },
   };
   const wrong = collectWrongCode(skill);
-  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill)];
+  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill), ...fenceFlags(skill)];
   if (options.sourceRoot) problems.push(...sources(skill, options.sourceRoot));
 
   problems.push(...typeCheck(skill, wrong, options.examples, summary));
@@ -136,7 +137,7 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
   });
 
   jobs.forEach((job, i) => {
-    const diagnostics = run.diagnostics[i]!;
+    const diagnostics = withJsxHint(run.diagnostics[i]!, blocks[i]!);
     if (job.kind === 'example') {
       // A block whose code, or whose `Setup`, did not parse never reached the type-check.
       if (diagnostics.some((d) => d.syntax)) summary.notParsed++;
@@ -204,4 +205,19 @@ function countUnchecked(skill: ParsedSkill, examples: ExamplesConfig | undefined
       summary.unchecked[fence.lang] = (summary.unchecked[fence.lang] ?? 0) + 1;
     }
   }
+}
+
+/** A JSX tag: a closing tag, a self-closing one, or an opening tag with an attribute. `Array<string>` is not one. */
+const JSX_TAG = /<\/[A-Za-z][\w.]*>|<[A-Za-z][\w.]*\s*\/>|<[A-Za-z][\w.]*\s+[\w-]+(?:=|\s*\/?>)/;
+
+/**
+ * JSX in a `ts` or `js` fence does not parse, and `tsc` says so with errors such as
+ * "Unterminated regular expression literal" that do not name the cause. When a block that did
+ * not parse looks like JSX, its first parse error says the fence should be `tsx` or `jsx`.
+ */
+function withJsxHint(diagnostics: TsDiagnostic[], block: TsBlock): TsDiagnostic[] {
+  const first = diagnostics.findIndex((d) => d.syntax && !d.inSetup);
+  if (first < 0 || (block.lang !== 'ts' && block.lang !== 'js') || !JSX_TAG.test(block.code)) return diagnostics;
+  const fence = block.lang === 'ts' ? 'tsx' : 'jsx';
+  return diagnostics.map((d, i) => (i === first ? { ...d, message: `${d.message} (this block looks like JSX, which parses only in a \`${fence}\` fence)` } : d));
 }

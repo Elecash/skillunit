@@ -130,7 +130,19 @@ ${F}
     expect(result.checked).toBe(3);
     expect(result.noCheck).toBe(1);
     expect(result.problems.map((p) => `${p.line} ${p.rule}`)).toEqual(['13 command']);
-    expect(result.problems[0]!.message).toMatch(/^this `sh` example fails `sh -n \{file\}` \(exit 2\): /);
+    expect(result.problems[0]!.message).toMatch(/^this `sh` example fails `sh -n \{file\}` \(exit 2\):\n/);
+    // The temp file is gone, so the output names the example in the skill.
+    expect(result.problems[0]!.message).toContain('SKILL.md:13');
+    expect(result.problems[0]!.message).not.toMatch(/skillunit-examples-/);
+  });
+
+  it('keeps every line the command prints, up to twelve', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n\n${F}sh\necho hi\n${F}\n` });
+    const banner = 'printf "Banner line\\n\\nError: the schema is invalid\\n  at %s\\n" {file}; exit 1';
+    const result = runCommands(parseSkill(root), { commands: { sh: banner }, cwd: root });
+    expect(result.problems[0]!.message).toBe('this `sh` example fails `' + banner + '` (exit 1):\nBanner line\nError: the schema is invalid\n  at SKILL.md:3');
+    const long = runCommands(parseSkill(root), { commands: { sh: 'seq 1 20; exit 1' }, cwd: root });
+    expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
   it('reports a failing Setup', () => {

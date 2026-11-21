@@ -9,5 +9,6 @@ dist
 packages/skillunit/README.md
 packages/skillunit/LICENSE
 packages/skillunit/skills
+packages/skillunit/docs
 lab/
 /PLAN.md

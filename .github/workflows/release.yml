@@ -1,57 +1,79 @@
-# Publishes packages/skillunit to npm through trusted publishing: no token, and npm attaches the
-# provenance by itself. The name of this file is part of the trusted publisher set up on
-# npmjs.com; renaming it breaks publishing. See RELEASING.md.
+# Releases packages/skillunit, run by hand from the Actions tab (see RELEASING.md). Nx Release
+# works out the version from the conventional commits since the last `v<version>` tag, writes
+# CHANGELOG.md, commits it, tags and pushes to main, and creates the GitHub release; then npm
+# publishes the package through trusted publishing: no token, and npm attaches the provenance.
+# The version lives in the tag: package.json says 0.0.0 in git, and the release step writes the
+# version into it, uncommitted, for the build and the publish.
 #
-# - A pushed tag `v<version>` publishes that version.
-# - Run by hand (workflow_dispatch), it is a rehearsal: everything, ending in `npm publish --dry-run`.
-#
-# It makes no commit and pushes no tag.
+# The name of this file is part of the trusted publisher on npmjs.com: renaming it breaks
+# publishing. `dry-run` is on by default, so a run started by mistake changes nothing.
 name: release
 on:
-  push:
-    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      release-type:
+        description: stable goes to the npm tag latest; rc, beta and alpha make a prerelease, on the npm tag next
+        type: choice
+        options: [stable, rc, beta, alpha]
+        default: stable
+      dry-run:
+        description: Work out and print the release, and change nothing
+        type: boolean
+        default: true
 
 permissions:
-  contents: read
-  id-token: write # trusted publishing signs in with the job's OIDC token
+  contents: write # the release commit, the tag and the GitHub release
+  id-token: write # trusted publishing signs in to npm with the job's OIDC token
 
 jobs:
-  publish:
+  release:
     # Trusted publishing works only on GitHub-hosted runners.
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check that the tag is v plus the package version
-        if: github.event_name == 'push'
+      - name: Refuse any branch but main
+        if: github.ref != 'refs/heads/main'
         env:
-          TAG: ${{ github.ref_name }}
+          REF: ${{ github.ref_name }}
         run: |
-          VERSION=$(node -p "require('./packages/skillunit/package.json').version")
-          if [ "$TAG" != "v$VERSION" ]; then
-            echo "::error::tag $TAG does not match packages/skillunit/package.json, whose version is $VERSION: tag v$VERSION, or bump the version"
-            exit 1
-          fi
+          echo "::error::a release runs from main, and this run is on $REF"
+          exit 1
 
-      # Node 22.14.0 and npm 11.5.1 or later are needed for trusted publishing. No npm cache in a
-      # release build.
+      # The whole history: the current version comes from the last tag, and the changelog from
+      # the commits since.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Node 22.14.0 and npm 11.5.1 or later are needed for trusted publishing; 0.1.0 was
+      # published with npm 11, so the major stays pinned. No npm cache in a release build.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
       - run: npm ci
       - run: npx nx run-many -t typecheck build test
       - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
       # No API key here, so the scenarios that ask the model are skipped.
       - run: npx nx e2e tinyfetch-e2e
 
-      - name: Publish
-        if: github.event_name == 'push'
+      - name: Version, changelog, commit, tag, push and GitHub release
+        id: release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TYPE: ${{ inputs.release-type }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          node tools/release.mjs --type "$TYPE" $([ "$DRY_RUN" = true ] && echo --dry-run)
+
+      # After the push, so a failed publish leaves a tag with no package; the next run finds it
+      # and publishes that version from its tag without making a new one. In a dry run too, with
+      # the version written into package.json: it shows what the tarball would carry.
+      - name: Publish to npm
+        if: steps.release.outputs.publish == 'true'
         working-directory: packages/skillunit
-        run: npm publish
-      - name: Rehearse the publish
-        if: github.event_name == 'workflow_dispatch'
-        working-directory: packages/skillunit
-        run: npm publish --dry-run
+        env:
+          TAG: ${{ steps.release.outputs.npm-tag }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: npm publish --tag "$TAG" $([ "$DRY_RUN" = true ] && echo --dry-run)
