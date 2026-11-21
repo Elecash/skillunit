@@ -234,6 +234,20 @@ import { tf } from "tinyfetch";
 - A `declare module` or `declare global` in an example is checked apart from the other
   examples, so it changes no type outside its own block.
 
+#### When a `Setup` is not enough
+
+- **Code of another library under the same name.** A migration guide shows the old client as
+  `redis` too, and the `Setup` of `SKILL.md` types `redis` as the new one, so lint checks the
+  old code against the new types and reports findings that are not mistakes (nine in
+  Upstash's two migration files). Give that file a `Setup` of its own, which then is the one
+  its examples use, or mark the "before" blocks `no-check`.
+- **Types that come from generated code.** `createFileRoute('/posts')` in TanStack Router and
+  `prisma.user` in Prisma type-check only against code a generator writes, and a `Setup`
+  cannot supply it. In a project that has the generated code, point `examples.ts.tsconfig` at
+  a tsconfig that includes it, and import it in the `Setup`. A library's own skill repository
+  has no generated code: check in a small fixture that the tsconfig includes, or mark those
+  blocks `no-check`.
+
 ### Short examples
 
 Docs leave things out of their examples, and an example in a skill still has to type-check.

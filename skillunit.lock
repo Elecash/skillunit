@@ -37,6 +37,7 @@
     "scenario-without-the-answer": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "section-for-long-files": { "src/test/skill-text.ts": "5c2fa352ca73585c" },
     "setup-once-per-file": { "src/lint/examples.ts#setupFor": "6d20d95ec42f25de", "src/lint/setup.ts": "8f8674f2f58fd42f" },
+    "setup-per-version": { "src/lint/examples.ts#setupFor": "6d20d95ec42f25de" },
     "short-complete-examples": { "src/lint/tsc.ts": "e1ae1b73900a9b53" },
     "short-option-labels": { "src/test/spec.ts": "e374fbf6e29a1d09" },
     "signatures-in-tables": { "src/lint/tsc.ts": "e1ae1b73900a9b53" },

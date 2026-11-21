@@ -10,7 +10,7 @@ examples:
   py: { command: "python3 -m py_compile {file}" }
 ```
 
-The tsconfig named in `examples.ts` resolves the library's own name, usually with a `paths` entry, so an example's import reaches the current source. Without `examples.ts`, lint skips those blocks and says how many it skipped.
+The tsconfig named in `examples.ts` resolves the library's own name, usually with a `paths` entry, so an example's import reaches the current source. Without `examples.ts`, lint skips those blocks and says how many it skipped. Types that only generated code has, such as a Prisma client or a TanStack Router route tree, come from the tsconfig too: it includes the generated code, or a small fixture checked in for it, and the `Setup` imports it; a `Setup` cannot write them.
 
 ## Rules
 
@@ -43,6 +43,22 @@ Wrong:
 Applies: examples, setup
 
 Source: src/lint/setup.ts, src/lint/examples.ts#setupFor
+
+### rule: setup-per-version
+
+When: a file shows code of another library or of an older version under a name the `Setup` it uses declares, such as the "before" blocks of a migration guide.
+
+Do: give that file a `Setup` of its own that declares the names its examples need, or mark the "before" blocks `no-check`.
+
+Wrong:
+
+- Doing: leaving a migration guide under the `Setup` of `SKILL.md`, which types `redis` as the new client.
+
+  Because: lint checks the old code against the new types, and every finding it reports there is false.
+
+Applies: examples, setup
+
+Source: src/lint/examples.ts#setupFor
 
 ### rule: complete-examples
 
