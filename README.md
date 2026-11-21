@@ -70,14 +70,13 @@ All three layers apply to a skill that describes code. A skill with no code, suc
 
 ## Try it
 
-Clone the repository, build SkillUnit and check tinyfetch. `npm rebuild skillunit` links the `skillunit` command, which exists only after the build.
+Clone the repository, build SkillUnit and check tinyfetch:
 
 ```sh
 git clone https://github.com/Elecash/skillunit
 cd skillunit
 npm ci
 npx nx build skillunit
-npm rebuild skillunit
 cd apps/tinyfetch
 npx skillunit check --dry-run
 ```

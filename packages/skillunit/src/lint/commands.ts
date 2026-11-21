@@ -3,10 +3,11 @@
  * the same language, to a temp file, and the configured command must exit 0.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ExamplesConfig } from '../config.js';
+import { removeTemp } from '../temp.js';
 import type { ParsedSkill } from '../units/index.js';
 import { isExample, isNoCheck, ownerUnit, snippet } from './examples.js';
 import type { Problem } from './types.js';
@@ -51,7 +52,7 @@ export function runCommands(skill: ParsedSkill, examples: ExamplesConfig): Comma
       }
     }
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTemp(dir);
   }
   return result;
 }

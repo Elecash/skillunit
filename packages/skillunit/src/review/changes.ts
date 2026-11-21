@@ -5,11 +5,12 @@
  * For a new unit there is nothing to diff, so it is where the code is: `path:line`, for the
  * reader to open in an editor or read with their own tools.
  */
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { defaultBase, Git } from '../git.js';
 import { ConfigError } from '../lint/types.js';
+import { removeTemp } from '../temp.js';
 import { declarationLines } from '../sync/fingerprint.js';
 import type { UnitState } from '../sync/sync.js';
 import type { SourceRef } from '../units/types.js';
@@ -157,6 +158,6 @@ function diffSnippets(base: GitBase, before: Snippet | null, after: Snippet | nu
       .replace(/^@@ -(\d+)(,\d+)? \+(\d+)(,\d+)? @@/gm, (_, a, an = '', b, bn = '') => `@@ -${shift(a, (before?.first ?? 1) - 1)}${an} +${shift(b, (after?.first ?? 1) - 1)}${bn} @@`);
     return `--- ${before ? from : '/dev/null'}\n+++ ${after ? to : '/dev/null'}\n${hunks}`;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTemp(dir);
   }
 }

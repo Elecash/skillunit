@@ -3,11 +3,13 @@
  * compiler API is not used: `typescript@7` (the native port) no longer has it. Each block becomes
  * one file: its `Setup`, then its code. The files and a tsconfig that `extends` the configured
  * one go in a fresh folder under the nearest `node_modules/.cache/skillunit/`, so imports of
- * installed packages resolve as they do for the project. The folder is removed afterwards.
+ * installed packages resolve as they do for the project. The folder is removed afterwards; when
+ * it cannot be, the run warns and keeps its result.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, parse, relative, resolve, sep } from 'node:path';
+import { removeTemp } from '../temp.js';
 import { ConfigError } from './types.js';
 
 export interface TsBlock {
@@ -68,7 +70,7 @@ export function runTsc(tsconfig: string, blocks: TsBlock[]): TscRun {
     }
     return { version, diagnostics };
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeTemp(dir);
   }
 }
 
