@@ -1,3 +1,13 @@
+## 0.1.3 (2026-11-21)
+
+### 🚀 Features
+
+- **lint:** an example may declare what the Setup declares ([#3](https://github.com/Elecash/skillunit/pull/3))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.1.2 (2026-11-21)
 
 ### 🩹 Fixes
