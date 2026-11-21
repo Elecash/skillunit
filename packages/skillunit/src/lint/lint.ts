@@ -42,6 +42,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     notConfigured: 0,
     off: [...(options.off ?? [])],
     wrongCode: { checked: 0, unchecked: 0 },
+    undeclared: [],
   };
   const wrong = collectWrongCode(skill);
   const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill), ...fenceFlags(skill)];
@@ -62,6 +63,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     problems.splice(0, problems.length, ...problems.filter((p) => !off.has(p.rule)));
   }
   problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  summary.undeclared = undeclared(problems);
   return { skill: skill.root, files: skill.files.map((f) => f.file), ok: !problems.some((p) => p.severity === 'error'), problems, summary };
 }
 
@@ -190,6 +192,19 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
     }
   });
   return problems;
+}
+
+/** "Cannot find name", and "Cannot find name 'x'. Did you mean 'y'?". */
+const NOT_FOUND = new Set(['TS2304', 'TS2552']);
+
+/** The names of the problems `tsc` reports as not found, counted, the most frequent first. */
+function undeclared(problems: Problem[]): LintSummary['undeclared'] {
+  const counts = new Map<string, number>();
+  for (const p of problems) {
+    const name = p.code && NOT_FOUND.has(p.code) ? /Cannot find name '([^']+)'/.exec(p.message)?.[1] : undefined;
+    if (name) counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 /**

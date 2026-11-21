@@ -51,6 +51,11 @@ export interface LintSummary {
     /** `Wrong` code with no language, or in a language that is not type-checked. */
     unchecked: number;
   };
+  /**
+   * Names `tsc` could not find (TS2304, TS2552), with the number of findings each, the most
+   * frequent first. A `Setup` block in `SKILL.md` that declares them removes those findings.
+   */
+  undeclared: { name: string; count: number }[];
 }
 
 export interface LintResult {

@@ -96,6 +96,26 @@ describe.each(COMPILERS)('parse or type errors, with %s', (_, typescript) => {
     expect(r.summary).toMatchObject({ typeChecked: 1, notParsed: 0 });
   });
 
+  it('lists the names that nothing declares, the most frequent first', () => {
+    const skill = `# Skill\n\n${F}ts\nalpha.send();\nalpha.list();\nbeta.get();\n${F}\n\n${F}ts\nalpha.x();\nbeta.y();\nconsol.log(1);\ngamma();\n${F}\n`;
+    const r = run(project(typescript, skill));
+    expect(r.summary.undeclared).toEqual([
+      { name: 'alpha', count: 3 },
+      { name: 'beta', count: 2 },
+      { name: 'consol', count: 1 },
+      { name: 'gamma', count: 1 },
+    ]);
+    // "Cannot find name 'consol'. Did you mean 'console'?" has a code of its own.
+    expect(r.problems.find((p) => p.message.includes("'consol'"))?.code).toBe('TS2552');
+    expect(r.problems).toHaveLength(7);
+  });
+
+  it('lists no names when every name is declared', () => {
+    const r = run(project(typescript, topReturn));
+    expect(r.problems.length).toBeGreaterThan(0);
+    expect(r.summary.undeclared).toEqual([]);
+  });
+
   it('keeps the whole message, and the code in a field of its own', () => {
     const skill = `# Skill\n\n${F}ts\nimport { pick } from "lib";\npick({ title: "x" });\n${F}\n`;
     const r = run(project(typescript, skill));

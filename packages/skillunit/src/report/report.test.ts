@@ -36,6 +36,7 @@ const lint: LintResult = {
     noCheck: 1,
     notConfigured: 0,
     wrongCode: { checked: 2, unchecked: 0 },
+    undeclared: [],
   },
 };
 
@@ -226,6 +227,31 @@ describe('reporters', () => {
     const json = JSON.parse(render(full, 'json', options));
     expect(json).toMatchObject({ schema: 3, command: 'check', ok: false });
     expect(json.test.specs[0].verdicts[1].borderline).toBe(true);
+  });
+
+  describe('names that nothing declares', () => {
+    const names = ['resend', 'domainId', 'audienceId', 'apiKey', 'from', 'to', 'subject'];
+    const undeclared = names.map((name, i) => ({ name, count: [120, 12, 9, 4, 2, 1, 1][i]! }));
+    const report = buildReport('lint', { lint: { ...lint, summary: { ...lint.summary, undeclared } } });
+    const SENTENCE = 'A `Setup:` block in `SKILL.md` declares them once for every file of the skill: https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md#setup';
+
+    it('table: the five most frequent, with their counts, and where to declare them', () => {
+      const out = render(report, 'table', options);
+      expect(out).toContain(`Names nothing declares: resend 120 · domainId 12 · audienceId 9 · apiKey 4 · from 2, and 2 more\n${SENTENCE}`);
+    });
+
+    it('github: the same, as a notice', () => {
+      const out = render(report, 'github', options);
+      expect(out).toContain(`::notice title=SkillUnit lint::Names nothing declares: resend 120 · domainId 12 · audienceId 9 · apiKey 4 · from 2, and 2 more. ${SENTENCE}`);
+    });
+
+    it('json: every name, under the summary', () => {
+      expect(JSON.parse(render(report, 'json', options)).lint.summary.undeclared).toEqual(undeclared);
+    });
+
+    it('says nothing when every name is declared', () => {
+      for (const reporter of ['table', 'github'] as const) expect(render(full, reporter, options)).not.toContain('Names nothing declares');
+    });
   });
 
   it('github: escapes the characters workflow commands use', () => {

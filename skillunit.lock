@@ -20,7 +20,7 @@
     "language-on-every-example": { "src/lint/structure.ts": "356eddf32fcf5b98" },
     "link-tests-to-units": { "src/test/changed.ts": "8af0d6c4dd88d979" },
     "list-the-decisions-first": { "src/test/spec.ts": "e374fbf6e29a1d09" },
-    "no-check-rarely": { "src/lint/lint.ts": "19b6b25dd52e771d" },
+    "no-check-rarely": { "src/lint/lint.ts": "28bbe4d3eb173ef2" },
     "no-mutations": { "src/test/spec.ts": "e374fbf6e29a1d09" },
     "none-is-built-in": { "src/test/spec.ts": "e374fbf6e29a1d09" },
     "one-label-per-paragraph": { "src/units/parse.ts": "5b85b805b686c7e0" },
@@ -42,12 +42,12 @@
     "signatures-in-tables": { "src/lint/tsc.ts": "1253e7a6c244e9d5" },
     "source-from-the-config-folder": { "src/lint/sources.ts": "53dd4f71e8f2b014" },
     "still-green-without-the-rule": { "src/test/reader.ts": "9f247f47a70ffd31" },
-    "strengthen-borderline-tests": { "src/report/table.ts": "f3a6397cc336843f" },
+    "strengthen-borderline-tests": { "src/report/table.ts": "bccf0fd30115f3f7" },
     "tempting-wrong-options": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-rule-allows": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-skill-is-silent": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "which-command": { "src/cli.ts": "138aef5f0848c479" },
     "with-only-what-the-agent-reads": { "src/test/skill-text.ts": "5c2fa352ca73585c" },
-    "wrong-as-code": { "src/lint/lint.ts": "19b6b25dd52e771d" }
+    "wrong-as-code": { "src/lint/lint.ts": "28bbe4d3eb173ef2" }
   }
 }

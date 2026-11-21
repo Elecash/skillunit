@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { decidingNumber, distribution, shown, statusLine } from './text.js';
+import { decidingNumber, distribution, shown, statusLine, undeclaredNames } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function github(report: CheckReport, options: ReportOptions): string {
@@ -28,6 +28,8 @@ export function github(report: CheckReport, options: ReportOptions): string {
       }
     }
   }
+  const names = report.lint ? undeclaredNames(report.lint.summary) : null;
+  if (names) out.push(`::notice title=SkillUnit lint::${data(`${names[0]}. ${names[1]}`)}`);
   out.push(statusLine(report), '');
   return out.join('\n');
 }

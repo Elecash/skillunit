@@ -100,7 +100,9 @@ size of each. It needs no key. `check --dry-run` also runs lint and sync in full
 
   To keep a skill of fragments readable, lint findings come in one block per file, at most three
   per example with the rest counted ("+2 more in this example"), each line and message once, and
-  the type problems are counted by code at the end. Clean files get no row, only their number. A
+  the type problems are counted by code at the end. When some names are never declared ("Cannot
+  find name", `TS2304` and `TS2552`), the five most frequent follow, with their counts, and a
+  line on the `Setup` block that declares them. Clean files get no row, only their number. A
   message is cut after 400 characters. Paths start from the current folder, or from the skill
   folder, which the header names, when the skill is outside it.
 - `json`: the whole report as one object, `{ schema, command, ok, lint, sync, test }`, with only
@@ -109,10 +111,12 @@ size of each. It needs no key. `check --dry-run` also runs lint and sync in full
   and `message`, plus `code`, such as `TS2322`, and `example`, the line where the example
   starts, when the type-check found it. `lint.summary`
   counts the examples that went through the type-check (`typeChecked`) apart from those that did
-  not parse (`notParsed`). The JSON keeps every finding, whole.
+  not parse (`notParsed`), and lists in `undeclared` every name that nothing declares, as
+  `{ name, count }`, the most frequent first. The JSON keeps every finding, whole.
 - `junit`: JUnit XML, one suite per layer and one per spec, for CI systems that read it.
 - `github`: GitHub Actions annotations, so each finding shows on its file and line in the pull
-  request, then the status line.
+  request; a notice with the names that nothing declares, when there are some; then the status
+  line.
 
 ## Borderline verdicts
 

@@ -6,7 +6,7 @@
  */
 import type { Problem } from '../lint/types.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, where } from './text.js';
+import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 /** Findings shown for one example; the rest are counted. */
@@ -155,6 +155,8 @@ export function table(report: CheckReport, options: ReportOptions): string {
   }
   if (warnings.length) out.push('', c.bold(c.yellow('Warnings')), ...warnings.map((l) => `  ${l}`));
   if (codes) out.push('', c.dim(`Type problems by code: ${codes}`));
+  const names = lint ? undeclaredNames(lint.summary) : null;
+  if (names) out.push(...(codes ? [] : ['']), ...names);
 
   out.push('', report.ok ? c.green(statusLine(report)) : c.red(statusLine(report)), '');
   return out.join('\n');
