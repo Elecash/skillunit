@@ -1,6 +1,6 @@
 # SkillUnit
 
-[![CI](https://github.com/Elecash/skillunit/actions/workflows/ci.yml/badge.svg)](https://github.com/Elecash/skillunit/actions/workflows/ci.yml)
+[![CI](https://github.com/Elecash/skillunit/actions/workflows/ci.yml/badge.svg)](https://github.com/Elecash/skillunit/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/skillunit)](https://www.npmjs.com/package/skillunit)
 
 The API changes, the skill does not, and agents keep writing code for the version the skill describes. Nothing fails, so nobody notices.
 
