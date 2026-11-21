@@ -219,7 +219,11 @@ import { tf } from "tinyfetch";
   `Setup` uses only that one, so it repeats what it needs from `SKILL.md`. This works in a
   skill that is not written in units too.
 - An example that needs more (another import, a declared value) carries it inside its own
-  block. It does not import again what `Setup` already imports.
+  block. A complete example, one meant to be copied whole, may import and create again what
+  `Setup` declares: a name an example declares at its top level is taken from the example, and
+  lint leaves the `Setup`'s declaration of that name out for that example. So a skill in prose
+  can have `import { Resend } from 'resend'` and `declare const resend: Resend` in `Setup`
+  for its fragments, next to examples that import `Resend` and create `resend` themselves.
 - A fragment that cannot type-check on purpose gets `no-check` after the language on its
   fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale. Lint
   warns about any other bare word there, so a typo such as `nocheck` does not leave the block
