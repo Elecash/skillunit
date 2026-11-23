@@ -25,3 +25,13 @@ describe('fence flags', () => {
     expect(flagsOf('ts twoslash')).toEqual(['3 fence warning: `twoslash` after `ts` is not a flag SkillUnit knows, so it does nothing (flags: `no-check`)']);
   });
 });
+
+describe('the proof flag', () => {
+  it('says nothing about proof=<id>, and warns about a key one letter away', () => {
+    expect(flagsOf('ts proof=a')).toEqual([]);
+    expect(flagsOf('ts prof=a')).toEqual(['3 fence warning: `prof=` after `ts` is not a flag SkillUnit knows; did you mean `proof=`? The block is not marked as proved']);
+    expect(flagsOf('ts proofs=a')).toHaveLength(1);
+    expect(flagsOf('ts Proof=a')).toHaveLength(1);
+    expect(flagsOf('ts root=a title="b"')).toEqual([]);
+  });
+});

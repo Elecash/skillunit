@@ -38,10 +38,10 @@ tests:
     scenario: The agent renamed a function in the library the skill describes, and changed nothing in the skill.
     question: Which command shows the units that may now be out of date?
     options:
-      sync: "`npx skillunit sync`"
+      proof: Run the tests, then `npx skillunit proof`
       test: "`npx skillunit test`"
       lint-only: "`npx skillunit lint`, and nothing else"
-    expect: sync
+    expect: proof
 
   - id: before-handing-over
     unit: which-command

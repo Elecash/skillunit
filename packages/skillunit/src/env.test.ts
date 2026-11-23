@@ -22,7 +22,7 @@ function layout() {
 }
 
 describe('.env files', () => {
-  it('reads the folder of the config, then each parent up to the git root, and no further', () => {
+  it('reads the folder of the config, then each parent up to the git root, and no further [skill:key-outside-the-repo]', () => {
     const { repo } = layout();
     expect(envFiles(join(repo, 'apps', 'app'))).toEqual([join(repo, 'apps', 'app', '.env'), join(repo, '.env')]);
     expect(envFiles(join(repo, 'apps', 'other'))).toEqual([join(repo, '.env')]);

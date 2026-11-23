@@ -1,13 +1,14 @@
 {
-  "version": 1,
-  "units": {
-    "await-every-request": { "src/client.ts": "b96534779e8bd474" },
-    "body-as-object": { "src/request.ts": "ac2a605c82e937bc" },
-    "check-with-is-http-error": { "src/errors.ts#isHttpError": "3683aa817c8469a4" },
-    "default-timeout": { "src/timeout.ts": "1dad7e2f1dc1ee20" },
-    "never-disable-timeout": { "src/timeout.ts": "1dad7e2f1dc1ee20" },
-    "one-client-per-api": { "src/client.ts#create": "9025df077e9f2d0d" },
-    "query-in-options": { "src/request.ts": "ac2a605c82e937bc" },
-    "retry-idempotent-only": { "src/retry.ts": "f303dfe1b57c6c92" }
-  }
+  "version": 2,
+  "proved": [
+    "await-every-request",
+    "body-as-object",
+    "check-with-is-http-error",
+    "default-timeout",
+    "query-in-options",
+    "response-body",
+    "retry-defaults",
+    "what-a-failed-request-throws",
+    "what-is-retried"
+  ]
 }

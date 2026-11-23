@@ -1,0 +1,79 @@
+file: testing/proof.md
+
+tests:
+  - id: tag-the-test
+    unit: tag-the-test-that-asserts-it
+    scenario: The skill says requests time out after 10 seconds by default, and the project has a test that asserts the default timeout is 10,000 ms.
+    question: How should the agent tie the unit to that test?
+    options:
+      tag: Put `[skill:<unit id>]` in the title of that test
+      comment: Name the test file in a sentence of the unit
+      lock: Add the unit's id to `skillunit.lock` by hand
+    expect: tag
+
+  - id: after-tagging
+    unit: tag-the-test-that-asserts-it
+    scenario: The agent has just put `[skill:retry-defaults]` in the title of a test that asserts the default retry delay.
+    question: What should the agent do before it commits the test?
+    options:
+      write: Run the tests and `npx skillunit proof --write`, and commit `skillunit.lock` with the test
+      commit: Commit the test alone, since the tag is in its title
+    expect: write
+
+  - id: advice-unit
+    unit: tag-the-test-that-asserts-it
+    scenario: A unit advises using one client per API. No test of the library can check that, and the project has a test of how a client is created.
+    question: Which test should carry the unit's tag?
+    options:
+      no-test: No test; the unit stays unproved
+      client-test: The test of how a client is created
+    expect: no-test
+
+  - id: example-is-a-value
+    unit: region-or-file
+    scenario: A unit's example is the JSON configuration that a TypeScript test builds and checks.
+    question: How should the test hand that example to the skill?
+    options:
+      file: Write it with `skillExample(id, value)` and flag the block `proof=<id>`
+      region: Put the JSON between `#region` and `#endregion` comments in the test
+      paste: Paste the JSON into the skill by hand after the test passes
+    expect: file
+
+  - id: block-differs
+    unit: write-blocks-from-tests
+    scenario: "`npx skillunit proof` reports that a block flagged `proof=query-in-options` differs from the region of its test."
+    question: What should the agent do?
+    options:
+      write: Run the tests, then `npx skillunit proof --write`
+      edit: Edit the block by hand until it matches the region
+      unflag: Remove `proof=` from the block
+    expect: write
+
+  - id: test-fails
+    unit: fix-the-unit-when-its-test-fails
+    scenario: The team raised the default retry delay from 300 to 500 ms on purpose, and the test tagged `[skill:retry-defaults]` now fails.
+    question: What should the agent do?
+    options:
+      fix: Change what the unit says and what the test asserts to 500 ms
+      skip: Skip the test until someone updates the skill
+      untag: Remove the tag from the test
+      forget: Run `npx skillunit proof --forget retry-defaults`
+    expect: fix
+
+  - id: lost-by-mistake
+    unit: forget-only-what-is-no-longer-proved
+    scenario: "`npx skillunit proof` fails: `skillunit.lock` lists `retry-defaults`, and a refactor in this change deleted the test tagged for it by mistake. The unit still states the default retry delay."
+    question: What should the agent do?
+    options:
+      restore: Bring back a test tagged `[skill:retry-defaults]`
+      forget: Run `npx skillunit proof --forget retry-defaults`
+    expect: restore
+
+  - id: no-longer-proved
+    unit: forget-only-what-is-no-longer-proved
+    scenario: "The team rewrote the unit `pick-a-timeout` from a stated default into advice on which timeout to choose, and deleted its test on purpose. `npx skillunit proof` fails: `skillunit.lock` lists `pick-a-timeout`."
+    question: What should the agent do?
+    options:
+      restore: Bring back a test tagged `[skill:pick-a-timeout]`
+      forget: Run `npx skillunit proof --forget pick-a-timeout`
+    expect: forget

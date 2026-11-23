@@ -1,6 +1,7 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
-import { basename, isAbsolute, join, relative } from 'node:path';
+import { isAbsolute, join, relative } from 'node:path';
 import type { LintSummary, Problem } from '../lint/types.js';
+import type { LockReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -40,12 +41,12 @@ export function shown(path: string, options: ReportOptions): string {
 }
 
 /**
- * Where a lint or sync problem is, for people: `skills/x/SKILL.md:12` from the folder the command
+ * Where a lint or proof problem is, for people: `skills/x/SKILL.md:12` from the folder the command
  * ran in, or from the skill folder, which the layer's header names, when the skill is outside it.
  */
 export function where(skill: string, p: Problem, options: ReportOptions): string {
   const path = join(skill, p.file);
-  // A file above the skill folder, such as a lock next to `skillunit.yaml`, gets its whole path.
+  // A file above the skill folder, such as `skillunit.yaml` or a report, gets its whole path.
   return `${inside(path, options) ?? (p.file.startsWith('../') ? path.split('\\').join('/') : p.file)}:${p.line}`;
 }
 
@@ -68,20 +69,37 @@ export function decidingNumber(v: Verdict, report: CheckReport): string {
   return `P(yes) ${v.confidence.toFixed(2)}${threshold}`;
 }
 
+/** What `--write` or `--forget` did to `skillunit.lock`, shown as `file`, or null when it was not written. */
+export function lockChange(lock: LockReport, file: string): string | null {
+  if (!lock.written) return null;
+  const ids = (list: string[]) => `(${list.join(', ')})`;
+  const parts = lock.forgot.length
+    ? [`forgot ${plural(lock.forgot.length, 'unit')} ${ids(lock.forgot)}`]
+    : [
+        lock.added.length ? `added ${plural(lock.added.length, 'unit')} ${ids(lock.added)}` : '',
+        lock.dropped.length ? `dropped ${lock.dropped.length} ${ids(lock.dropped)}` : '',
+      ].filter(Boolean);
+  return `Updated ${file}: ${parts.length ? parts.join(', ') : 'sorted the ids'}.`;
+}
+
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
-  const { lint, sync, test } = report;
+  const { lint, proof, test } = report;
   if (lint) {
     const errors = lint.problems.filter((p) => p.severity === 'error').length;
     const warnings = lint.problems.length - errors;
     parts.push(`lint ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}`);
   }
-  if (sync) {
-    const review = sync.summary.stale + sync.summary.new;
-    const orphans = sync.summary.orphans ? `, ${sync.summary.orphans} orphan ${sync.summary.orphans === 1 ? 'entry' : 'entries'}` : '';
-    if (!sync.lock.found && sync.summary.withSource) parts.push(`sync no ${basename(sync.lock.path)}`);
-    else parts.push(`sync ${review ? `${plural(review, 'unit')} to review` : 'ok'}${orphans}`);
+  if (proof) {
+    if (!proof.configured) parts.push('proof not configured');
+    else {
+      const errors = proof.problems.filter((p) => p.severity === 'error').length;
+      const warnings = proof.problems.length - errors;
+      const written = [proof.summary.written ? plural(proof.summary.written, 'block') : '', proof.lock.written ? 'the lock' : ''].filter(Boolean);
+      const wrote = written.length ? `, wrote ${written.join(' and ')}` : '';
+      parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${wrote}`);
+    }
   }
   if (test) {
     const s = test.summary;

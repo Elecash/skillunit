@@ -42,15 +42,7 @@ Do: give each task its own file, named after the thing or feature it covers, and
 
 Even when: the two tasks share a few rules; the shared rule lives in the more specific file, and the other links to it.
 
-Wrong:
-
-- Doing: one long `SKILL.md` that holds every rule of the library.
-
-  Because: every request then carries the whole skill, and a change anywhere reruns every spec.
-
 Applies: files
-
-Source: src/lint/links.ts
 
 ### rule: index-every-file
 
@@ -64,15 +56,7 @@ Right:
 | Retry a request that failed | [features/retries.md](features/retries.md) |
 ```
 
-Wrong:
-
-- Doing: linking the new file only from the file next to it.
-
-  Because: an agent starts at `SKILL.md` and looks the task up in its table; a file reached only through another file is found only by an agent that already opened that one.
-
 Applies: files, index
-
-Source: src/lint/links.ts
 
 ### rule: rules-section-last
 
@@ -80,15 +64,7 @@ When: the agent writes the units of a file.
 
 Do: put every unit under one `## Rules` heading, the last `##` section of the file, with nothing else in it.
 
-Wrong:
-
-- Doing: a unit in the middle of a reference section.
-
-  Because: lint reports it, and an agent reading the reference cannot tell a rule from a description.
-
 Applies: files, units
-
-Source: src/lint/structure.ts
 
 ### rule: instructions-only-in-units
 
@@ -98,12 +74,4 @@ Do: write the instruction as a unit, and the exception inside its unit, under `E
 
 Even when: the exception is one short clause; the reader follows the most specific rule it finds, so an exception stated before the rule loses to it.
 
-Wrong:
-
-- Doing: "Uploads are the exception" in the introduction, far from the rule "keep the default timeout".
-
-  Because: the reader and the agent both follow the rule below it and drop the exception.
-
 Applies: files, units, exceptions
-
-Source: src/units/parse.ts

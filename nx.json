@@ -37,7 +37,11 @@
         "default",
         "^production"
       ],
-      "cache": true
+      "cache": true,
+      "outputs": [
+        "{projectRoot}/reports",
+        "{projectRoot}/tmp/skill-proof"
+      ]
     }
   },
   "analytics": true,

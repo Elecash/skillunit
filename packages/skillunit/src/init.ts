@@ -1,7 +1,6 @@
 /**
  * `skillunit init [skill folder]`: writes `skillunit.yaml` and a first spec in the current
- * folder, the project root, so every other command runs from there with no `--config`. `Source:`
- * paths and `skillunit.lock` start from that folder too.
+ * folder, the project root, so every other command runs from there with no `--config`.
  */
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
@@ -59,6 +58,6 @@ export function init(dir: string, cwd = process.cwd()): string[] {
 
   const out = [`created ${CONFIG_FILE}${wroteSpec ? ` and ${DEFAULT_SPECS}/example.yaml` : ''}`];
   if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill}: set \`skill\` in ${CONFIG_FILE} to the folder that has it`);
-  out.push('next: run `skillunit lint`, then `skillunit review --accept-all` once you have read the units, and commit skillunit.lock');
+  out.push('next: run `skillunit lint`, then `skillunit test --dry-run`');
   return out;
 }

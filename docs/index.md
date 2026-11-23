@@ -2,6 +2,7 @@
 
 - [Style guide](style-guide.md): how to write a skill in units, how to lay out its files, and its index.
 - [Writing specs](writing-specs.md): the spec format, `with`, how to write a test that fails when its rule is gone, and how to check that it does.
+- [Proof](proof.md): units proved by the project's tests, the `[skill:<id>]` tag, examples a test produces, and how to wire Vitest, Jest and pytest.
 - [Configuration](configuration.md): every key of `skillunit.yaml`, where the API key is read from, and the decision models.
 - [Command line](cli.md): commands, options, reporters, exit codes, dry runs and borderline verdicts.
 - [CI](ci.md): the GitHub Actions workflow, pull requests from forks, and what a run costs.

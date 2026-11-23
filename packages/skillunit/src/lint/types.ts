@@ -6,10 +6,10 @@ export type Severity = 'error' | 'warning';
  * The lint rules, by the name each problem is reported under. Any of them can be turned off with
  * `lint: { off: [...] }` in `skillunit.yaml`.
  */
-export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'wrong-code', 'command', 'index', 'length', 'source', 'fence'] as const;
+export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'command', 'index', 'length', 'fence', 'proof'] as const;
 
-/** The rule that found a problem, for filtering and for reporters. `sync` comes from `skillunit sync`. */
-export type LintRule = (typeof LINT_RULES)[number] | 'sync';
+/** The rule that found a problem, for filtering and for reporters. */
+export type LintRule = (typeof LINT_RULES)[number];
 
 export interface Problem {
   /** Path in the skill folder, with `/`. */
@@ -22,7 +22,7 @@ export interface Problem {
   message: string;
   /** The TypeScript code, such as `TS2322`, of a problem the type-check found. */
   code?: string;
-  /** Markdown line where the example (or `Setup`, or `Wrong` code) the problem is in starts. */
+  /** Markdown line where the example (or `Setup`) the problem is in starts. */
   example?: number;
 }
 
@@ -45,12 +45,6 @@ export interface LintSummary {
   notConfigured: number;
   /** Rules turned off in `skillunit.yaml`: their problems are not reported. */
   off: string[];
-  wrongCode: {
-    /** `Wrong` code that was type-checked or matched by a `Check`. */
-    checked: number;
-    /** `Wrong` code with no language, or in a language that is not type-checked. */
-    unchecked: number;
-  };
   /**
    * Names `tsc` could not find (TS2304, TS2552), with the number of findings each, the most
    * frequent first. A `Setup` block in `SKILL.md` that declares them removes those findings.

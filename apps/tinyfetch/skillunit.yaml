@@ -4,3 +4,10 @@ specs: ./specs
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 examples:
   ts: { tsconfig: ./tsconfig.json }
+# Units proved by the tests in src: run them first (`npx nx test tinyfetch`), which writes the
+# report. `format` runs Prettier on a skill file `skillunit proof --write` changed, and the check
+# compares the blocks as Prettier leaves them.
+proof:
+  reports: ./reports/junit.xml
+  sources: ["src/**/*.test.ts"]
+  format: "npx --no-install prettier --write {file}"

@@ -81,16 +81,6 @@ ${F}ts
 tf.post('/users', { name: 'Ada' });
 ${F}
 
-Wrong:
-
-- Doing: \`tf.post('/users', {}, { retry: 3 })\`
-
-  Because: a retried POST can create the same resource twice.
-
-- Doing: \`tf.post('/users', {}, { retires: 3 })\`
-
-  Because: a typo.
-
 Applies: retries
 
 Check: forbid \`/post\\([^)]*retry/\` in ts
@@ -106,16 +96,6 @@ Right:
 ${F}ts
 tf.get('/a', { timeout: 5000 });
 ${F}
-
-Wrong:
-
-- Doing: \`tf.get('/a', { timeout: 0 })\`
-
-  Because: zero waits forever.
-
-- Doing: \`fetchAll('/a')\`
-
-  Because: it does not exist.
 
 Applies: timeouts
 
@@ -158,7 +138,7 @@ tf.get('/y');
 ${F}
 `;
 
-/** One `Wrong` fragment that does not parse, and an example with a type error, in one run. */
+/** An example with a type error, next to a unit whose example compiles. */
 const SYNTAX = `# Fragments
 
 Setup:
@@ -184,12 +164,6 @@ Right:
 ${F}ts
 tf.get('/a');
 ${F}
-
-Wrong:
-
-- Doing: \`tf.get('/a', { retry: 3,\`
-
-  Because: it is cut short.
 
 Applies: requests
 `;
@@ -228,24 +202,10 @@ describe.each(COMPILERS)('type-check with %s', (_, typescript) => {
     expect(show(result)).toEqual([
       `features/broken.md:${lineOf(BROKEN, "from 'not-installed'")} - types error TS2307`,
       `features/syntax.md:${lineOf(SYNTAX, 'bogus: 1')} - types error TS2353`,
-      `features/syntax.md:${lineOf(SYNTAX, 'Doing: `tf.get')} no-fragments wrong-code error TS1005`,
       `SKILL.md:${lineOf(SKILL, 'retries: 1')} - types error TS2353`,
       `SKILL.md:${lineOf(SKILL, "missing('/a')")} - types error TS2304`,
       `SKILL.md:${lineOf(SKILL, 'n.toFixed(2).foo()')} - types error TS2339`,
-      `SKILL.md:${lineOf(SKILL, "Doing: `tf.get('/a', { timeout: 0 })`")} set-a-timeout wrong-code warning`,
-      `SKILL.md:${lineOf(SKILL, 'Doing: `fetchAll')} set-a-timeout wrong-code error TS2304`,
       `SKILL.md:${lineOf(SKILL, "tf.gett('/b')")} pick-a-call types error TS2551`,
-    ]);
-  });
-
-  it('says why: unguarded, does not parse, and undefined name in Wrong code', () => {
-    const wrongCode = (unit: string) => result.problems.filter((p) => p.rule === 'wrong-code' && p.unit === unit).map((p) => p.message);
-    expect(wrongCode('set-a-timeout')).toEqual([
-      'this `Wrong` code compiles and no `Check` of the unit matches it: nothing reports an example that makes this mistake',
-      expect.stringMatching(/^this `Wrong` code uses a name that is not defined \(TS2304 Cannot find name 'fetchAll'\.\)/),
-    ]);
-    expect(wrongCode('no-fragments')).toEqual([
-      expect.stringMatching(/^this `Wrong` code does not parse \(TS1005 .*\); write it as complete code, or describe the mistake in prose$/),
     ]);
   });
 
@@ -258,7 +218,6 @@ describe.each(COMPILERS)('type-check with %s', (_, typescript) => {
       noCheck: 1,
       notConfigured: 0,
       unchecked: {},
-      wrongCode: { checked: 5, unchecked: 0 },
     });
     expect(result.summary.typescript).toMatch(_ === 'typescript 5' ? /^5\./ : /^7\./);
   });
@@ -277,8 +236,8 @@ describe('type-check settings', () => {
   it('skips ts and js fences when examples.ts is not set, and says how many', () => {
     const root = project(null);
     const result = lint(join(root, 'skill'));
-    expect(result.summary).toMatchObject({ typeChecked: 0, notConfigured: 15, noCheck: 1, wrongCode: { checked: 1, unchecked: 4 } });
-    expect(result.problems.filter((p) => p.rule === 'types' || p.rule === 'wrong-code')).toEqual([]);
+    expect(result.summary).toMatchObject({ typeChecked: 0, notConfigured: 15, noCheck: 1 });
+    expect(result.problems.filter((p) => p.rule === 'types')).toEqual([]);
   });
 
   it('reports a configuration error for a missing tsconfig or a missing typescript', () => {

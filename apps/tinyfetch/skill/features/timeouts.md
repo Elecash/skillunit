@@ -10,10 +10,10 @@ import { tf, TimeoutError } from "tinyfetch";
 
 ## Options
 
-| Option    | Type        | Default | Meaning                                                      |
-| --------- | ----------- | ------- | ------------------------------------------------------------ |
-| `timeout` | number (ms) | 10000   | abort the request after this long; `0` turns the timeout off |
-| `signal`  | AbortSignal | none    | cancel the request, and any retry still to come              |
+| Option    | Type        | Meaning                                                      |
+| --------- | ----------- | ------------------------------------------------------------ |
+| `timeout` | number (ms) | abort the request after this long; `0` turns the timeout off |
+| `signal`  | AbortSignal | cancel the request, and any retry still to come              |
 
 ```ts
 try {
@@ -45,8 +45,6 @@ Unknown: tinyfetch has no separate connect timeout; say so instead of inventing 
 
 Applies: timeouts
 
-Source: src/timeout.ts
-
 ### rule: never-disable-timeout
 
 When: a request may take long, such as an upload or a report.
@@ -63,14 +61,6 @@ await tf.post(
 );
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/uploads", { size: 1 }, { timeout: 0 })`
-
-  Because: `0` turns the timeout off, so a stalled connection hangs the caller forever.
-
 Applies: timeouts, uploads
 
 Check: forbid `/timeout:\s*0\b/` in ts
-
-Source: src/timeout.ts

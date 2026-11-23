@@ -11,12 +11,16 @@
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
  *     margin: 0.13               # a verdict this close to its threshold is marked borderline
- *   sourceRoot: ../..            # where `Source:` paths start (default: this file's folder)
  *   examples:                    # how lint checks the code examples of the skill
  *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
  *     py: { command: "python3 -m py_compile {file}" }   # any other language
  *   lint:
  *     off: [length]              # lint rules not to report, by the name they are reported under
+ *   proof:                       # units proved by the project's tests (`skillunit proof`)
+ *     reports: ./reports/*.xml   # JUnit XML of the test run: a glob or a list of them
+ *     examples: ./tmp/skill-proof   # where tests write examples (the default)
+ *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
+ *     format: "npx prettier --write {file}"   # run on a skill file after writing it
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -46,14 +50,30 @@ export interface Config {
   examples?: ExamplesConfig;
   /** Lint rules turned off. */
   lint?: { off: LintRule[] };
-  /**
-   * Absolute folder that the `Source:` paths of units start from: the folder of the config
-   * file, or `sourceRoot` in it; the current folder when there is no config file.
-   */
-  sourceRoot: string;
-  /** Absolute folder of the config file, when there is one. `skillunit.lock` sits there. */
+  /** Absolute folder of the config file, when there is one. */
   configDir?: string;
+  /** Absolute path of the config file, when there is one. */
+  configFile?: string;
+  /** The proof layer; absent when the settings have no `proof` key. */
+  proof?: ProofConfig;
 }
+
+/** Where the proof layer finds what the tests left. Globs start from `cwd`. */
+export interface ProofConfig {
+  /** Globs of the JUnit XML reports of the test run. */
+  reports: string[];
+  /** Absolute folder where tests write examples. */
+  examples: string;
+  /** Globs of the test files to read `#region skill:<id>` examples from. */
+  sources: string[];
+  /** A command with `{file}`, run on each skill file `--write` changes. */
+  format?: string;
+  /** Folder of the config file: globs and commands start there. */
+  cwd: string;
+}
+
+/** Where tests write examples when `proof.examples` is not set, from the config file's folder. */
+export const DEFAULT_PROOF_EXAMPLES = './tmp/skill-proof';
 
 /**
  * The decision model the `test` layer asks: the `typesafe` adapter, or a module of the project's
@@ -76,7 +96,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, 
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'sourceRoot', 'lint']);
+const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -85,7 +105,7 @@ const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examp
  */
 export function loadConfig(path?: string): Config {
   const file = resolve(path ?? CONFIG_FILE);
-  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS }, sourceRoot: resolve('.') };
+  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS } };
   if (!existsSync(file)) {
     if (path) throw new Error(`config file not found: ${file}`);
     return config;
@@ -100,6 +120,7 @@ export function loadConfig(path?: string): Config {
 
   const root = dirname(file);
   config.configDir = root;
+  config.configFile = file;
   config.skill = root;
   config.specs = [resolve(root, DEFAULT_SPECS)];
 
@@ -127,14 +148,40 @@ export function loadConfig(path?: string): Config {
       config.thresholds[key as keyof Thresholds] = value;
     }
   }
-  config.sourceRoot = root;
-  if (raw.sourceRoot !== undefined) {
-    if (typeof raw.sourceRoot !== 'string' || !raw.sourceRoot.trim()) throw fail('`sourceRoot` must be a folder');
-    config.sourceRoot = resolve(root, raw.sourceRoot);
-  }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
   if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);
+  if (raw.proof !== undefined) config.proof = readProof(raw.proof, root, fail);
   return config;
+}
+
+const PROOF_KEYS = ['reports', 'examples', 'sources', 'format'];
+
+function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { reports: ./reports/junit.xml }`');
+  const raw = value as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
+  }
+  const globs = (key: string, required: boolean): string[] => {
+    const v = raw[key];
+    if (v === undefined || v === null) {
+      if (required) throw fail(`\`proof.${key}\` is missing: the glob of the JUnit XML reports your test run writes, such as \`./reports/junit.xml\``);
+      return [];
+    }
+    const list = Array.isArray(v) ? v : [v];
+    if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
+    return list as string[];
+  };
+  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), sources: globs('sources', false), cwd: root };
+  if (raw.examples !== undefined) {
+    if (typeof raw.examples !== 'string' || !raw.examples.trim()) throw fail('`proof.examples` must be a folder');
+    out.examples = resolve(root, raw.examples);
+  }
+  if (raw.format !== undefined) {
+    if (typeof raw.format !== 'string' || !raw.format.includes('{file}')) throw fail('`proof.format` must be a command with `{file}` where the skill file goes');
+    out.format = raw.format;
+  }
+  return out;
 }
 
 function readLint(value: unknown, fail: (msg: string) => Error): { off: LintRule[] } {

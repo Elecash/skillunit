@@ -4,9 +4,10 @@
  * come in one block per file, at most `PER_EXAMPLE` per example and each line once, so a skill
  * of fragments stays readable; the JSON report keeps every finding.
  */
+import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
+import { brief, decidingNumber, distribution, lockChange, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 /** Findings shown for one example; the rest are counted. */
@@ -21,12 +22,12 @@ export function table(report: CheckReport, options: ReportOptions): string {
   const borderline: string[] = [];
   let codes = '';
 
-  /** Lint and sync findings keep the one-line form `file:line  unit-id  what is wrong`. */
+  /** Lint and proof findings keep the one-line form `file:line  unit-id  what is wrong`. */
   // A message of several lines, such as a command's output, goes on under the finding, indented.
   const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`];
 
   // ---------------------------------------------------------------- lint
-  const { lint, sync, test } = report;
+  const { lint, test } = report;
   if (lint) {
     out.push('', `${c.bold('Lint')}  ${c.dim(shown(lint.skill, options))}`);
     const rows = lint.files.map((file) => {
@@ -62,7 +63,6 @@ export function table(report: CheckReport, options: ReportOptions): string {
             .map(([lang, n]) => `${n} ${lang}`)
             .join(', ')}`
         : '',
-      s.wrongCode.unchecked ? `${s.wrongCode.unchecked} Wrong code not checked` : '',
       s.off.length ? `off: ${s.off.join(', ')}` : '',
     ].filter(Boolean);
     out.push(c.dim(`  ${notes.join(' · ')}`));
@@ -73,29 +73,38 @@ export function table(report: CheckReport, options: ReportOptions): string {
     codes = codeCounts(lint.problems);
   }
 
-  // ---------------------------------------------------------------- sync
-  if (sync) {
-    out.push('', `${c.bold('Sync')}  ${c.dim(sync.lock.found ? shown(sync.lock.path, options) : `no ${shown(sync.lock.path, options)}`)}`);
-    const files = [...new Set(sync.units.map((u) => u.file))];
+  // ---------------------------------------------------------------- proof
+  const { proof } = report;
+  if (proof && !proof.configured) {
+    out.push('', `${c.bold('Proof')}  ${c.dim('not configured: no `proof` key in skillunit.yaml')}`);
+  } else if (proof) {
+    const reports = proof.reports.length ? proof.reports.map((r) => shown(join(proof.skill, r), options)).join(', ') : 'no report';
+    out.push('', `${c.bold('Proof')}  ${c.dim(reports)}`);
+    const files = [...new Set(proof.units.map((u) => u.file))];
     const w = Math.max(24, ...files.map((f) => f.length)) + 2;
+    const errorsIn = (file: string) => proof.problems.some((p) => p.file === file && p.severity === 'error');
     if (files.length) {
-      out.push(c.dim(`    ${pad('FILE', w)}${padStart('STALE', 7)}${padStart('NEW', 6)}${padStart('IN SYNC', 9)}`));
+      out.push(c.dim(`    ${pad('FILE', w)}${padStart('PROVED', 8)}${padStart('FAILED', 8)}${padStart('UNPROVED', 10)}`));
       for (const file of files) {
-        const mine = sync.units.filter((u) => u.file === file);
+        const mine = proof.units.filter((u) => u.file === file);
         const n = (state: string) => mine.filter((u) => u.state === state).length;
-        const state = n('stale') || n('new') ? 'fail' : 'ok';
-        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('stale')), 7)}${padStart(String(n('new')), 6)}${padStart(String(n('in-sync')), 9)}`);
+        const state = errorsIn(file) || n('failed') ? 'fail' : 'ok';
+        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('proved')), 8)}${padStart(String(n('failed')), 8)}${padStart(String(n('unproved')), 10)}`);
       }
     }
-    const s = sync.summary;
+    const s = proof.summary;
     const notes = [
-      `${plural(s.withSource, 'unit')} with a Source${s.withSource ? `: ${s.inSync} in sync, ${s.stale} stale, ${s.new} new` : ''}`,
-      s.orphans ? `${s.orphans} orphan ${s.orphans === 1 ? 'entry' : 'entries'} in the lock` : '',
-    ].filter(Boolean);
+      `proved ${s.proved} of ${plural(s.units, 'unit')}${s.failed ? `, ${s.failed} failed` : ''}`,
+      `${plural(s.fences, 'block')} from tests${s.written ? `, ${s.written} written` : s.differ ? `, ${s.differ} out of date` : ''}`,
+      `${plural(s.tagged, 'tagged test')}`,
+      `${plural(proof.lock.listed, 'unit')} in the lock`,
+    ];
     out.push(c.dim(`  ${notes.join(' · ')}`));
-    for (const p of sync.problems) {
-      if (p.severity === 'error') failures.push(problemBlock(sync.skill, p));
-      else warnings.push(`${where(sync.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
+    const change = lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options));
+    if (change) out.push(`  ${change}`);
+    for (const p of proof.problems) {
+      if (p.severity === 'error') failures.push(problemBlock(proof.skill, p));
+      else warnings.push(`${where(proof.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
     }
   }
 

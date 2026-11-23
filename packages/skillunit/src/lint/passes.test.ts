@@ -210,20 +210,22 @@ describe.each(COMPILERS)('an example that declares a name of the Setup, with %s'
     expect(r.problems[0]!.message).toMatch(/^the Setup does not type-check/);
   });
 
-  it('gives Wrong code the same treatment', () => {
+  it('type-checks a fence flagged proof=, in a Right or a Decide path, like any other example', () => {
     const unit = [
       '# Rules',
-      'Setup:',
-      `${F}ts\n${SETUP}\n${F}`,
       '## Rules',
-      '### rule: one-client',
-      'When: code sends a message.',
-      'Do: use `client`.',
-      `Wrong:\n\n- Doing: creating a client of its own.\n\n  ${F}ts\n  import { Client } from "lib";\n  const client = new Client();\n  client.send("x");\n  ${F}\n\n  Because: it opens a second connection.`,
+      '### decision: pick',
+      'When: a choice.',
+      `Decide:\n\n- **one** — first.\n\n  ${F}ts proof=pick.one\n  ${TYPE_ERROR}\n  ${F}`,
+      'Applies: lib',
+      '### rule: r',
+      'When: a.',
+      'Do: b.',
+      `Right:\n\n${F}ts proof=r\n${TYPE_ERROR}\n${F}`,
       'Applies: lib',
     ].join('\n\n') + '\n';
     const r = run(project(typescript, unit));
-    // It compiles once `client` is its own, so the types do not catch the mistake, and lint says so.
-    expect(r.problems.map((p) => `${p.rule} ${p.severity}`)).toEqual(['wrong-code warning']);
+    expect(r.summary.typeChecked).toBe(2);
+    expect(r.problems.map((p) => `${p.line} ${p.unit} ${p.code}`)).toEqual([`${lineOf(unit, '  const n')} pick TS2322`, `${lineOf(unit, 'const n', lineOf(unit, 'proof=r'))} r TS2322`]);
   });
 });

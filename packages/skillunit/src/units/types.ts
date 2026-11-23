@@ -7,8 +7,8 @@
 export type UnitKind = 'rule' | 'decision' | 'fact';
 
 /** Body labels in the one order every kind follows. */
-export const BODY_LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right', 'Wrong'] as const;
-export const FOOTER_LABELS = ['Applies', 'Check', 'Source'] as const;
+export const BODY_LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right'] as const;
+export const FOOTER_LABELS = ['Applies', 'Check'] as const;
 export const LABELS = [...BODY_LABELS, ...FOOTER_LABELS] as const;
 
 export type LabelName = (typeof LABELS)[number];
@@ -19,7 +19,7 @@ export interface LabelLine {
   line: number;
   /** The label's text: its paragraph after `Label:`, wrapped lines joined with a space. */
   value: string;
-  /** Set by the name: `Applies`, `Check` and `Source` are footer, the rest body. */
+  /** Set by the name: `Applies` and `Check` are footer, the rest body. */
   part: 'body' | 'footer';
   /** The label sits in the same paragraph as the label before it, with no blank line between. */
   joined: boolean;
@@ -32,8 +32,6 @@ export type FenceOwner =
   /** A fence outside any unit. */
   | { kind: 'reference' }
   | { kind: 'right'; unit: string }
-  /** `item` is the index in `Unit.wrong`. */
-  | { kind: 'wrong'; unit: string; item: number }
   /** `path` is the id of the `Decide` path the fence sits in. */
   | { kind: 'decide'; unit: string; path: string }
   /** A fence under a label that takes no code. The parser also reports it as an error. */
@@ -55,15 +53,18 @@ export interface Fence {
   lang: string;
   /** The other words of the info string, such as `no-check`. */
   flags: string[];
+  /**
+   * The value of the first `proof=<id>` flag, quotes taken off: a test produced this block. ''
+   * for a bare `proof=`. Lint checks that it names the fence's own unit.
+   */
+  proof?: string;
   /** The code between the fences, with the fence's own indentation removed. */
   code: string;
   owner: FenceOwner;
 }
 
-/** Who an inline code span belongs to. `Check` regexes skip spans in `Wrong` items. */
-export type InlineOwner =
-  | { kind: 'reference' }
-  | { kind: 'unit'; unit: string; label: LabelName | null; item?: number };
+/** Who an inline code span belongs to. */
+export type InlineOwner = { kind: 'reference' } | { kind: 'unit'; unit: string; label: LabelName | null };
 
 export interface InlineCode {
   type: 'inline';
@@ -73,20 +74,6 @@ export interface InlineCode {
   column: number;
   code: string;
   owner: InlineOwner;
-}
-
-export interface WrongItem {
-  line: number;
-  doing: string;
-  /** '' when the item has no `Because:` line. Lint reports that. */
-  because: string;
-  becauseLine?: number;
-  /** `Because:` sits in the same paragraph as `Doing:`, with no blank line between. */
-  becauseJoined: boolean;
-  /** Set when `Doing` is one code span and nothing else. */
-  code: InlineCode | null;
-  /** Fences inside the item. */
-  fences: Fence[];
 }
 
 export interface DecidePath {
@@ -108,12 +95,6 @@ export interface Check {
   raw: string;
   /** 1-based column of the regex's code span on `line`. */
   column: number;
-}
-
-export interface SourceRef {
-  path: string;
-  /** The part after `#`. v1 of sync ignores it. */
-  symbol?: string;
 }
 
 export interface Unit {
@@ -138,15 +119,15 @@ export interface Unit {
   evenWhen?: string;
   /** Fences and inline code spans under `Right`. */
   right: (Fence | InlineCode)[];
-  wrong: WrongItem[];
-  /** `Wrong`, `Decide` or `Right` items the parser reported as malformed and skipped. */
+  /** `Decide` or `Right` items the parser reported as malformed and skipped. */
   skipped: number;
 
   applies: string[];
   check: Check[];
-  source: SourceRef[];
+  /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
+  proofs: Fence[];
 
-  /** The unit as written, heading to `endLine`. Sync compares it across commits. */
+  /** The unit as written, heading to `endLine`. */
   text: string;
 }
 
@@ -177,8 +158,6 @@ export interface ParsedFile {
   inlineCode: InlineCode[];
   /** The first `Setup` block of each language. Lint reports any further ones. */
   setup: Record<string, Fence>;
-  /** Every `Wrong` item whose `Doing` is one code span and nothing else. */
-  wrongCode: { unit: string; item: number; code: InlineCode }[];
   headings: Heading[];
   errors: ParseError[];
 }

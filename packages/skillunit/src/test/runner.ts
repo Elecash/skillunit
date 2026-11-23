@@ -49,11 +49,8 @@ export interface Report {
   };
 }
 
-/**
- * Which tests of a spec to run: `all`, the ids of some, or null to leave the spec out. A spec
- * that does not load is always reported.
- */
-export type Selection = (spec: SpecFile) => 'all' | Set<string> | null;
+/** Whether to run a spec (`test --changed`). A spec that does not load is always reported. */
+export type Selection = (spec: SpecFile) => boolean;
 
 export interface RunOptions {
   /** Check that specs load, headings exist and requests fit the model's limits; send nothing. */
@@ -117,12 +114,7 @@ async function runSpec(
   };
   try {
     const spec = loadSpec(path);
-    const chosen = select ? select(spec) : 'all';
-    if (chosen === null) return null;
-    if (chosen !== 'all') {
-      spec.tests = spec.tests.filter((t) => chosen.has(t.id));
-      if (spec.tests.length === 0) return null;
-    }
+    if (select && !select(spec)) return null;
     report.file = spec.file;
     report.sections = spec.sections;
 

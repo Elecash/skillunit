@@ -30,11 +30,11 @@ tests:
 
   - id: allowed-side
     unit: test-where-the-rule-allows
-    scenario: The rule allows `retry` for GET, HEAD, PUT and DELETE. The agent has a test for a POST, where `retry` must stay off.
-    question: Which test should it add?
+    scenario: A rule forbids `retry` on POST and allows it on PUT. The agent has written one test for it, for a POST, where `retry` must stay off.
+    question: Which other test should it add?
     options:
-      allowed: A PUT, where the agent should pass `retry`
-      another-post: A second POST phrased differently
+      allowed: A test for a PUT, a case the rule allows, that expects the agent to pass `retry`
+      another-post: A test for a second POST, phrased differently, that expects `retry` to stay off
       none-more: No other test; the POST covers the rule
     expect: allowed
 
@@ -60,10 +60,10 @@ tests:
 
   - id: tempting-wrong-answer
     unit: tempting-wrong-options
-    scenario: The rule is "production deploys come from main only; other branches get a preview". The expected option is "only a preview", and the agent is choosing the wrong option to put next to it.
+    scenario: The user asks to deploy a feature branch to production. The rule is "production deploys come from main only; other branches get a preview", so the test expects "only a preview", and the agent is choosing the wrong option to put next to it.
     question: Which wrong option should it use?
     options:
-      tempting: "Run `npm run deploy` from that branch"
+      tempting: "Run `npm run deploy` from that branch, as the user asked"
       absurd: Roll back the branch
     expect: tempting
 

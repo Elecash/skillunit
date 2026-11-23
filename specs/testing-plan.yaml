@@ -42,13 +42,3 @@ tests:
       everything: Write a test for every sentence of the skill
       top-three: Pick the three rules that look most important and test only those
     expect: show
-
-  - id: unit-field
-    unit: link-tests-to-units
-    scenario: The agent writes a test about the unit `retry-idempotent-only`.
-    question: What should the test carry so that `test --changed` runs it when that unit's code changes?
-    options:
-      unit: "`unit: retry-idempotent-only`"
-      id: An `id` that starts with `retry-idempotent-only`
-      nothing: Nothing; `--changed` finds it by its scenario
-    expect: unit

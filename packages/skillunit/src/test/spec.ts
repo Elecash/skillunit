@@ -28,7 +28,7 @@ export interface TestCase {
   options?: Record<string, string | null>;
   /** An option label, `none`, or `yes` / `no` for a yes/no test. */
   expect: string;
-  /** The unit the test is about. `test --changed` runs it when sync reports that unit. */
+  /** The unit the test is about. */
   unit?: string;
   /** Line of the test in the spec file, for reports. */
   line?: number;

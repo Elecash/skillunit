@@ -50,11 +50,9 @@ describe('model', () => {
   });
 });
 
-describe('sourceRoot', () => {
-  it('is the folder of the config file by default, and relative to it when set', () => {
-    expect(load('skill: .\n').sourceRoot).toBe(dir);
-    expect(load('sourceRoot: ../code\n').sourceRoot).toBe(join(dir, '..', 'code'));
-    expect(() => load('sourceRoot: 3\n')).toThrow(/`sourceRoot` must be a folder/);
+describe('keys', () => {
+  it('rejects a key it does not know, and names the ones it does', () => {
+    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, specs, context, model, thresholds, examples, lint, proof\)/);
   });
 });
 
@@ -65,7 +63,7 @@ describe('lint', () => {
   });
 
   it('rejects a rule it does not know, and names the ones it does', () => {
-    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, wrong-code, command, index, length, source, fence\)/);
+    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, command, index, length, fence, proof\)/);
     expect(() => load('lint: { on: [index] }\n')).toThrow(/unknown key `lint.on`/);
   });
 });

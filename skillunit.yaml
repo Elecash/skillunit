@@ -1,13 +1,15 @@
 # SkillUnit checking its own skill. From the repository root:
-#   npm run skill:dry     lint, sync, and the specs load and fit; sends nothing
+#   npm run skill:dry     lint, proof, and the specs load and fit; sends nothing
 #   npm run skill         the same, and the tests asked to TypeSafe (needs TYPESAFE_API_KEY)
-#   npx skillunit review  after a change to the package's code, to read and accept the units
 skill: ./skills/skillunit
 specs: ./specs
-context: "SkillUnit is a command-line tool that keeps an agent skill in sync with the code it describes: it lints the skill's units and examples, reports units whose source code changed, and asks a decision model closed questions about the skill's text."
-# `Source:` paths of the units start in the package's folder.
-sourceRoot: ./packages/skillunit
+context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it lints the skill's units and examples, reads which units the project's tests prove, and asks a decision model closed questions about the skill's text."
 examples:
   md: { command: "node tools/check-example.mjs md {file}" }
   yaml: { command: "node tools/check-example.mjs yaml {file}" }
   sh: { command: "sh -n {file}" }
+# Units proved by the package's tests: `npx nx test skillunit` writes the report, and
+# skillunit.lock lists the units they prove.
+proof:
+  reports: ./packages/skillunit/reports/junit.xml
+  sources: ["packages/skillunit/src/**/*.test.ts"]

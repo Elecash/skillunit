@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { decidingNumber, distribution, shown, statusLine, undeclaredNames } from './text.js';
+import { decidingNumber, distribution, lockChange, shown, statusLine, undeclaredNames } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function github(report: CheckReport, options: ReportOptions): string {
@@ -16,7 +16,7 @@ export function github(report: CheckReport, options: ReportOptions): string {
     annotate(p.severity, shown(join(skill, p.file), options), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, p.message);
 
   if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
-  if (report.sync) for (const p of report.sync.problems) problem('sync', report.sync.skill, p);
+  if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     for (const spec of report.test.specs) {
       const file = shown(spec.spec, options);
@@ -28,6 +28,9 @@ export function github(report: CheckReport, options: ReportOptions): string {
       }
     }
   }
+  const { proof } = report;
+  const change = proof?.configured ? lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options)) : null;
+  if (change) out.push(`::notice title=SkillUnit proof::${data(change)}`);
   const names = report.lint ? undeclaredNames(report.lint.summary) : null;
   if (names) out.push(`::notice title=SkillUnit lint::${data(`${names[0]}. ${names[1]}`)}`);
   out.push(statusLine(report), '');

@@ -4,7 +4,7 @@ Which specs a skill needs, what each one sends to the decision model, and how a 
 
 A spec is a YAML file of tests about one file of the skill. The test layer sends that file (or some of its headings, with `section`) to the decision model as the state, and asks each test as a closed question about it. A spec with `with` also sends other files of the skill, the ones an agent reads together with it. Each spec is one request, whatever the number of tests in it.
 
-A test that names its unit with `unit:` runs with `test --changed` when sync reports that unit as stale or new. A spec runs whole with `test --changed` when its file, or a file in its `with`, changed.
+A test names its unit with `unit:`, and a failure shows it. A spec runs with `test --changed` when its file, or a file in its `with`, changed.
 
 ## Rules
 
@@ -29,15 +29,7 @@ tests:
     expect: no-retry
 ```
 
-Wrong:
-
-- Doing: testing every rule through `SKILL.md`, with every other file in `with: all`.
-
-  Because: each request then carries the whole skill, the answers get less precise, and a failure does not say which file to fix.
-
 Applies: specs, planning
-
-Source: src/test/spec.ts
 
 ### rule: section-for-long-files
 
@@ -47,15 +39,7 @@ Do: write one spec per heading with `section` set to it, and one per subheading 
 
 Even when: the file is short; then one spec with no `section` covers it whole.
 
-Wrong:
-
-- Doing: one spec whose `section` lists every heading of a long file.
-
-  Because: the request is as large as the whole file, so nothing is gained.
-
 Applies: specs, planning
-
-Source: src/test/skill-text.ts
 
 ### rule: with-only-what-the-agent-reads
 
@@ -63,15 +47,7 @@ When: a rule reaches the agent from more than one file, and a mistake costs a lo
 
 Do: add a spec whose `with` lists the files the agent reads for the task its tests describe, and keep the spec without `with` too.
 
-Wrong:
-
-- Doing: `with: all` in a skill of many files.
-
-  Because: text the agent never reads makes the answers less certain, and a file the agent never opens can settle a test it would get wrong.
-
 Applies: specs, planning
-
-Source: src/test/skill-text.ts
 
 ### rule: list-the-decisions-first
 
@@ -81,28 +57,4 @@ Do: list the decisions the file forces, the places where an agent that read it a
 
 Even when: the file looks small; a sentence that changes nothing an agent does gets no test.
 
-Wrong:
-
-- Doing: a test for every sentence of the file.
-
-  Because: tests of sentences that change nothing pass on any version of the skill and only look like protection.
-
 Applies: specs, planning
-
-Source: src/test/spec.ts
-
-### rule: link-tests-to-units
-
-When: a test is about one unit.
-
-Do: give it `unit:` with the unit's id.
-
-Wrong:
-
-- Doing: leaving `unit:` out of every test.
-
-  Because: `test --changed` then cannot run the tests of a unit whose code changed, and runs only specs whose file changed.
-
-Applies: specs, changed
-
-Source: src/test/changed.ts

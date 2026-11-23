@@ -1,34 +1,33 @@
 ---
 name: skillunit
-description: Write an agent skill in units and keep it in sync with the code it describes, with SkillUnit. Use when asked to write or restructure a skill, to add or fix SkillUnit tests (specs), or to check that a skill still says what it should after the code changed.
+description: Write an agent skill in units and check that it still says what the code it describes does, with SkillUnit. Use when asked to write or restructure a skill, to add or fix SkillUnit tests (specs), or to check that a skill still says what it should after the code changed.
 ---
 
 # SkillUnit
 
-SkillUnit keeps an agent skill in sync with the code it describes. A skill is written as small Markdown files whose instructions are units: a `### rule:`, `### decision:` or `### fact:` heading followed by labelled paragraphs. Three layers check it:
+SkillUnit checks that an agent skill still says what the code it describes does. A skill is written as small Markdown files whose instructions are units: a `### rule:`, `### decision:` or `### fact:` heading followed by labelled paragraphs. Three layers check it:
 
 | Layer | Command | What it finds | Needs the API key |
 | --- | --- | --- | --- |
-| lint | `npx skillunit lint` | a malformed unit, an example that does not compile or breaks a rule, a broken link, a `Source` that does not exist | no |
-| sync | `npx skillunit sync` | a unit whose `Source` code changed since it was last reviewed, or that was never reviewed | no |
+| lint | `npx skillunit lint` | a malformed unit, an example that does not compile or breaks a rule, a broken link | no |
+| proof | `npx skillunit proof` | a unit whose test failed, a block that differs from the example its test produced, a unit no test proves | no |
 | test | `npx skillunit test` | text that does not settle a decision: closed questions to a decision model, from YAML specs | yes |
 
-`npx skillunit check` runs all three; it is what CI runs. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
+`npx skillunit check` runs all three; it is what CI runs. Proof reads the JUnit report of the project's test run, so the tests run before it. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
 
-Sync compares each unit's code with `skillunit.lock`, which records a fingerprint of the code each unit was last reviewed against; comments and formatting do not count. `npx skillunit review` shows what changed for each unit sync reports and writes the lock when a unit is accepted. The lock is committed with the change.
-
-The settings live in `skillunit.yaml`, next to the skill or at the root of the project, with `skillunit.lock` beside it. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
+The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
 
 ## Where to look
 
 | Task | File |
 | --- | --- |
 | Split a skill into files, write its index, decide what goes in prose and what in a unit | [writing/files.md](writing/files.md) |
-| Write a unit: kinds, labels, `Check`, `Source` | [writing/units.md](writing/units.md) |
+| Write a unit: kinds, labels, `Check` | [writing/units.md](writing/units.md) |
 | Write code examples that lint can check: `Setup`, `no-check` | [writing/examples.md](writing/examples.md) |
 | Decide which specs a skill needs | [testing/plan.md](testing/plan.md) |
 | Write a test: scenario, question, options, the spec format | [testing/tests.md](testing/tests.md) |
 | Run the checks, read a report, act on a failure | [testing/results.md](testing/results.md) |
+| Prove a unit with a test of the code: the `[skill:<id>]` tag, an example a test produces, `skillunit.lock` | [testing/proof.md](testing/proof.md) |
 
 ## Rules
 
@@ -44,15 +43,7 @@ Right:
 npx skillunit init skills/my-skill
 ```
 
-Wrong:
-
-- Doing: writing `skillunit.yaml` and the first spec by hand from memory.
-
-  Because: a key that is not allowed stops every command, and `init` writes a file that loads.
-
 Applies: setup
-
-Source: src/init.ts
 
 ### rule: key-outside-the-repo
 
@@ -66,17 +57,9 @@ Right:
 echo "TYPESAFE_API_KEY=your-key" >> .env
 ```
 
-Wrong:
-
-- Doing: `TYPESAFE_API_KEY: your-key`
-
-  Because: `skillunit.yaml` and the specs are committed, so the key is published, and SkillUnit never reads it there.
-
 Applies: setup, keys
 
 Check: forbid `/TYPESAFE_API_KEY:\s*\S/` in yaml
-
-Source: src/env.ts
 
 ### rule: dry-run-without-key
 
@@ -92,15 +75,7 @@ Right:
 npx skillunit check --dry-run
 ```
 
-Wrong:
-
-- Doing: reporting the new tests as passing.
-
-  Because: a dry run only checks that the specs load and fit; no answer was judged.
-
 Applies: setup, test
-
-Source: src/cli.ts
 
 ### decision: which-command
 
@@ -110,20 +85,12 @@ Decide: which layer to run.
 
 - **lint** — the skill's files changed: `npx skillunit lint`.
 
-- **sync** — the code changed: `npx skillunit sync`, which lists the units to review, then `npx skillunit review` to read and accept them.
+- **proof** — the code changed, or its tests did: run the tests, then `npx skillunit proof`, which names the units whose tests fail.
 
 - **test** — what a unit says changed, or its specs did: `npx skillunit test`, or `npx skillunit test --changed` for only the specs those changes touch.
 
-- **check** — before handing the work over: `npx skillunit check`, the three layers in one run.
+- **check** — before handing the work over: `npx skillunit check`, every layer in one run.
 
 Even when: only one file changed; `check` is what CI runs, so it is the last command before handing over.
 
-Wrong:
-
-- Doing: running only `npx skillunit test` after changing the code.
-
-  Because: the tests read the skill's text, which did not change; only sync sees the code.
-
 Applies: commands
-
-Source: src/cli.ts

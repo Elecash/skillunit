@@ -43,7 +43,7 @@ tests:
 | Field | | |
 |---|---|---|
 | `id` | required | Unique in the file. |
-| `unit` | optional | The id of the unit the test is about. `skillunit test --changed` runs the test when `skillunit sync` reports that unit as stale or new. |
+| `unit` | optional | The id of the unit the test is about. A failure shows it. |
 | `scenario` | required | The situation. A list of sentences gives several phrasings of it. |
 | `question` | required | What the reader is asked about the situation. |
 | `options` | optional | `label: description` pairs, or a list of labels. Without options the test is yes/no. |
