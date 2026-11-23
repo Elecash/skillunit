@@ -42,7 +42,7 @@ Options for test and check
                       the pull request's target branch, else the default branch)
   --provider <name>   decision model provider, instead of the one in the settings: ${PROVIDER_NAMES.join(', ')}
   --model <name>      the provider's model (default: ${MODELS})
-  --choice <0-1>      lowest confidence that passes a choice test (default 0.5)
+  --choice <0-1>      lowest probability that passes a choice test (default 0.5)
   --yes <0-1>         lowest P(yes) that passes an expected "yes" (default 0.7)
   --no <0-1>          highest P(yes) that passes an expected "no" (default 0.3)
   --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)

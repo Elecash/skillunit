@@ -27,7 +27,7 @@ tests:
     question: What should the agent check first?
     options:
       options: Whether one of the options gives the answer away
-      threshold: Whether the confidence threshold is too low
+      threshold: Whether the `choice` threshold is too low
       delete: Nothing; it should delete the test
     expect: options
 
@@ -87,7 +87,7 @@ tests:
     expect: missing
 
   - id: read-weak
-    scenario: A failing test shows the expected answer with too little confidence.
+    scenario: A failing test shows the expected answer, under the threshold.
     question: What does that mean?
     options:
       missing: The reader did not find the rule in the text

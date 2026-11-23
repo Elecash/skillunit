@@ -64,8 +64,8 @@ const test: Report = {
           expect: 'exact',
           answer: 'exact',
           confidence: 0.44,
-          expectedProb: 0.63,
-          probabilities: { exact: 0.63, none: 0.35, loose: 0.02 },
+          expectedProb: 0.44,
+          probabilities: { exact: 0.44, none: 0.4, loose: 0.16 },
           pass: false,
           weak: true,
           borderline: true,
@@ -76,7 +76,7 @@ const test: Report = {
           id: 'user-asks-for-mutations',
           expect: 'explain',
           answer: 'none',
-          confidence: 0.53,
+          confidence: 0.66,
           expectedProb: 0.34,
           probabilities: { none: 0.66, explain: 0.34, tool: 0 },
           pass: false,
@@ -208,7 +208,7 @@ describe('reporters', () => {
 
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
-    expect(json).toMatchObject({ schema: 4, command: 'check', ok: false });
+    expect(json).toMatchObject({ schema: 5, command: 'check', ok: false });
     expect(json.test.specs[0].verdicts[1].borderline).toBe(true);
   });
 

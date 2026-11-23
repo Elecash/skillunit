@@ -7,7 +7,7 @@ import type { ProofResult, ProofSkipped } from '../proof/layer.js';
 import type { Report as TestReport } from '../test/runner.js';
 
 /** Bumped only when a field changes meaning or disappears. */
-export const REPORT_SCHEMA = 4;
+export const REPORT_SCHEMA = 5;
 
 export type Command = 'lint' | 'proof' | 'test' | 'check';
 

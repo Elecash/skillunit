@@ -31,7 +31,7 @@ export function typesafe(options: TypeSafeOptions = {}): DecisionModel {
       const answers: Record<string, DecisionAnswer> = {};
       for (const [id, answer] of Object.entries(result.answers)) {
         if (answer.type === 'choice') {
-          answers[id] = { probabilities: { ...answer.probabilities }, confidence: answer.confidence };
+          answers[id] = { probabilities: { ...answer.probabilities } };
         } else if (answer.type === 'noul') {
           answers[id] = { probabilities: { yes: answer.noul, no: 1 - answer.noul } };
         }

@@ -12,7 +12,7 @@ specs: ./specs               # a spec file, a folder of them, or a list (default
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 model: { provider: typesafe, name: jev-latest }   # or provider: openai, or a module: ./my-model.mjs
 thresholds:
-  choice: 0.5                # lowest confidence that passes a choice test
+  choice: 0.5                # lowest probability of the expected option that passes a choice test
   yes: 0.7                   # lowest P(yes) that passes an expected "yes"
   no: 0.3                    # highest P(yes) that passes an expected "no"
   margin: 0.13               # how close to a threshold a verdict is marked borderline
@@ -36,8 +36,9 @@ proof:
   a module (see below). Without `name`, the provider's default model. A bare name such as
   `model: jev-latest` is an error. `--provider` and `--model` override it.
 - `thresholds`: what a test needs to pass, and `margin`, how close to a threshold a verdict is
-  marked borderline. The default margin, 0.13, is the largest move measured across six runs of
-  SkillUnit's own specs on `typesafe` with no change, among tests whose answer stayed the same.
+  marked borderline. The default margin, 0.13, covers the largest move measured: across five runs
+  of SkillUnit's own specs and tinyfetch's on `typesafe` with no change, a test whose answer stayed
+  the same moved by 0.12 at most.
   `openai` gives the same numbers for the same request every run, so there a borderline verdict
   is one that a small change to the wording or to the order of the options may flip.
 - `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,
@@ -132,13 +133,8 @@ framing of its own, since it has no `none` to fall back on: it tells the model t
 the same probability when the skill does not settle the question. Each adapter sends every spec
 as one request.
 
-A choice test is judged on the model's `confidence` when the adapter reports one, and on the top
-probability when it does not.
-
-- **`typesafe`** reports Jev's `confidence`, which is almost always within 0.05 of the top
-  probability.
-- **`openai`** does not report OpenAI's. That field runs well below the top probability when the
-  probabilities spread, by up to 0.27, and would fail tests whose answer is right.
+A choice test is judged on the probability of the option the model ranks first, whatever else
+the model reports about its answer.
 
 `openai` uses the same default thresholds as `typesafe`. With them, both pass every test of
 SkillUnit's own specs and tinyfetch's (2026-11-23).
@@ -170,7 +166,7 @@ interface DecisionModel {
     state: Record<string, unknown>;
     questions: { id: string; text: string; instructions?: string; options?: { id: string; description?: string }[] }[];
   }): Promise<{
-    answers: Record<string, { probabilities: Record<string, number>; confidence?: number } | { refused: true }>;
+    answers: Record<string, { probabilities: Record<string, number> } | { refused: true }>;
     usage: { inputTokens: number; outputTokens: number };
     model: string;
   }>;
@@ -210,6 +206,6 @@ export default {
 };
 ```
 
-The `choice` threshold is compared with the model's `confidence` when it reports one, and with
-the top probability when it does not. The two are not on the same scale, so check the threshold
-and the margin against a few runs of your own specs before relying on them.
+The thresholds are compared with these probabilities, so the probabilities of a question's
+options should add up to 1. Check the thresholds and the margin against a few runs of your own
+specs before relying on them.

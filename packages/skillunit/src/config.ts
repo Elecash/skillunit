@@ -7,7 +7,7 @@
  *   context: "…"                 # one sentence about what the skill is for
  *   model: { provider: typesafe, name: jev-latest }   # a provider of models/providers.ts, or the path of a module: ./model.mjs
  *   thresholds:
- *     choice: 0.5                # lowest confidence that passes a choice test
+ *     choice: 0.5                # lowest probability that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
  *     margin: 0.13               # a verdict this close to its threshold is marked borderline
@@ -32,8 +32,8 @@ export interface Thresholds {
   choice: number;
   /**
    * A verdict whose deciding number is closer than this to its threshold is borderline: the
-   * next run may decide it the other way. Measured: across six runs of the dogfood specs with
-   * no change, the largest move of a test whose answer stayed the same was 0.13.
+   * next run may decide it the other way. Measured on `typesafe`: across five runs of the dogfood
+   * specs and tinyfetch's with no change, a test whose answer stayed the same moved by 0.12 at most.
    */
   margin: number;
   yes: number;

@@ -49,12 +49,10 @@ tests:
 | `options` | optional | `label: description` pairs, or a list of labels. Without options the test is yes/no. |
 | `expect` | required | An option label or `none`; `yes` or `no` for a yes/no test. |
 
-A choice test passes when the reader picks `expect` with a confidence of 0.5 or more: the
-model's own confidence, or the top probability for a model that reports none, such as
-`openai`. A yes/no
+A choice test passes when the reader ranks `expect` first, with a probability of 0.5 or more. A yes/no
 test passes when P(yes) is at least 0.7 for an expected `yes`, or at most 0.3 for an expected
-`no`. The right answer with too little confidence counts as a failure; the report says "right
-answer, too little confidence". A verdict close to its threshold, pass or fail, is marked
+`no`. The right answer under its threshold counts as a failure; the report says "right answer,
+under the threshold". A verdict close to its threshold, pass or fail, is marked
 borderline: see the [command line](cli.md#borderline-verdicts).
 
 With several phrasings, each one is asked separately. SkillUnit ranks them by the probability of
@@ -160,9 +158,9 @@ where `retry` is allowed, fell to `none` and failed.
 **Make each option say everything the skill says on the point.** The options should differ only
 in what the test checks. When the skill says to quote a command in backticks *and* ask for it
 "exactly as written", an expected option that mentions only the second half leaves the reader
-unsure, and it gives the rest to `none`: SkillUnit's own test of that rule failed for too
-little confidence (0.44 and 0.43) with the incomplete option, and passed at 0.86 or more once
-both options carried the backticks.
+unsure, and it gives the rest to `none`: SkillUnit's own test of that rule failed under its
+threshold (0.44 and 0.43) with the incomplete option, and passed at 0.86 or more once both
+options carried the backticks.
 
 **Test what the skill leaves out.** `expect: none` checks that the reader does not stretch the
 skill to cover a case it never mentions, like database migrations in a deploy checklist.

@@ -35,13 +35,11 @@ export interface DecisionRequest {
 export type DecisionAnswer = ProbabilityAnswer | RefusedAnswer;
 
 export interface ProbabilityAnswer {
-  /** Probability of each option id; `{ yes, no }` for a yes/no question. */
-  probabilities: Record<string, number>;
   /**
-   * The model's own confidence in its top option, when it reports one. Without it, SkillUnit
-   * uses the top probability.
+   * Probability of each option id; `{ yes, no }` for a yes/no question. A choice is judged on the
+   * probability of the option the model ranks first.
    */
-  confidence?: number;
+  probabilities: Record<string, number>;
 }
 
 /** The model declined to answer the question. Its test fails with that reason. */

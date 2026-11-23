@@ -4,8 +4,8 @@ exports[`reporters > github: every layer with every kind of finding 1`] = `
 "::error file=skills/demo/features/retries.md,line=24,title=SkillUnit lint%3A retry-idempotent-only::breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
 ::warning file=skills/demo/features/retries.md,line=3,title=SkillUnit lint::312 lines; above about 300, look for a split into files of one task each
 ::warning file=skills/demo/specs/retries.yaml,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
-::error file=skills/demo/specs/retries.yaml,line=19,title=SkillUnit test%3A exact-command::expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%25, none 35%25, loose 2%25%0Ascenario: The user asks to retry a POST.
-::error file=skills/demo/specs/retries.yaml,line=30,title=SkillUnit test%3A user-asks-for-mutations::expected explain, got none (confidence 0.53, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
+::error file=skills/demo/specs/retries.yaml,line=19,title=SkillUnit test%3A exact-command::expected exact, got exact (probability 0.44, threshold 0.50): exact 44%25, none 40%25, loose 16%25%0Ascenario: The user asks to retry a POST.
+::error file=skills/demo/specs/retries.yaml,line=30,title=SkillUnit test%3A user-asks-for-mutations::expected explain, got none (probability 0.66, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
 ::error file=skills/demo/specs/broken.yaml,line=1,title=SkillUnit test::could not run: no heading "Gone" in SKILL.md
 FAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 borderline)
 "
@@ -13,7 +13,7 @@ FAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 bord
 
 exports[`reporters > json: every layer with every kind of finding 1`] = `
 "{
-  "schema": 4,
+  "schema": 5,
   "command": "check",
   "ok": false,
   "lint": {
@@ -123,11 +123,11 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
             "expect": "exact",
             "answer": "exact",
             "confidence": 0.44,
-            "expectedProb": 0.63,
+            "expectedProb": 0.44,
             "probabilities": {
-              "exact": 0.63,
-              "none": 0.35,
-              "loose": 0.02
+              "exact": 0.44,
+              "none": 0.4,
+              "loose": 0.16
             },
             "pass": false,
             "line": 19
@@ -140,7 +140,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
             "id": "user-asks-for-mutations",
             "expect": "explain",
             "answer": "none",
-            "confidence": 0.53,
+            "confidence": 0.66,
             "expectedProb": 0.34,
             "probabilities": {
               "none": 0.66,
@@ -209,12 +209,12 @@ exports[`reporters > junit: every layer with every kind of finding 1`] = `
       <properties>
         <property name="borderline" value="true"/>
       </properties>
-      <failure message="expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%, none 35%, loose 2%">expected exact, got exact (confidence 0.44, threshold 0.50): exact 63%, none 35%, loose 2%
+      <failure message="expected exact, got exact (probability 0.44, threshold 0.50): exact 44%, none 40%, loose 16%">expected exact, got exact (probability 0.44, threshold 0.50): exact 44%, none 40%, loose 16%
 scenario: The user asks to retry a POST.
 question: What does the skill say?</failure>
     </testcase>
     <testcase name="user-asks-for-mutations" classname="skills/demo/specs/retries.yaml">
-      <failure message="expected explain, got none (confidence 0.53, threshold 0.50): none 66%, explain 34%, tool 0%">expected explain, got none (confidence 0.53, threshold 0.50): none 66%, explain 34%, tool 0%
+      <failure message="expected explain, got none (probability 0.66, threshold 0.50): none 66%, explain 34%, tool 0%">expected explain, got none (probability 0.66, threshold 0.50): none 66%, explain 34%, tool 0%
 scenario: The user asks to retry a POST.
 question: What does the skill say?</failure>
     </testcase>
@@ -286,15 +286,15 @@ exports[`reporters > table: colour on a terminal 1`] = `
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
      expected:  exact
-     got:       exact · confidence 0.44, threshold 0.50 · right answer, too little confidence, borderline: the next run may pass it
-                exact 63% · none 35% · loose 2%
+     got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                exact 44% · none 40% · loose 16%
 
   3) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
      expected:  explain
-     got:       none · confidence 0.53, threshold 0.50 · wrong answer
+     got:       none · probability 0.66, threshold 0.50 · wrong answer
                 none 66% · explain 34% · tool 0%
      phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
 
@@ -334,15 +334,15 @@ Failures
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
      expected:  exact
-     got:       exact · confidence 0.44, threshold 0.50 · right answer, too little confidence, borderline: the next run may pass it
-                exact 63% · none 35% · loose 2%
+     got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                exact 44% · none 40% · loose 16%
 
   3) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
      skill:     skills/demo/features/retries.md › Rules
      scenario:  The user asks to retry a POST.
      question:  What does the skill say?
      expected:  explain
-     got:       none · confidence 0.53, threshold 0.50 · wrong answer
+     got:       none · probability 0.66, threshold 0.50 · wrong answer
                 none 66% · explain 34% · tool 0%
      phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
 
@@ -370,7 +370,7 @@ FAILED  proof 3 errors, 1 warning
 
 exports[`reporters > the proof layer > json: proved, failed and unproved units, with every kind of finding 1`] = `
 "{
-  "schema": 4,
+  "schema": 5,
   "command": "proof",
   "ok": false,
   "proof": {

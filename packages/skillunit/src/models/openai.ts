@@ -3,11 +3,7 @@
  * docs/guides/decisions). One `decide` call is one request, with plain `fetch`. The state is an
  * `input_json` part. Each question carries its framing and its own text, as the `typesafe`
  * adapter sends them: a choice question becomes a `choice`, a yes/no question a `predicate`.
- *
- * A choice is judged on its top probability, not on OpenAI's `confidence`. That field runs below
- * the top probability, by up to 0.27 when the probabilities spread, and on SkillUnit's own specs it
- * failed six tests whose answer was right. On the top probability those pass, and the broken skills
- * of the e2e scenarios still fail (measured 2026-11-23).
+ * OpenAI's `confidence` field is left out: SkillUnit judges every choice on its probabilities.
  */
 import type { DecisionAnswer, DecisionModel, DecisionRequest, DecisionResult } from './types.js';
 
@@ -90,7 +86,6 @@ export function fromOpenAI(body: OpenAIResponse, request: DecisionRequest): Deci
     } else if (a.type === 'predicate' && 'probability' in a) {
       answers[q.id] = { probabilities: { yes: a.probability, no: 1 - a.probability } };
     } else if (a.type === 'choice' && 'probabilities' in a) {
-      // No `confidence`: SkillUnit then judges the choice on its top probability.
       answers[q.id] = { probabilities: Object.fromEntries(a.probabilities.map((p) => [String(p.value), p.probability])) };
     } else {
       throw new Error(`OpenAI answered question ${q.id} with a ${a.type} answer`);

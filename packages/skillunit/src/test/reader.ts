@@ -16,14 +16,17 @@ export interface Verdict {
   expect: string;
   /** The option the reader picked, or "yes" / "no" for a yes/no test. */
   answer: string;
-  /** For a choice test, the model's confidence. For a yes/no test, P(yes). */
+  /**
+   * The number that decided the verdict: for a choice test, the probability of the option the
+   * reader picked; for a yes/no test, P(yes).
+   */
   confidence: number;
   /** Probability the reader gave to the expected answer, from 0 to 1. */
   expectedProb: number;
   /** For a choice test, the probability of every option, `none` included. */
   probabilities?: Record<string, number>;
   pass: boolean;
-  /** The reader picked the expected answer but without enough confidence. Counts as a fail. */
+  /** The reader picked the expected answer, with a probability under the threshold. Counts as a fail. */
   weak: boolean;
   /** The model declined to answer. Counts as a fail; `answer` is `(refused)`. */
   refused?: true;
@@ -180,7 +183,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
 
   if (test.options) {
     const [choice, top] = Object.entries(probabilities).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
-    const confidence = answer.confidence ?? top;
+    const confidence = top;
     const right = choice === test.expect;
     const sure = confidence >= th.choice;
     const expectedProb = probabilities[test.expect] ?? 0;
@@ -192,7 +195,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
       probabilities: { ...probabilities },
       pass: right && sure,
       weak: right && !sure,
-      // Right: the confidence is near the threshold. Wrong: the expected option is close behind.
+      // Right: its probability is near the threshold. Wrong: the expected option is close behind.
       borderline: right ? near(confidence, th.choice) : near(expectedProb, top),
     };
   }

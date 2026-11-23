@@ -151,9 +151,10 @@ export const scenarios: Scenario[] = [
       app.commit('Say retries are always safe');
     },
     // The sentence replaces the one that points to the rules. Measured on Jev over five runs:
-    // post-no-retry ends at 0.04 to 0.22 and patch-no-retry at 0.06 to 0.22. retry-methods, which
-    // asks about every method, fell under its threshold in three of them (0.41 to 0.55).
-    expect: { failing: ['post-no-retry', 'patch-no-retry'], mayFail: ['retry-methods'] },
+    // post-no-retry ends at 0.35 to 0.43 and patch-no-retry at 0.41 to 0.49, so both failed every
+    // time; patch-no-retry is close enough to its threshold to pass one day. retry-methods, which
+    // asks about every method, passed at 0.63 to 0.73.
+    expect: { failing: ['post-no-retry'], mayFail: ['patch-no-retry', 'retry-methods'] },
   },
   {
     name: 'ambiguous rule',

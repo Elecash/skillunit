@@ -69,17 +69,17 @@ describe('buildRequest', () => {
 
 describe('thresholds', () => {
   it('passes a choice at the threshold, and marks it weak just under', () => {
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: 0.5 }, th)).toMatchObject({ answer: 'a', pass: true, weak: false });
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: 0.4999 }, th)).toMatchObject({ answer: 'a', pass: false, weak: true });
+    expect(judge(choice, { probabilities: { a: 0.5, b: 0.3, none: 0.2 } }, th)).toMatchObject({ answer: 'a', confidence: 0.5, pass: true, weak: false });
+    expect(judge(choice, { probabilities: { a: 0.4999, b: 0.3, none: 0.2001 } }, th)).toMatchObject({ answer: 'a', pass: false, weak: true });
   });
 
-  it('uses the top probability when the model reports no confidence', () => {
+  it('judges a choice on the probability of the option the model ranks first', () => {
     expect(judge(choice, { probabilities: { a: 0.55, b: 0.45 } }, th)).toMatchObject({ confidence: 0.55, pass: true });
     expect(judge(choice, { probabilities: { a: 0.49, b: 0.3, none: 0.21 } }, th)).toMatchObject({ pass: false, weak: true });
   });
 
   it('fails a wrong choice without calling it weak, and keeps every probability', () => {
-    const v = judge(choice, { probabilities: { a: 0.2, b: 0.7, none: 0.1 }, confidence: 0.9 }, th);
+    const v = judge(choice, { probabilities: { a: 0.2, b: 0.7, none: 0.1 } }, th);
     expect(v).toMatchObject({ answer: 'b', expectedProb: 0.2, pass: false, weak: false, probabilities: { a: 0.2, b: 0.7, none: 0.1 } });
   });
 
@@ -99,8 +99,8 @@ describe('thresholds', () => {
 describe('none', () => {
   it('passes a test that expects none when the model picks it, and fails one that does not', () => {
     const silent: TestCase = { ...choice, expect: 'none' };
-    expect(judge(silent, { probabilities: { a: 0.1, b: 0.1, none: 0.8 }, confidence: 0.8 }, th)).toMatchObject({ answer: 'none', pass: true });
-    expect(judge(choice, { probabilities: { a: 0.3, none: 0.7 }, confidence: 0.7 }, th)).toMatchObject({ answer: 'none', pass: false, weak: false });
+    expect(judge(silent, { probabilities: { a: 0.1, b: 0.1, none: 0.8 } }, th)).toMatchObject({ answer: 'none', pass: true });
+    expect(judge(choice, { probabilities: { a: 0.3, none: 0.7 } }, th)).toMatchObject({ answer: 'none', pass: false, weak: false });
   });
 });
 
@@ -115,7 +115,7 @@ describe('missing answers', () => {
     for (const test of [choice, yes]) {
       expect(judge(test, { refused: true }, th)).toMatchObject({ answer: '(refused)', refused: true, pass: false, weak: false, borderline: false });
     }
-    expect(judge(choice, { probabilities: { a: 0.9, none: 0.1 }, confidence: 0.9 }, th)).not.toHaveProperty('refused');
+    expect(judge(choice, { probabilities: { a: 0.9, none: 0.1 } }, th)).not.toHaveProperty('refused');
   });
 });
 
@@ -153,9 +153,9 @@ describe('runAll', () => {
   it('sends one request per spec and takes the median phrasing', async () => {
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model, calls } = stub(() => ({
-      'post-retry#1': { probabilities: { stop: 0.9, retry: 0.05, none: 0.05 }, confidence: 0.9 },
-      'post-retry#2': { probabilities: { stop: 0.2, retry: 0.7, none: 0.1 }, confidence: 0.7 },
-      'post-retry#3': { probabilities: { stop: 0.8, retry: 0.1, none: 0.1 }, confidence: 0.8 },
+      'post-retry#1': { probabilities: { stop: 0.9, retry: 0.05, none: 0.05 } },
+      'post-retry#2': { probabilities: { stop: 0.2, retry: 0.7, none: 0.1 } },
+      'post-retry#3': { probabilities: { stop: 0.8, retry: 0.1, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.9, no: 0.1 } },
     }));
     const report = await runAll(config, model);
@@ -244,7 +244,7 @@ describe('typesafe adapter', () => {
     expect(toTypeSafe(request)).not.toHaveProperty('model');
   });
 
-  it('maps choice and yes/no answers, the confidence and the usage', async () => {
+  it("maps choice and yes/no answers and the usage, and leaves out Jev's confidence", async () => {
     const client = {
       systemOne: async () => ({
         model: 'jev-1.13.0',
@@ -260,7 +260,7 @@ describe('typesafe adapter', () => {
       model: 'jev-1.13.0',
       usage: { inputTokens: 12, outputTokens: 3 },
       answers: {
-        pick: { probabilities: { a: 0.59, none: 0.41 }, confidence: 0.45 },
+        pick: { probabilities: { a: 0.59, none: 0.41 } },
         allowed: { probabilities: { yes: 0.25, no: 0.75 } },
       },
     });
@@ -303,26 +303,27 @@ describe('loadModel', () => {
 describe('borderline', () => {
   const m = th.margin;
   it('marks a verdict whose deciding number is within the margin of its threshold, pass or fail', () => {
-    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m - 0.01 }, th)).toMatchObject({ pass: true, borderline: true });
-    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m + 0.01 }, th)).toMatchObject({ pass: true, borderline: false });
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: th.choice - 0.05 }, th)).toMatchObject({ pass: false, weak: true, borderline: true });
+    const share = (a: number) => ({ probabilities: { a, b: (1 - a) / 2, none: (1 - a) / 2 } });
+    expect(judge(choice, share(th.choice + m - 0.01), th)).toMatchObject({ pass: true, borderline: true });
+    expect(judge(choice, share(th.choice + m + 0.01), th)).toMatchObject({ pass: true, borderline: false });
+    expect(judge(choice, share(th.choice - 0.05), th)).toMatchObject({ pass: false, weak: true, borderline: true });
     expect(judge(yes, { probabilities: { yes: th.yes + 0.1, no: 0.2 } }, th)).toMatchObject({ pass: true, borderline: true });
     expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, th)).toMatchObject({ pass: true, borderline: false });
     expect(judge(no, { probabilities: { yes: th.no - 0.1, no: 0.8 } }, th)).toMatchObject({ pass: true, borderline: true });
   });
 
   it('marks a wrong choice borderline when the expected option is close behind the top one', () => {
-    expect(judge(choice, { probabilities: { none: 0.55, a: 0.45 }, confidence: 0.45 }, th)).toMatchObject({ pass: false, borderline: true });
-    expect(judge(choice, { probabilities: { none: 0.8, a: 0.2 }, confidence: 0.8 }, th)).toMatchObject({ pass: false, borderline: false });
+    expect(judge(choice, { probabilities: { none: 0.55, a: 0.45 } }, th)).toMatchObject({ pass: false, borderline: true });
+    expect(judge(choice, { probabilities: { none: 0.8, a: 0.2 } }, th)).toMatchObject({ pass: false, borderline: false });
   });
 
   it('honours thresholds.margin, and counts borderline verdicts in the summary', async () => {
     expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, { ...th, margin: 0.3 })).toMatchObject({ borderline: true });
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model } = stub(() => ({
-      'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
-      'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
-      'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
+      'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 } },
+      'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 } },
+      'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.75, no: 0.25 } },
     }));
     const report = await runAll(config, model);

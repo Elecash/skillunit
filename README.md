@@ -175,7 +175,7 @@ A test can also produce an example. A block flagged `proof=<id>` after its langu
 
 ### Test
 
-A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with enough confidence. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
+A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with a high enough probability. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
 
 **A sentence contradicts a rule.** In `skill/features/retries.md`, in the prose above the rules:
 
@@ -184,7 +184,7 @@ A spec is a YAML list of closed questions about one file of the skill. A decisio
 +The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 46%, so the test fails:
+The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 39%, so the test fails:
 
 ```
 2) specs/retries.yaml:15  patch-no-retry
@@ -192,9 +192,9 @@ The model still picks `no-retry` for a PATCH, but the new sentence pulls it down
    scenario:  A stock count is decreased with `tf.patch`, and the network drops now and then.
    question:  Should the agent pass `retry` to that call?
    expected:  no-retry
-   got:       no-retry · confidence 0.19, threshold 0.50 · right answer, too little confidence
-              no-retry 46% · retry 28% · none 26%
-   phrasings: 0.48  0.46 (probability of "no-retry" for each; the median decides)
+   got:       no-retry · probability 0.39, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+              no-retry 39% · none 33% · retry 28%
+   phrasings: 0.43  0.39 (probability of "no-retry" for each; the median decides)
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -249,10 +249,10 @@ If 5 seconds is the new default, edit the `Value` of `default-timeout` and the t
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`, and often `retry-methods` too:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`:
 
 ```
-FAILED  test 13/16 passed (1 borderline)
+FAILED  test 14/16 passed (3 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.

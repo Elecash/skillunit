@@ -177,7 +177,7 @@ function testFailure(spec: SpecReport, v: SpecReport['verdicts'][number], at: st
   const part = spec.sections.length ? `${spec.file} › ${spec.sections.join(' + ')}` : spec.file;
   const dir = shown(skill, options);
   const skillLine = `${dir === '.' ? '' : `${dir}/`}${part}${v.unit ? `   unit: ${v.unit}` : ''}`;
-  const verdict = `${v.weak ? 'right answer, too little confidence' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
+  const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
   return [
     at,
     `   skill:     ${skillLine}`,
