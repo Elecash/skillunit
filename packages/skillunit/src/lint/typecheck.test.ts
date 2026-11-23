@@ -81,8 +81,6 @@ ${F}ts
 tf.post('/users', { name: 'Ada' });
 ${F}
 
-Applies: retries
-
 Check: forbid \`/post\\([^)]*retry/\` in ts
 
 ### rule: set-a-timeout
@@ -96,8 +94,6 @@ Right:
 ${F}ts
 tf.get('/a', { timeout: 5000 });
 ${F}
-
-Applies: timeouts
 
 ### decision: pick-a-call
 
@@ -116,8 +112,6 @@ Decide:
   ${F}ts
   tf.gett('/b');
   ${F}
-
-Applies: calls
 `;
 
 const BROKEN = `# Broken Setup
@@ -164,8 +158,6 @@ Right:
 ${F}ts
 tf.get('/a');
 ${F}
-
-Applies: requests
 `;
 
 const roots: string[] = [];

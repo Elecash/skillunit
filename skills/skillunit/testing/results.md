@@ -26,8 +26,6 @@ Right:
 npx skillunit test --dry-run
 ```
 
-Applies: commands, test
-
 ### rule: prove-on-a-copy
 
 When: the agent wants to show that a test depends on its rule.
@@ -41,15 +39,11 @@ cp -R skills/my-skill /tmp/my-skill-copy
 npx skillunit test specs/retries.yaml --skill /tmp/my-skill-copy
 ```
 
-Applies: test, proof
-
 ### rule: still-green-without-the-rule
 
 When: a test still passes on a copy with its rule deleted.
 
 Do: look for the cause in this order: an option gives the answer away, the scenario contains the answer, the skill states the rule somewhere else, the reader knows the answer without the skill; fix the test in the first two cases, and tell the user in the last two.
-
-Applies: test, proof
 
 ### fact: no-mutations
 
@@ -59,8 +53,6 @@ Value: SkillUnit has no mutations; deleting a rule's sentence in a copy and runn
 
 Unknown: there is no mutation setting or tool; say so instead of adding one to the specs.
 
-Applies: test, proof
-
 ### rule: report-dont-bend
 
 When: a test fails on the unmodified skill, and the test looks right.
@@ -69,20 +61,14 @@ Do: report the failure as a finding about the skill, with the sentence that woul
 
 Even when: the user wants the run green; a test bent to pass protects nothing.
 
-Applies: test, failures
-
 ### rule: fix-when-asked
 
 When: a test fails because the skill is unclear, and the user asked the agent to improve the skill.
 
 Do: rewrite the unclear part of the skill, adding the idea the rule is missing rather than the test's wording, and run the test again.
 
-Applies: test, failures
-
 ### rule: strengthen-borderline-tests
 
 When: the report marks a verdict borderline.
 
 Do: make the skill's text more direct on that point, or give the test more phrasings so the median decides; leave `thresholds.margin` as it is.
-
-Applies: test, borderline

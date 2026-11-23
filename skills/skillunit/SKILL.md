@@ -43,8 +43,6 @@ Right:
 npx skillunit init skills/my-skill
 ```
 
-Applies: setup
-
 ### rule: key-outside-the-repo
 
 When: the test layer needs the decision model's API key.
@@ -56,8 +54,6 @@ Right:
 ```sh
 echo "TYPESAFE_API_KEY=your-key" >> .env
 ```
-
-Applies: setup, keys
 
 Check: forbid `/TYPESAFE_API_KEY:\s*\S/` in yaml
 
@@ -75,8 +71,6 @@ Right:
 npx skillunit check --dry-run
 ```
 
-Applies: setup, test
-
 ### decision: which-command
 
 When: the agent has changed a skill, its specs or the code it describes, and wants to know if the skill still holds.
@@ -92,5 +86,3 @@ Decide: which layer to run.
 - **check** — before handing the work over: `npx skillunit check`, every layer in one run.
 
 Even when: only one file changed; `check` is what CI runs, so it is the last command before handing over.
-
-Applies: commands

@@ -171,7 +171,7 @@ export const scenarios: Scenario[] = [
     change: 'add a fact that no test proves',
     apply(app) {
       const unit =
-        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n\nApplies: timeouts, errors\n';
+        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n';
       app.write('skill/features/timeouts.md', app.read('skill/features/timeouts.md') + unit);
       app.commit('Add a unit about TimeoutError');
     },
@@ -195,18 +195,14 @@ export const scenarios: Scenario[] = [
     change: 'write a unit with its labels on consecutive lines, then run Prettier with proseWrap always',
     async apply(app) {
       const compact =
-        '\n### rule: log-failed-requests\nWhen: code logs a failed tinyfetch request.\nDo: log the method, the URL and `error.status` together.\nApplies: errors\n';
+        '\n### rule: log-failed-requests\nWhen: code logs a failed tinyfetch request.\nDo: log the method, the URL and `error.status` together.\n';
       app.write('skill/features/errors.md', app.read('skill/features/errors.md') + compact);
       await prettier(app, ['skill/features/errors.md'], 'always');
       app.commit('Add a unit, format');
     },
     expect: {
-      // `When:` and `Do:` share a line; the rule has no `Do` and no `Applies` of its own any more.
-      lint: [
-        'structure skill/features/errors.md log-failed-requests',
-        'structure skill/features/errors.md log-failed-requests',
-        'structure skill/features/errors.md log-failed-requests',
-      ],
+      // `When:` and `Do:` share a line, so the rule has no `Do` of its own any more.
+      lint: ['structure skill/features/errors.md log-failed-requests', 'structure skill/features/errors.md log-failed-requests'],
     },
   },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one

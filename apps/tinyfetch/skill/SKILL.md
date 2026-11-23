@@ -42,5 +42,3 @@ Right:
 const user = await tf.get<{ name: string }>("https://api.example.com/users/1");
 console.log(user.name);
 ```
-
-Applies: requests

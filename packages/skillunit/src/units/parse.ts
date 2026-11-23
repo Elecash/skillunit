@@ -12,7 +12,6 @@ import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listMarkdown } from '../files.js';
 import {
-  FOOTER_LABELS,
   LABELS,
   type Check,
   type Fence,
@@ -163,8 +162,6 @@ type Item = { kind: 'decide'; index: number } | { kind: 'right' } | { kind: 'ign
 /** What the current paragraph belongs to: wrapped lines are joined to it. */
 type Para = { kind: 'label'; label: LabelLine } | { kind: 'decide'; index: number } | { kind: 'right' } | { kind: 'ignore' };
 
-const isFooter = (name: LabelName) => (FOOTER_LABELS as readonly string[]).includes(name);
-
 class FileParser {
   private readonly lines: string[];
   private readonly result: ParsedFile;
@@ -251,7 +248,6 @@ class FileParser {
       decide: [],
       right: [],
       skipped: 0,
-      applies: [],
       check: [],
       proofs: [],
       text: '',
@@ -304,9 +300,6 @@ class FileParser {
         break;
       case 'Decide':
         if (l.value) u.decideText = l.value;
-        break;
-      case 'Applies':
-        u.applies = splitList(l.value);
         break;
       case 'Check': {
         const check = parseCheck(l.value, l.line);
@@ -481,7 +474,7 @@ class FileParser {
     if (name !== 'Check' && u.labels.some((l) => l.name === name)) {
       this.error(i, `\`${name}\` appears twice in this unit`);
     }
-    const label: LabelLine = { name, line: i + 1, value: value.trim(), part: isFooter(name) ? 'footer' : 'body', joined };
+    const label: LabelLine = { name, line: i + 1, value: value.trim(), joined };
     u.labels.push(label);
     this.label = name;
     this.item = null;
@@ -557,14 +550,6 @@ class FileParser {
     this.result.inlineCode.push(...found);
     return found;
   }
-}
-
-/** `a, b, c`, with backticks around a name allowed. */
-function splitList(value: string): string[] {
-  return value
-    .split(',')
-    .map((s) => s.trim().replace(/^`(.*)`$/, '$1').trim())
-    .filter(Boolean);
 }
 
 /** The value of the first `proof=` flag of a fence, with quotes around it taken off. */

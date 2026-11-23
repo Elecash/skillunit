@@ -171,7 +171,7 @@ ${F}
   });
 
   it('runs the command on a fence flagged proof= like any other example', () => {
-    const unit = `# T\n\n## Rules\n\n### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}sh proof=r\nif then fi\n${F}\n\nApplies: a\n`;
+    const unit = `# T\n\n## Rules\n\n### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}sh proof=r\nif then fi\n${F}\n`;
     const root = skillDir({ 'SKILL.md': unit });
     const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
     expect(result.checked).toBe(1);
@@ -202,11 +202,11 @@ describe('output', () => {
 
 describe('lint as a whole', () => {
   it('fails on a parse error, and prints it with the other findings', () => {
-    const root = skillDir({ 'SKILL.md': '# T\n\n## Rules\n\n### rule: r\n\nWhen: x\n\nDo: y\n\nApplies: a\n\nnot a label\n' });
+    const root = skillDir({ 'SKILL.md': '# T\n\n## Rules\n\n### rule: r\n\nWhen: x\n\nDo: y\n\nnot a label\n' });
     const result = lint(root);
     expect(result.ok).toBe(false);
     expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain(
-      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)',
+      '1) SKILL.md:11  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Check)',
     );
   });
 

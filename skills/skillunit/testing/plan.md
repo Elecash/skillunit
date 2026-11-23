@@ -29,8 +29,6 @@ tests:
     expect: no-retry
 ```
 
-Applies: specs, planning
-
 ### rule: section-for-long-files
 
 When: the file under test is long, above about 3,000 characters.
@@ -39,15 +37,11 @@ Do: write one spec per heading with `section` set to it, and one per subheading 
 
 Even when: the file is short; then one spec with no `section` covers it whole.
 
-Applies: specs, planning
-
 ### rule: with-only-what-the-agent-reads
 
 When: a rule reaches the agent from more than one file, and a mistake costs a lot.
 
 Do: add a spec whose `with` lists the files the agent reads for the task its tests describe, and keep the spec without `with` too.
-
-Applies: specs, planning
 
 ### rule: list-the-decisions-first
 
@@ -56,5 +50,3 @@ When: the agent is about to write the tests of a file.
 Do: list the decisions the file forces, the places where an agent that read it acts differently from one that did not, and show the list to the user when they have not said which parts matter.
 
 Even when: the file looks small; a sentence that changes nothing an agent does gets no test.
-
-Applies: specs, planning

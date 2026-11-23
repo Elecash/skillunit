@@ -72,9 +72,8 @@ every instruction the agent must follow is a unit in `## Rules`. Concretely:
 
 ## Units
 
-A unit has two parts: the body, which the agent reads, and the footer, which the tools read.
-The label decides the part: `Applies`, `Check` and `Proof` are footer, every other label is
-body.
+A unit is a heading and labels. The agent reads every label but `Check`, which only lint reads
+and which comes last.
 
 Every label is its own paragraph, with a blank line before and after it. GitHub then shows one
 label per line, and a formatter leaves the unit as it is.
@@ -92,20 +91,18 @@ Right:
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
 
-Applies: retries, post
-
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
 ````
 
 Three kinds. Labels always in this order; omit the optional ones you do not need.
 
-| Kind | Body | Footer | Use it for |
-|---|---|---|---|
-| `rule` | When, Do, Even when, Right | Applies, Check | a constraint on what the agent writes |
-| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when | Applies, Check | choosing between paths |
-| `fact` | When, Value, Unknown | Applies, Check | a value the agent must state exactly |
+| Kind | Labels | Use it for |
+|---|---|---|
+| `rule` | When, Do, Even when, Right, Check | a constraint on what the agent writes |
+| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when, Check | choosing between paths |
+| `fact` | When, Value, Unknown, Check | a value the agent must state exactly |
 
-Required: `When` and `Applies`, plus `Do` (rule), `Decide` (decision) or `Value` (fact).
+Required: `When`, plus `Do` (rule), `Decide` (decision) or `Value` (fact).
 
 A unit is its instruction and one example. The other labels are there for the case that needs
 them, not to fill in.
@@ -116,8 +113,6 @@ rules, or a `decision`.
 
 ### Writing each label
 
-Body:
-
 - **When**: the situation as the agent meets it, not the topic. "Writing CSS for a form", not
   "Styling".
 - **Do**: one action, with the exact API names.
@@ -127,12 +122,6 @@ Body:
   every `Check` and type-check with the file's `Setup`.
 - **Value / Unknown** (fact): the value, and what to say about cases it does not cover, so the
   agent does not invent.
-
-Footer:
-
-- **Applies**: names from the skill's inventory (widgets, groups, hosts, APIs, contexts,
-  features), comma-separated. Name the specific things; a group like `inputs` hides gaps.
-  Drives the coverage report and test selection.
 - **Check**: `` forbid `/regex/` in <langs> ``, when the wrong pattern can be matched. The
   regex is written in a code span. The linter runs it over every fenced block in those
   languages and over every inline code span of the skill. The flags `g` and `y` are not
@@ -276,15 +265,11 @@ When: a request sets no `retry`, or no `retryDelay`.
 
 Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, doubled before each next one.
 
-Applies: retries
-
 ### fact: what-is-retried
 
 When: a request with `retry` fails.
 
 Value: a network error and a 5xx status are retried; a 4xx status and a timeout never are.
-
-Applies: retries, errors
 
 ### rule: retry-idempotent-only
 
@@ -297,8 +282,6 @@ Right:
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
-
-Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
 ````

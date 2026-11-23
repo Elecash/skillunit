@@ -36,8 +36,6 @@ When: a request resolves.
 
 Value: a response whose `content-type` is JSON comes back parsed; any other comes back as text.
 
-Applies: requests
-
 ### rule: query-in-options
 
 When: a request needs query parameters.
@@ -52,8 +50,6 @@ await tf.get("https://api.example.com/users", {
 });
 ```
 
-Applies: requests, query
-
 Check: forbid `/\.(get|head|post|put|patch|delete)(<[^>]*>)?\(\s*["'][^"']*\?/` in ts
 
 ### rule: body-as-object
@@ -67,7 +63,5 @@ Right:
 ```ts proof=body-as-object
 await tf.post("https://api.example.com/users", { name: "Ada" });
 ```
-
-Applies: requests, post, put, patch
 
 Check: forbid `/JSON\.stringify/` in ts

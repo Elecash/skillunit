@@ -217,12 +217,10 @@ describe.each(COMPILERS)('an example that declares a name of the Setup, with %s'
       '### decision: pick',
       'When: a choice.',
       `Decide:\n\n- **one** — first.\n\n  ${F}ts proof=pick.one\n  ${TYPE_ERROR}\n  ${F}`,
-      'Applies: lib',
       '### rule: r',
       'When: a.',
       'Do: b.',
       `Right:\n\n${F}ts proof=r\n${TYPE_ERROR}\n${F}`,
-      'Applies: lib',
     ].join('\n\n') + '\n';
     const r = run(project(typescript, unit));
     expect(r.summary.typeChecked).toBe(2);

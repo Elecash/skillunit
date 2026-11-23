@@ -6,10 +6,8 @@
 
 export type UnitKind = 'rule' | 'decision' | 'fact';
 
-/** Body labels in the one order every kind follows. */
-export const BODY_LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right'] as const;
-export const FOOTER_LABELS = ['Applies', 'Check'] as const;
-export const LABELS = [...BODY_LABELS, ...FOOTER_LABELS] as const;
+/** The labels, in the one order every kind follows. `Check` is for lint, not for the agent, and goes last. */
+export const LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right', 'Check'] as const;
 
 export type LabelName = (typeof LABELS)[number];
 
@@ -19,8 +17,6 @@ export interface LabelLine {
   line: number;
   /** The label's text: its paragraph after `Label:`, wrapped lines joined with a space. */
   value: string;
-  /** Set by the name: `Applies` and `Check` are footer, the rest body. */
-  part: 'body' | 'footer';
   /** The label sits in the same paragraph as the label before it, with no blank line between. */
   joined: boolean;
 }
@@ -122,7 +118,6 @@ export interface Unit {
   /** `Decide` or `Right` items the parser reported as malformed and skipped. */
   skipped: number;
 
-  applies: string[];
   check: Check[];
   /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
   proofs: Fence[];

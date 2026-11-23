@@ -16,8 +16,6 @@ When: a tinyfetch call fails.
 
 Value: a status outside 200–299 throws an `HttpError` with the `status` and the parsed `body`; a timeout throws a `TimeoutError`; a network failure throws what `fetch` threw.
 
-Applies: errors
-
 ### rule: check-with-is-http-error
 
 When: code catches an error from a tinyfetch call and reads its status.
@@ -34,5 +32,3 @@ try {
   else throw error;
 }
 ```
-
-Applies: errors
