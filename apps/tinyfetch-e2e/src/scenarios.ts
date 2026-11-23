@@ -150,8 +150,9 @@ export const scenarios: Scenario[] = [
       );
       app.commit('Say retries are always safe');
     },
-    // Both tests of the rule end near their threshold (post-no-retry 0.52, patch-no-retry 0.49 in
-    // two runs), so the scenario asks that one of them fails, not which.
+    // Measured over six runs: post-no-retry ends at 0.35 to 0.49 and patch-no-retry at 0.31 to
+    // 0.42, so both failed every time; post-no-retry is the closer of the two to its threshold,
+    // so the scenario asks that one of them fails, not which.
     expect: { oneFails: ['post-no-retry', 'patch-no-retry'] },
   },
   {
@@ -162,7 +163,8 @@ export const scenarios: Scenario[] = [
       app.edit('skill/features/retries.md', 'Do: enable `retry` only for GET, HEAD, PUT and DELETE.', 'Do: think about whether `retry` suits the method before you enable it.');
       app.commit('Soften the retry rule');
     },
-    expect: { failing: ['put-may-retry'], mayFail: ['post-no-retry', 'patch-no-retry'] },
+    // The weakened rule names no method, so the test that asks for the list fails too.
+    expect: { failing: ['put-may-retry', 'retry-methods'], mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   {
     name: 'unit added with no test',

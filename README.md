@@ -192,16 +192,17 @@ A spec is a YAML list of closed questions about one file of the skill. A decisio
 +Which failures it repeats, and how long it waits, are in the rules below. tinyfetch sends an `Idempotency-Key` header with every POST and PATCH, and repeats it on each retry, so the server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 55%, so the test fails:
+The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 56%, so the test fails:
 
 ```
 2) specs/retries.yaml:15  patch-no-retry
    skill:     skill/features/retries.md   unit: retry-idempotent-only
-   scenario:  A user profile is updated with `tf.patch`, and the API sometimes answers 503.
+   scenario:  A stock count is decreased with `tf.patch`, and the network drops now and then.
    question:  Should the agent pass `retry` to that call?
    expected:  no-retry
-   got:       no-retry · confidence 0.33, threshold 0.50 · right answer, too little confidence
-              no-retry 55% · retry 23% · none 22%
+   got:       no-retry · confidence 0.34, threshold 0.50 · right answer, too little confidence
+              no-retry 56% · none 27% · retry 17%
+   phrasings: 0.69  0.56 (probability of "no-retry" for each; the median decides)
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -223,7 +224,7 @@ npx skillunit check --dry-run
 `vitest run` writes the report proof reads, in `reports/junit.xml`. The check ends with:
 
 ```
-OK  lint ok · proof ok · test dry run ok, 15 tests ready
+OK  lint ok · proof ok · test dry run ok, 16 tests ready
 ```
 
 Then break one thing at a time. Each experiment starts from a clean tree, and `git checkout .` undoes it. The first three need no key.
@@ -256,10 +257,10 @@ If 5 seconds is the new default, edit the `Value` of `default-timeout` and the t
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, add the sentence about the `Idempotency-Key` header from [Test](#test), then run `npx skillunit test`. It fails `patch-no-retry`, and `post-no-retry` sits near its threshold, so it fails on some runs and not on others:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, add the sentence about the `Idempotency-Key` header from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`:
 
 ```
-FAILED  test 13/15 passed (1 borderline)
+FAILED  test 14/16 passed (1 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.

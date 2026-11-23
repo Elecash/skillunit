@@ -49,8 +49,8 @@ request carries the text under test once. Measured in November 2026:
 
 | Skill | Specs | Tests | Input tokens | Output tokens |
 | --- | --- | --- | --- | --- |
-| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 15 | about 8,400 | about 730 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 7 | 52 | about 29,100 | about 2,600 |
+| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 | about 830 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 54 | about 28,800 | about 2,700 |
 
 At TypeSafe's price for Jev 1.14 on 2026-11-21, $0.042 per million input tokens with output
 tokens free ([its models page](https://docs.typesafe.ai/models)), a run of tinyfetch costs
