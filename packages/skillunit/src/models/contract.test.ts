@@ -1,7 +1,8 @@
 /**
  * The contract every decision model that ships must keep, checked against the real API: one
- * fixed request about a short text, for each provider whose key is set. Run it with
- * `npx nx contract skillunit`, which reads the keys from `.env`; `vitest run` leaves it out.
+ * fixed request about a short text, for each provider whose key is set. Run it when adding a
+ * provider, changing an adapter or updating a provider's SDK: `npx nx contract skillunit`, which
+ * reads the keys from `.env`. `vitest run` and CI leave it out.
  */
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS } from '../config.js';
