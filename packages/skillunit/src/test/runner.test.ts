@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
-import { loadModel, ModelError, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
-import { buildRequest, judge, NONE_DESCRIPTION } from './reader.js';
+import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
+import { buildRequest, framing, judge, NONE_DESCRIPTION } from './reader.js';
 import { changedSelection } from './changed.js';
 import { runAll } from './runner.js';
 import { loadSpec } from './spec.js';
@@ -14,7 +14,7 @@ import type { TestCase } from './spec.js';
  * The only stand-in for a decision model: it answers what a test tells it to, for the cases a
  * real model cannot produce on demand (a value just under a threshold, a missing answer, an error).
  */
-function stub(answer: (request: DecisionRequest) => Record<string, DecisionAnswer> | Error, limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 }) {
+function stub(answer: (request: DecisionRequest) => Record<string, DecisionAnswer> | Error, limits: DecisionModel['limits'] = { perQuestionTokens: 32_000, perRequestTokens: 64_000 }) {
   const calls: DecisionRequest[] = [];
   const model: DecisionModel = {
     id: 'stub',
@@ -44,6 +44,7 @@ describe('buildRequest', () => {
       options: [{ id: 'a', description: 'A' }, { id: 'b' }, { id: 'none', description: NONE_DESCRIPTION }],
     });
     expect(request.questions[2]!.options).toBeUndefined();
+    expect(request.questions[0]).not.toHaveProperty('instructions');
     expect(request.state).toEqual({ skill: 'skill text' });
     expect(request.instructions).toMatch(/What the skill is about: A tiny HTTP client\.$/);
   });
@@ -52,22 +53,33 @@ describe('buildRequest', () => {
     const request = buildRequest('skill text', [yes], undefined, { 'ref.md': 'ref' });
     expect(request.state).toEqual({ skill: 'skill text', references: { 'ref.md': 'ref' } });
     expect(request.instructions).toContain('The `references` in the state');
+    expect(request.questions[0]!.instructions).toContain('The `references` in the state');
+  });
+
+  it('frames a yes/no question on its own: no `none` to fall back on, and the same probability when the skill is silent', () => {
+    const request = buildRequest('skill text', [choice, yes], 'A tiny HTTP client.');
+    const yesNo = request.questions.find((q) => q.id === 'allowed')!.instructions!;
+    expect(yesNo).toBe(framing('A tiny HTTP client.', false, true));
+    expect(yesNo).toContain('If the skill does not settle the question, give yes and no the same probability.');
+    expect(yesNo).not.toContain('`none`');
+    expect(yesNo).toMatch(/What the skill is about: A tiny HTTP client\.$/);
+    expect(request.instructions).toContain('answer `none`');
   });
 });
 
 describe('thresholds', () => {
   it('passes a choice at the threshold, and marks it weak just under', () => {
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: 0.5 }, th)).toMatchObject({ answer: 'a', pass: true, weak: false });
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: 0.4999 }, th)).toMatchObject({ answer: 'a', pass: false, weak: true });
+    expect(judge(choice, { probabilities: { a: 0.5, b: 0.3, none: 0.2 } }, th)).toMatchObject({ answer: 'a', confidence: 0.5, pass: true, weak: false });
+    expect(judge(choice, { probabilities: { a: 0.4999, b: 0.3, none: 0.2001 } }, th)).toMatchObject({ answer: 'a', pass: false, weak: true });
   });
 
-  it('uses the top probability when the model reports no confidence', () => {
+  it('judges a choice on the probability of the option the model ranks first', () => {
     expect(judge(choice, { probabilities: { a: 0.55, b: 0.45 } }, th)).toMatchObject({ confidence: 0.55, pass: true });
     expect(judge(choice, { probabilities: { a: 0.49, b: 0.3, none: 0.21 } }, th)).toMatchObject({ pass: false, weak: true });
   });
 
   it('fails a wrong choice without calling it weak, and keeps every probability', () => {
-    const v = judge(choice, { probabilities: { a: 0.2, b: 0.7, none: 0.1 }, confidence: 0.9 }, th);
+    const v = judge(choice, { probabilities: { a: 0.2, b: 0.7, none: 0.1 } }, th);
     expect(v).toMatchObject({ answer: 'b', expectedProb: 0.2, pass: false, weak: false, probabilities: { a: 0.2, b: 0.7, none: 0.1 } });
   });
 
@@ -87,8 +99,8 @@ describe('thresholds', () => {
 describe('none', () => {
   it('passes a test that expects none when the model picks it, and fails one that does not', () => {
     const silent: TestCase = { ...choice, expect: 'none' };
-    expect(judge(silent, { probabilities: { a: 0.1, b: 0.1, none: 0.8 }, confidence: 0.8 }, th)).toMatchObject({ answer: 'none', pass: true });
-    expect(judge(choice, { probabilities: { a: 0.3, none: 0.7 }, confidence: 0.7 }, th)).toMatchObject({ answer: 'none', pass: false, weak: false });
+    expect(judge(silent, { probabilities: { a: 0.1, b: 0.1, none: 0.8 } }, th)).toMatchObject({ answer: 'none', pass: true });
+    expect(judge(choice, { probabilities: { a: 0.3, none: 0.7 } }, th)).toMatchObject({ answer: 'none', pass: false, weak: false });
   });
 });
 
@@ -97,6 +109,13 @@ describe('missing answers', () => {
     expect(judge(choice, undefined, th)).toMatchObject({ answer: '(no answer)', pass: false });
     expect(judge(choice, { probabilities: {} }, th)).toMatchObject({ answer: '(no answer)', pass: false });
     expect(judge(yes, { probabilities: { maybe: 1 } }, th)).toMatchObject({ answer: '(no yes/no answer)', pass: false });
+  });
+
+  it('fails a refused question with that reason, not as a wrong answer', () => {
+    for (const test of [choice, yes]) {
+      expect(judge(test, { refused: true }, th)).toMatchObject({ answer: '(refused)', refused: true, pass: false, weak: false, borderline: false });
+    }
+    expect(judge(choice, { probabilities: { a: 0.9, none: 0.1 } }, th)).not.toHaveProperty('refused');
   });
 });
 
@@ -134,9 +153,9 @@ describe('runAll', () => {
   it('sends one request per spec and takes the median phrasing', async () => {
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model, calls } = stub(() => ({
-      'post-retry#1': { probabilities: { stop: 0.9, retry: 0.05, none: 0.05 }, confidence: 0.9 },
-      'post-retry#2': { probabilities: { stop: 0.2, retry: 0.7, none: 0.1 }, confidence: 0.7 },
-      'post-retry#3': { probabilities: { stop: 0.8, retry: 0.1, none: 0.1 }, confidence: 0.8 },
+      'post-retry#1': { probabilities: { stop: 0.9, retry: 0.05, none: 0.05 } },
+      'post-retry#2': { probabilities: { stop: 0.2, retry: 0.7, none: 0.1 } },
+      'post-retry#3': { probabilities: { stop: 0.8, retry: 0.1, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.9, no: 0.1 } },
     }));
     const report = await runAll(config, model);
@@ -145,6 +164,7 @@ describe('runAll', () => {
     expect(report.ok).toBe(true);
     expect(report.specs[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8] });
     expect(report.specs[0]!.model).toBe('stub-1');
+    expect(report.provider).toBe('stub');
     expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 
@@ -166,6 +186,31 @@ describe('runAll', () => {
     const report = await runAll(config, model);
     expect(calls).toHaveLength(0);
     expect(report.specs[0]!.error).toMatch(/^too large: the skill text plus the longest question is about \d+ tokens; stub takes 50\./);
+  });
+
+  it('refuses, on a dry run too, a spec with more questions or options than the model takes', async () => {
+    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+    const limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 };
+    const fewQuestions = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 3 });
+    const report = await runAll(config, fewQuestions.model, { dryRun: true });
+    expect(report.ok).toBe(false);
+    expect(report.specs[0]!.error).toBe(
+      'too many questions: the spec asks 4, every phrasing of a test counted; stub takes 3 in one request. Split the tests into two specs',
+    );
+    const fewOptions = stub(() => new Error('must not be called'), { ...limits, optionsPerQuestion: 2 });
+    expect((await runAll(config, fewOptions.model, { dryRun: true })).specs[0]!.error).toBe(
+      'too many options: test post-retry has 3, `none` included; stub takes 2 in one question',
+    );
+    const enough = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 4, optionsPerQuestion: 3 });
+    expect((await runAll(config, enough.model, { dryRun: true })).ok).toBe(true);
+  });
+
+  it('runs a spec where the model refused one question, and fails only that test', async () => {
+    const config = project({ 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n  - id: u\n    scenario: s\n    question: r?\n    expect: no\n' });
+    const { model } = stub(() => ({ t: { refused: true }, u: { probabilities: { yes: 0.1, no: 0.9 } } }));
+    const report = await runAll(config, model);
+    expect(report.specs[0]!.verdicts.map((v) => [v.id, v.answer, v.pass])).toEqual([['t', '(refused)', false], ['u', 'no', true]]);
+    expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
   });
 
   it('sends nothing on a dry run, but still checks the limits [skill:dry-run-without-key]', async () => {
@@ -192,11 +237,14 @@ describe('typesafe adapter', () => {
       instructions: { framing: request.instructions, question: 'Situation: A situation.\nQuestion: Which one?' },
       criteria: { a: 'A', b: null, none: NONE_DESCRIPTION },
     });
-    expect(payload.questions.allowed).toMatchObject({ type: 'noul' });
+    expect(payload.questions.allowed).toEqual({
+      type: 'noul',
+      instructions: { framing: request.questions[1]!.instructions, question: 'Situation: A situation.\nQuestion: Is it allowed?' },
+    });
     expect(toTypeSafe(request)).not.toHaveProperty('model');
   });
 
-  it('maps choice and yes/no answers, the confidence and the usage', async () => {
+  it("maps choice and yes/no answers and the usage, and leaves out Jev's confidence", async () => {
     const client = {
       systemOne: async () => ({
         model: 'jev-1.13.0',
@@ -212,7 +260,7 @@ describe('typesafe adapter', () => {
       model: 'jev-1.13.0',
       usage: { inputTokens: 12, outputTokens: 3 },
       answers: {
-        pick: { probabilities: { a: 0.59, none: 0.41 }, confidence: 0.45 },
+        pick: { probabilities: { a: 0.59, none: 0.41 } },
         allowed: { probabilities: { yes: 0.25, no: 0.75 } },
       },
     });
@@ -234,8 +282,20 @@ describe('loadModel', () => {
     expect((await loadModel({ provider: 'module', module: write('c.mjs', `export default async () => (${MODEL});`) })).id).toBe('mine');
   });
 
+  it('builds every provider that ships, with its default model when no name is given', async () => {
+    for (const name of PROVIDER_NAMES) {
+      expect(PROVIDERS[name].defaultModel).toBeTruthy();
+      expect(PROVIDERS[name].env.length).toBeGreaterThan(0);
+      expect((await loadModel({ provider: name })).id).toBe(name);
+    }
+  });
+
   it('says what a module must export, and when it cannot be loaded', async () => {
     await expect(loadModel({ provider: 'module', module: write('d.mjs', 'export default { id: 1 };') })).rejects.toThrow(ModelError);
+    const badLimit = MODEL.replace('perRequestTokens: 2000', 'perRequestTokens: 2000, questionsPerRequest: 0');
+    await expect(loadModel({ provider: 'module', module: write('e.mjs', `export default ${badLimit};`) })).rejects.toThrow(ModelError);
+    const limits = MODEL.replace('perRequestTokens: 2000', 'perRequestTokens: 2000, questionsPerRequest: 400, optionsPerQuestion: 255');
+    expect((await loadModel({ provider: 'module', module: write('f.mjs', `export default ${limits};`) })).limits).toMatchObject({ questionsPerRequest: 400 });
     await expect(loadModel({ provider: 'module', module: join(dir, 'missing.mjs') })).rejects.toThrow(/could not load the model module/);
   });
 });
@@ -243,26 +303,27 @@ describe('loadModel', () => {
 describe('borderline', () => {
   const m = th.margin;
   it('marks a verdict whose deciding number is within the margin of its threshold, pass or fail', () => {
-    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m - 0.01 }, th)).toMatchObject({ pass: true, borderline: true });
-    expect(judge(choice, { probabilities: { a: 0.7, none: 0.3 }, confidence: th.choice + m + 0.01 }, th)).toMatchObject({ pass: true, borderline: false });
-    expect(judge(choice, { probabilities: { a: 0.6, none: 0.4 }, confidence: th.choice - 0.05 }, th)).toMatchObject({ pass: false, weak: true, borderline: true });
+    const share = (a: number) => ({ probabilities: { a, b: (1 - a) / 2, none: (1 - a) / 2 } });
+    expect(judge(choice, share(th.choice + m - 0.01), th)).toMatchObject({ pass: true, borderline: true });
+    expect(judge(choice, share(th.choice + m + 0.01), th)).toMatchObject({ pass: true, borderline: false });
+    expect(judge(choice, share(th.choice - 0.05), th)).toMatchObject({ pass: false, weak: true, borderline: true });
     expect(judge(yes, { probabilities: { yes: th.yes + 0.1, no: 0.2 } }, th)).toMatchObject({ pass: true, borderline: true });
     expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, th)).toMatchObject({ pass: true, borderline: false });
     expect(judge(no, { probabilities: { yes: th.no - 0.1, no: 0.8 } }, th)).toMatchObject({ pass: true, borderline: true });
   });
 
   it('marks a wrong choice borderline when the expected option is close behind the top one', () => {
-    expect(judge(choice, { probabilities: { none: 0.55, a: 0.45 }, confidence: 0.45 }, th)).toMatchObject({ pass: false, borderline: true });
-    expect(judge(choice, { probabilities: { none: 0.8, a: 0.2 }, confidence: 0.8 }, th)).toMatchObject({ pass: false, borderline: false });
+    expect(judge(choice, { probabilities: { none: 0.55, a: 0.45 } }, th)).toMatchObject({ pass: false, borderline: true });
+    expect(judge(choice, { probabilities: { none: 0.8, a: 0.2 } }, th)).toMatchObject({ pass: false, borderline: false });
   });
 
   it('honours thresholds.margin, and counts borderline verdicts in the summary', async () => {
     expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, { ...th, margin: 0.3 })).toMatchObject({ borderline: true });
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model } = stub(() => ({
-      'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
-      'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
-      'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 }, confidence: 0.9 },
+      'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 } },
+      'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 } },
+      'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.75, no: 0.25 } },
     }));
     const report = await runAll(config, model);

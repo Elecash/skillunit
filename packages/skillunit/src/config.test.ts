@@ -40,12 +40,13 @@ describe('model', () => {
   it('defaults to typesafe, and reads a provider with a name or a module path', () => {
     expect(load('skill: .\n').model).toEqual({ provider: 'typesafe' });
     expect(load('model: { provider: typesafe, name: jev-latest }\n').model).toEqual({ provider: 'typesafe', name: 'jev-latest' });
+    expect(load('model: { provider: openai }\n').model).toEqual({ provider: 'openai' });
     expect(load('model: ./models/mine.mjs\n').model).toEqual({ provider: 'module', module: join(dir, 'models', 'mine.mjs') });
   });
 
   it('rejects a bare name, an unknown provider and unknown keys', () => {
-    expect(() => load('model: jev-latest\n')).toThrow(/`model` is `\{ provider: typesafe, name: <model name> \}`, or the path of a module/);
-    expect(() => load('model: { provider: openai }\n')).toThrow(/unknown model provider `openai`/);
+    expect(() => load('model: jev-latest\n')).toThrow(/`model` is `\{ provider: typesafe \| openai, name: <model name> \}`, or the path of a module/);
+    expect(() => load('model: { provider: mistral }\n')).toThrow(/unknown model provider `mistral`; SkillUnit ships `typesafe` and `openai`, and any other goes in a module/);
     expect(() => load('model: { provider: typesafe, temperature: 0 }\n')).toThrow(/unknown key `model.temperature`/);
   });
 });

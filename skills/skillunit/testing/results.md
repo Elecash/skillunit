@@ -8,7 +8,7 @@ The default report is a table per layer, then the failures, the borderline verdi
 | --- | --- |
 | `none` is high | the reader did not find the rule in the text |
 | a wrong option is high | the text points to that answer |
-| the expected answer, too little confidence | the text is ambiguous |
+| the expected answer, under the threshold | the text is ambiguous |
 
 A verdict is borderline when the number that decided it is within `thresholds.margin` (0.13 by default) of its threshold. Answers move a little between runs, so a borderline test is the one most likely to change verdict next time. A borderline pass still passes.
 

@@ -1,7 +1,8 @@
 /**
  * A decision model answers closed questions about a state: a yes/no question, or a choice among
  * named options. SkillUnit's `test` layer asks it whether a skill's text settles the decisions it
- * must. Any provider can be plugged in through this interface; `typesafe` ships with SkillUnit.
+ * must. Any provider can be plugged in through this interface; the ones in `providers.ts` ship
+ * with SkillUnit.
  */
 
 export interface DecisionOption {
@@ -14,25 +15,36 @@ export interface DecisionQuestion {
   /** Key of the answer in `DecisionResult.answers`. */
   id: string;
   text: string;
+  /**
+   * Instructions for this question alone, used instead of the request's. SkillUnit sets them on
+   * every yes/no question, whose framing differs from a choice question's.
+   */
+  instructions?: string;
   /** Absent for a yes/no question. */
   options?: DecisionOption[];
 }
 
 export interface DecisionRequest {
-  /** How to read the state and answer; the same for every question. */
+  /** How to read the state and answer: the framing of every question that has no `instructions` of its own. */
   instructions: string;
   state: Record<string, unknown>;
   questions: DecisionQuestion[];
 }
 
-export interface DecisionAnswer {
-  /** Probability of each option id; `{ yes, no }` for a yes/no question. */
-  probabilities: Record<string, number>;
+/** An answer: a probability per option, or a refusal. */
+export type DecisionAnswer = ProbabilityAnswer | RefusedAnswer;
+
+export interface ProbabilityAnswer {
   /**
-   * The model's own confidence in its top option, when it reports one. Without it, SkillUnit
-   * uses the top probability.
+   * Probability of each option id; `{ yes, no }` for a yes/no question. A choice is judged on the
+   * probability of the option the model ranks first.
    */
-  confidence?: number;
+  probabilities: Record<string, number>;
+}
+
+/** The model declined to answer the question. Its test fails with that reason. */
+export interface RefusedAnswer {
+  refused: true;
 }
 
 export interface DecisionResult {
@@ -51,6 +63,10 @@ export interface DecisionModel {
     perQuestionTokens: number;
     /** Tokens of the whole request. */
     perRequestTokens: number;
+    /** Questions in one request, every phrasing of a test counted. No limit when absent. */
+    questionsPerRequest?: number;
+    /** Options of one choice question, the `none` SkillUnit adds included. No limit when absent. */
+    optionsPerQuestion?: number;
   };
   /** Rejects on a failed request; SkillUnit reports it as a spec that could not run. */
   decide(request: DecisionRequest): Promise<DecisionResult>;

@@ -15,7 +15,7 @@ SkillUnit checks that an agent skill still says what the code it describes does.
 
 `npx skillunit check` runs all three; it is what CI runs. Proof reads the JUnit report of the project's test run, so the tests run before it. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
 
-The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key is `TYPESAFE_API_KEY`. SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
+The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key belongs to its provider: `TYPESAFE_API_KEY` for `typesafe`, the default, and `OPENAI_API_KEY` for `openai` (`model: { provider: openai }`). SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
 
 ## Where to look
 
@@ -47,7 +47,7 @@ npx skillunit init skills/my-skill
 
 When: the test layer needs the decision model's API key.
 
-Do: put `TYPESAFE_API_KEY` in the environment (a secret in CI), or in a `.env` file that git ignores, next to `skillunit.yaml` or at the root of the repository.
+Do: put the key of the provider in `skillunit.yaml`, `TYPESAFE_API_KEY` or `OPENAI_API_KEY`, in the environment (a secret in CI), or in a `.env` file that git ignores, next to `skillunit.yaml` or at the root of the repository.
 
 Right:
 
@@ -55,7 +55,7 @@ Right:
 echo "TYPESAFE_API_KEY=your-key" >> .env
 ```
 
-Check: forbid `/TYPESAFE_API_KEY:\s*\S/` in yaml
+Check: forbid `/(TYPESAFE|OPENAI)_API_KEY:\s*\S/` in yaml
 
 ### rule: dry-run-without-key
 

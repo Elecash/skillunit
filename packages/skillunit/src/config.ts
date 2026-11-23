@@ -5,9 +5,9 @@
  *   skill: ./skills/my-skill     # folder with SKILL.md
  *   specs: ./specs               # a spec file, a folder of them, or a list of either
  *   context: "…"                 # one sentence about what the skill is for
- *   model: { provider: typesafe, name: jev-latest }   # or the path of a module: ./model.mjs
+ *   model: { provider: typesafe, name: jev-latest }   # a provider of models/providers.ts, or the path of a module: ./model.mjs
  *   thresholds:
- *     choice: 0.5                # lowest confidence that passes a choice test
+ *     choice: 0.5                # lowest probability that passes a choice test
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
  *     no: 0.3                    # highest P(yes) that passes an expected "no"
  *     margin: 0.13               # a verdict this close to its threshold is marked borderline
@@ -26,13 +26,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { LINT_RULES, type LintRule } from './lint/types.js';
+import { isProviderName, PROVIDER_NAMES, providerList, type ProviderName } from './models/providers.js';
 
 export interface Thresholds {
   choice: number;
   /**
    * A verdict whose deciding number is closer than this to its threshold is borderline: the
-   * next run may decide it the other way. Measured: across six runs of the dogfood specs with
-   * no change, the largest move of a test whose answer stayed the same was 0.13.
+   * next run may decide it the other way. Measured on `typesafe`: across five runs of the dogfood
+   * specs and tinyfetch's with no change, a test whose answer stayed the same moved by 0.12 at most.
    */
   margin: number;
   yes: number;
@@ -76,10 +77,11 @@ export interface ProofConfig {
 export const DEFAULT_PROOF_EXAMPLES = './tmp/skill-proof';
 
 /**
- * The decision model the `test` layer asks: the `typesafe` adapter, or a module of the project's
- * own that exports a `DecisionModel`. The module path is absolute.
+ * The decision model the `test` layer asks: a provider that ships with SkillUnit, with the model
+ * name when the settings give one, or a module of the project's own that exports a
+ * `DecisionModel`. The module path is absolute.
  */
-export type ModelConfig = { provider: 'typesafe'; name?: string } | { provider: 'module'; module: string };
+export type ModelConfig = { provider: ProviderName; name?: string } | { provider: 'module'; module: string };
 
 /** How lint checks code examples. Paths are absolute. */
 export interface ExamplesConfig {
@@ -197,7 +199,7 @@ function readLint(value: unknown, fail: (msg: string) => Error): { off: LintRule
   return { off: list as LintRule[] };
 }
 
-const MODEL_FORMAT = '`model` is `{ provider: typesafe, name: <model name> }`, or the path of a module that exports a DecisionModel, starting with `./` or `/`';
+const MODEL_FORMAT = `\`model\` is \`{ provider: ${PROVIDER_NAMES.join(' | ')}, name: <model name> }\`, or the path of a module that exports a DecisionModel, starting with \`./\` or \`/\``;
 
 function readModel(value: unknown, root: string, fail: (msg: string) => Error): ModelConfig {
   if (typeof value === 'string') {
@@ -206,10 +208,10 @@ function readModel(value: unknown, root: string, fail: (msg: string) => Error): 
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail(MODEL_FORMAT);
   const { provider, name, ...rest } = value as Record<string, unknown>;
-  if (provider !== 'typesafe') throw fail(`unknown model provider \`${String(provider)}\`; SkillUnit ships \`typesafe\`, and any other goes in a module`);
+  if (!isProviderName(provider)) throw fail(`unknown model provider \`${String(provider)}\`; SkillUnit ships ${providerList()}, and any other goes in a module`);
   if (Object.keys(rest).length) throw fail(`unknown key \`model.${Object.keys(rest)[0]}\` (allowed: provider, name)`);
   if (name !== undefined && (typeof name !== 'string' || !name.trim())) throw fail('`model.name` must be a model name');
-  return name ? { provider: 'typesafe', name: name as string } : { provider: 'typesafe' };
+  return name ? { provider, name: name as string } : { provider };
 }
 
 /** Fence languages the `ts` entry covers. */

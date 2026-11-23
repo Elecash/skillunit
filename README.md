@@ -14,7 +14,7 @@ It checks a skill in three layers:
 
 What it costs to run:
 
-- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in about 0.2 seconds, however many tests it holds: 57 tests in 8 specs take about 1.5 seconds.
+- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in under a second, however many tests it holds: 58 tests in 8 specs take about 1.5 seconds on TypeSafe and 3 on OpenAI.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 
@@ -56,9 +56,10 @@ The test layer needs a decision model:
 | Decision model | Adapter | Models | Key |
 | --- | --- | --- | --- |
 | [TypeSafe](https://typesafe.ai) | `typesafe`, the default | `jev-latest`, or any model TypeSafe lists | `TYPESAFE_API_KEY` |
+| [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) | `openai` | `gpt-6-luna` | `OPENAI_API_KEY` |
 | Your own | a module that exports a `DecisionModel` | any | [see the configuration](https://github.com/Elecash/skillunit/blob/main/docs/configuration.md#a-decision-model-of-your-own) |
 
-Put the key in the environment, or in a `.env` file next to `skillunit.yaml` or at the root of the repository. Then run every layer:
+Pick one with `model: { provider: openai }` in `skillunit.yaml`, or `--provider openai` for a single run. Models can answer the same test differently (OpenAI's is more decisive than Jev), so pick one and write your tests for it. Put that provider's key in the environment, or in a `.env` file next to `skillunit.yaml` or at the root of the repository. Then run every layer:
 
 ```sh
 npx skillunit check
@@ -174,16 +175,16 @@ A test can also produce an example. A block flagged `proof=<id>` after its langu
 
 ### Test
 
-A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with enough confidence. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
+A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with a high enough probability. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
 
 **A sentence contradicts a rule.** In `skill/features/retries.md`, in the prose above the rules:
 
 ```diff
 -Which failures it repeats, and how long it waits, are in the rules below.
-+Which failures it repeats, and how long it waits, are in the rules below. tinyfetch sends an `Idempotency-Key` header with every POST and PATCH, and repeats it on each retry, so the server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
++The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 56%, so the test fails:
+The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 39%, so the test fails:
 
 ```
 2) specs/retries.yaml:15  patch-no-retry
@@ -191,9 +192,9 @@ The model still picks `no-retry` for a PATCH, but the new sentence pulls it down
    scenario:  A stock count is decreased with `tf.patch`, and the network drops now and then.
    question:  Should the agent pass `retry` to that call?
    expected:  no-retry
-   got:       no-retry · confidence 0.34, threshold 0.50 · right answer, too little confidence
-              no-retry 56% · none 27% · retry 17%
-   phrasings: 0.69  0.56 (probability of "no-retry" for each; the median decides)
+   got:       no-retry · probability 0.39, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+              no-retry 39% · none 33% · retry 28%
+   phrasings: 0.43  0.39 (probability of "no-retry" for each; the median decides)
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -248,10 +249,10 @@ If 5 seconds is the new default, edit the `Value` of `default-timeout` and the t
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, add the sentence about the `Idempotency-Key` header from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`:
 
 ```
-FAILED  test 14/16 passed (1 borderline)
+FAILED  test 14/16 passed (3 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.

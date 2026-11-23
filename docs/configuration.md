@@ -10,9 +10,9 @@ to the file. Without a file, the skill is the current folder and the specs are i
 skill: ./skill               # folder with SKILL.md (default: the folder of this file)
 specs: ./specs               # a spec file, a folder of them, or a list (default: ./specs)
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
-model: { provider: typesafe, name: jev-latest }   # or the path of a module: ./my-model.mjs
+model: { provider: typesafe, name: jev-latest }   # or provider: openai, or a module: ./my-model.mjs
 thresholds:
-  choice: 0.5                # lowest confidence that passes a choice test
+  choice: 0.5                # lowest probability of the expected option that passes a choice test
   yes: 0.7                   # lowest P(yes) that passes an expected "yes"
   no: 0.3                    # highest P(yes) that passes an expected "no"
   margin: 0.13               # how close to a threshold a verdict is marked borderline
@@ -32,11 +32,15 @@ proof:
 - `specs`: where the [specs](writing-specs.md) are. A test command given paths uses those instead.
 - `context`: one sentence about what the skill is for. It is sent with every question and helps
   the reader with the vocabulary of the domain.
-- `model`: the decision model, as `{ provider: typesafe, name: <model> }` or the path of a
-  module (see below). A bare name such as `model: jev-latest` is an error.
+- `model`: the decision model, as `{ provider: typesafe | openai, name: <model> }` or the path of
+  a module (see below). Without `name`, the provider's default model. A bare name such as
+  `model: jev-latest` is an error. `--provider` and `--model` override it.
 - `thresholds`: what a test needs to pass, and `margin`, how close to a threshold a verdict is
-  marked borderline. The default margin, 0.13, is the largest move measured across six runs of
-  SkillUnit's own specs with no change, among tests whose answer stayed the same.
+  marked borderline. The default margin, 0.13, covers the largest move measured: across five runs
+  of SkillUnit's own specs and tinyfetch's on `typesafe` with no change, a test whose answer stayed
+  the same moved by 0.12 at most.
+  `openai` gives the same numbers for the same request every run, so there a borderline verdict
+  is one that a small change to the wording or to the order of the options may flip.
 - `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,
   `js` and `jsx` example is type-checked with the project's own `tsc` (TypeScript 5 or later,
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
@@ -105,7 +109,10 @@ It also reads a lock with the conflict markers still in it.
 
 ## The API key
 
-The decision model's key comes from the environment, or from a `.env` file. SkillUnit reads the
+Each provider has its own key: `TYPESAFE_API_KEY` for `typesafe` and `OPENAI_API_KEY` for
+`openai`. Only the key of the provider in use is needed, and `--dry-run` needs none.
+
+The key comes from the environment, or from a `.env` file. SkillUnit reads the
 `.env` next to `skillunit.yaml` (the current folder when there is none), then the `.env` of each
 folder above it, up to the root of the git repository. A variable already set in the
 environment wins over every file, and a closer file wins over a farther one. So one `.env` at the
@@ -118,9 +125,27 @@ The key never goes in `skillunit.yaml` or in a spec: both are committed.
 | Provider | Adapter | Models | Key | Limits |
 | --- | --- | --- | --- | --- |
 | [TypeSafe](https://typesafe.ai) | `typesafe`, the default | `jev-latest`, or any model TypeSafe lists | `TYPESAFE_API_KEY` | 32,000 tokens for the state plus one question, 64,000 for a request |
+| [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) | `openai` | `gpt-6-luna`, the only model the endpoint takes | `OPENAI_API_KEY` | 922,000 tokens, 400 questions and 255 options per question in a request |
 
 The framing of the questions, the automatic `none` option, the thresholds and the token checks
-are SkillUnit's, not the adapter's, so every model is asked and judged the same way.
+are SkillUnit's, not the adapter's, so every model is asked the same way. A yes/no question has a
+framing of its own, since it has no `none` to fall back on: it tells the model to give yes and no
+the same probability when the skill does not settle the question. Each adapter sends every spec
+as one request.
+
+A choice test is judged on the probability of the option the model ranks first, whatever else
+the model reports about its answer.
+
+`openai` uses the same default thresholds as `typesafe`. With them, both pass every test of
+SkillUnit's own specs and tinyfetch's (2026-11-23).
+
+**Pick one model and write your tests for it.** Decision models can answer the same test
+differently: OpenAI's, for one, is more decisive than Jev. A spec that fails where it should on
+one model may pass on another. Choose a model, run your specs on it, and shape the tests around
+how it answers. When you switch models, check the specs again.
+
+When a model refuses a question, which OpenAI's endpoint may do for any question, that test
+fails with "the model refused to answer". The other tests of the spec are judged as usual.
 
 ## A decision model of your own
 
@@ -130,21 +155,30 @@ named `model`, is a `DecisionModel`, or a function that returns one:
 ```ts no-check
 interface DecisionModel {
   readonly id: string;
-  readonly limits: { perQuestionTokens: number; perRequestTokens: number };
+  readonly limits: {
+    perQuestionTokens: number;
+    perRequestTokens: number;
+    questionsPerRequest?: number; // every phrasing of a test is one question
+    optionsPerQuestion?: number; // the `none` SkillUnit adds included
+  };
   decide(request: {
     instructions: string;
     state: Record<string, unknown>;
-    questions: { id: string; text: string; options?: { id: string; description?: string }[] }[];
+    questions: { id: string; text: string; instructions?: string; options?: { id: string; description?: string }[] }[];
   }): Promise<{
-    answers: Record<string, { probabilities: Record<string, number>; confidence?: number }>;
+    answers: Record<string, { probabilities: Record<string, number> } | { refused: true }>;
     usage: { inputTokens: number; outputTokens: number };
     model: string;
   }>;
 }
 ```
 
-A question without `options` is a yes/no question, answered as `{ yes, no }`. A question left
-out of `answers` fails its test. `decide` rejects on a failed request, and the spec is reported
+A question without `options` is a yes/no question, answered as `{ yes, no }`. It carries its
+own `instructions`, the yes/no framing: send them with that question instead of the request's
+`instructions`. A question left
+out of `answers` fails its test, and so does one answered `{ refused: true }`, with the reason.
+A spec with more questions, or a test with more options, than the optional limits allow is an
+error before anything is sent, on a dry run too. `decide` rejects on a failed request, and the spec is reported
 as one that could not run.
 
 A skeleton, for a provider with an HTTP API that returns a probability per option:
@@ -172,6 +206,6 @@ export default {
 };
 ```
 
-The `choice` threshold is compared with the model's `confidence` when it reports one, and with
-the top probability when it does not. The two are not on the same scale, so check the threshold
-and the margin against a few runs of your own specs before relying on them.
+The thresholds are compared with these probabilities, so the probabilities of a question's
+options should add up to 1. Check the thresholds and the margin against a few runs of your own
+specs before relying on them.

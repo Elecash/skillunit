@@ -72,8 +72,11 @@ tests:
     scenario:
       - The agent wants an option for "a command that is not in the list".
       - The agent wants an option meaning "the skill does not say".
-    question: May the agent add that option to the test?
-    expect: no
+    question: What should the agent do with that option?
+    options:
+      add: Add it to the options of the test
+      leave: Leave it out
+    expect: leave
 
   - id: add-the-answer
     unit: expect-none-only-for-silence

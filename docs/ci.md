@@ -10,6 +10,7 @@ jobs:
   skillunit:
     runs-on: ubuntu-latest
     env:
+      # The key of the provider in use: OPENAI_API_KEY for `openai`.
       TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -32,6 +33,8 @@ jobs:
   that proves a unit the lock does not list fails the check, and so does a unit the lock lists
   that no test proves. Run every test in this step: a listed unit whose test a partial run left out fails.
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
+- Set the key of the provider in `skillunit.yaml` as a repository secret: `TYPESAFE_API_KEY` for
+  `typesafe`, `OPENAI_API_KEY` for `openai`. Only that one is needed.
 - The dry run needs no key. It runs lint and proof in full, and checks that every spec
   loads and fits, so a renamed heading or a broken spec fails it before the model is asked.
 
@@ -42,21 +45,31 @@ only the dry run for forks, for example with
 `if: github.event.pull_request.head.repo.full_name == github.repository` on the second step, and
 run the full check once the change is merged or pushed to a branch of the repository.
 
-A decision model can answer a test differently from one run to the next. A test that flips is a
-finding to look at, usually a borderline one, not a run to retry until it passes.
+`typesafe` can answer a test differently from one run to the next. A test that flips is a finding
+to look at, usually a borderline one, not a run to retry until it passes. `openai` answers the
+same request with the same numbers, so on it a verdict changes only when the skill or the spec
+does.
 
 ## What a run costs
 
 Each spec is one request to the decision model, whatever the number of tests in it, and the
 request carries the text under test once. Measured in November 2026:
 
-| Skill | Specs | Tests | Input tokens | Output tokens |
+| Skill | Specs | Tests | `typesafe`: input / output tokens | `openai`: input / output tokens |
 | --- | --- | --- | --- | --- |
-| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 | about 830 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 57 | about 29,600 | about 2,800 |
+| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 / 830 | about 7,900 / 0 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 58 | about 29,600 / 2,800 | about 29,400 / 0 |
 
-At TypeSafe's price for Jev 1.14 on 2026-11-21, $0.042 per million input tokens with output
-tokens free ([its models page](https://docs.typesafe.ai/models)), a run of tinyfetch costs
-about $0.0004 and a run of SkillUnit's own skill about $0.0012.
+Output tokens are free on both. At the prices of November 2026:
+
+| Provider | Price per million input tokens | A run of tinyfetch | A run of SkillUnit's own skill |
+| --- | --- | --- | --- |
+| `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0004 | about $0.0012 |
+| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0008 | about $0.0029 |
+
+OpenAI caches the start of a request that holds 1,024 tokens or more of skill text. A spec
+sent again within 30 minutes then pays 10% for that part, and the first request pays 25% more
+for writing it. Most specs carry less text than that, so caching changes a run's cost by a few
+percent at most.
 
 Lint and proof make no request. `test --changed` sends only the specs a change touches.

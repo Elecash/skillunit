@@ -111,7 +111,8 @@ export function table(report: CheckReport, options: ReportOptions): string {
   // ---------------------------------------------------------------- test
   if (test) {
     const model = test.specs.find((s) => s.model)?.model;
-    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : (model ?? '');
+    const asked = [test.provider, model].filter(Boolean).join(' · ');
+    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : asked;
     const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
     out.push('', `${c.bold('Test')}  ${c.dim(`${label}${since}`)}`);
     const names = test.specs.map((s) => shown(s.spec, options));
@@ -176,15 +177,16 @@ function testFailure(spec: SpecReport, v: SpecReport['verdicts'][number], at: st
   const part = spec.sections.length ? `${spec.file} › ${spec.sections.join(' + ')}` : spec.file;
   const dir = shown(skill, options);
   const skillLine = `${dir === '.' ? '' : `${dir}/`}${part}${v.unit ? `   unit: ${v.unit}` : ''}`;
-  const verdict = `${v.weak ? 'right answer, too little confidence' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
+  const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
   return [
     at,
     `   skill:     ${skillLine}`,
     `   scenario:  ${v.scenario}`,
     `   question:  ${v.question}`,
     `   expected:  ${v.expect}`,
-    `   got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`,
-    `              ${distribution(v)}`,
+    ...(v.refused
+      ? [`   got:       nothing: the model refused to answer`]
+      : [`   got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`, `              ${distribution(v)}`]),
     ...(v.variants ? [`   phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
   ];
 }

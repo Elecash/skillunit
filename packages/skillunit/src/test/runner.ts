@@ -5,7 +5,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Thresholds } from '../config.js';
-import type { DecisionModel } from '../models/index.js';
+import type { DecisionModel, DecisionRequest } from '../models/index.js';
 import { buildRequest, estimateTokens, read, type TokenEstimate, type Verdict } from './reader.js';
 import { readSkillText, readWithFiles } from './skill-text.js';
 import { loadSpec, type SpecFile } from './spec.js';
@@ -32,6 +32,8 @@ export interface SpecReport {
 export interface Report {
   ok: boolean;
   skill: string;
+  /** The provider asked: the `id` of the decision model. */
+  provider?: string;
   dryRun: boolean;
   /** What the verdicts were judged with. */
   thresholds: Thresholds;
@@ -77,7 +79,7 @@ export async function runAll(config: Config, model: DecisionModel, options: RunO
     summary.usage.output_tokens += s.usage.output_tokens;
   }
   const ok = specs.every((s) => !s.error && s.verdicts.every((v) => v.pass));
-  return { ok, skill: config.skill, dryRun, thresholds: { ...config.thresholds }, specs, summary };
+  return { ok, skill: config.skill, provider: model.id, dryRun, thresholds: { ...config.thresholds }, specs, summary };
 }
 
 /** Expands folders into the `.yaml` / `.yml` files they contain, sorted by name. */
@@ -126,6 +128,7 @@ async function runSpec(
     const request = buildRequest(text, spec.tests, config.context, references);
     const estimate = estimateTokens(request);
     report.estimatedTokens = estimate.stateAndLongestQuestion;
+    checkCounts(model, request);
     checkLimits(model, estimate, text, references);
 
     if (dryRun) {
@@ -153,6 +156,23 @@ async function runSpec(
     return report;
   } catch (e) {
     return { ...report, error: (e as Error).message };
+  }
+}
+
+/** Refuses a request with more questions, or a question with more options, than the model takes. */
+function checkCounts(model: DecisionModel, request: DecisionRequest) {
+  const { questionsPerRequest, optionsPerQuestion } = model.limits;
+  if (questionsPerRequest !== undefined && request.questions.length > questionsPerRequest) {
+    throw new Error(
+      `too many questions: the spec asks ${request.questions.length}, every phrasing of a test counted; ${model.id} takes ${questionsPerRequest} in one request. Split the tests into two specs`,
+    );
+  }
+  if (optionsPerQuestion === undefined) return;
+  const over = request.questions.find((q) => (q.options?.length ?? 0) > optionsPerQuestion);
+  if (over) {
+    throw new Error(
+      `too many options: test ${over.id.replace(/#\d+$/, '')} has ${over.options!.length}, \`none\` included; ${model.id} takes ${optionsPerQuestion} in one question`,
+    );
   }
 }
 

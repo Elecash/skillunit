@@ -64,8 +64,8 @@ const test: Report = {
           expect: 'exact',
           answer: 'exact',
           confidence: 0.44,
-          expectedProb: 0.63,
-          probabilities: { exact: 0.63, none: 0.35, loose: 0.02 },
+          expectedProb: 0.44,
+          probabilities: { exact: 0.44, none: 0.4, loose: 0.16 },
           pass: false,
           weak: true,
           borderline: true,
@@ -76,7 +76,7 @@ const test: Report = {
           id: 'user-asks-for-mutations',
           expect: 'explain',
           answer: 'none',
-          confidence: 0.53,
+          confidence: 0.66,
           expectedProb: 0.34,
           probabilities: { none: 0.66, explain: 0.34, tool: 0 },
           pass: false,
@@ -185,6 +185,17 @@ describe('reporters', () => {
     expect(render(dry, 'table', options)).toMatchSnapshot();
   });
 
+  it('every reporter: a refused question fails with that reason, and no probabilities', () => {
+    const refused = { ...verdict, id: 'post-retry', expect: 'stop', answer: '(refused)', confidence: 0, expectedProb: 0, pass: false, refused: true as const, line: 3 };
+    const report = buildReport('test', { test: { ...test, ok: false, specs: [{ ...test.specs[0]!, verdicts: [refused] }] } });
+    const table = render(report, 'table', options);
+    expect(table).toContain('   got:       nothing: the model refused to answer\n');
+    expect(table).not.toContain('P(yes)');
+    expect(render(report, 'junit', options)).toContain('expected stop; the model refused to answer');
+    expect(render(report, 'github', options)).toContain('::error file=skills/demo/specs/retries.yaml,line=3,title=SkillUnit test%3A post-retry::expected stop; the model refused to answer%0A');
+    expect(JSON.parse(render(report, 'json', options)).test.specs[0].verdicts[0]).toMatchObject({ answer: '(refused)', refused: true, pass: false });
+  });
+
   it('table: test --changed with nothing to run', () => {
     const none = buildReport('test', { test: { ...test, ok: true, specs: [], summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, usage: { input_tokens: 0, output_tokens: 0 } } } });
     expect(render(none, 'table', options)).toBe('\nTest  nothing to run\n  0 tests · 7 specs left out by --changed\n\nOK  test 0/0 passed\n');
@@ -197,7 +208,7 @@ describe('reporters', () => {
 
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
-    expect(json).toMatchObject({ schema: 4, command: 'check', ok: false });
+    expect(json).toMatchObject({ schema: 5, command: 'check', ok: false });
     expect(json.test.specs[0].verdicts[1].borderline).toBe(true);
   });
 

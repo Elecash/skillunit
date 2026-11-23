@@ -1,17 +1,17 @@
 /**
- * Builds the decision model the settings name: the `typesafe` adapter, or a module of the
- * project's own that exports a `DecisionModel` (as its default export, or as `model`), or a
- * function that returns one.
+ * Builds the decision model the settings name: a provider that ships with SkillUnit, or a module
+ * of the project's own that exports a `DecisionModel` (as its default export, or as `model`), or
+ * a function that returns one.
  */
 import { pathToFileURL } from 'node:url';
 import type { ModelConfig } from '../config.js';
+import { PROVIDERS } from './providers.js';
 import type { DecisionModel } from './types.js';
-import { typesafe } from './typesafe.js';
 
 export class ModelError extends Error {}
 
 export async function loadModel(config: ModelConfig): Promise<DecisionModel> {
-  if (config.provider === 'typesafe') return typesafe(config.name ? { name: config.name } : {});
+  if (config.provider !== 'module') return PROVIDERS[config.provider].create(config.name ? { name: config.name } : {});
 
   let mod: Record<string, unknown>;
   try {
@@ -36,6 +36,12 @@ function isDecisionModel(value: unknown): value is DecisionModel {
     typeof m.id === 'string' &&
     typeof m.decide === 'function' &&
     typeof m.limits?.perQuestionTokens === 'number' &&
-    typeof m.limits?.perRequestTokens === 'number'
+    typeof m.limits?.perRequestTokens === 'number' &&
+    optionalCount(m.limits.questionsPerRequest) &&
+    optionalCount(m.limits.optionsPerQuestion)
   );
+}
+
+function optionalCount(value: unknown): boolean {
+  return value === undefined || (Number.isInteger(value) && (value as number) > 0);
 }

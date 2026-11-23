@@ -16,15 +16,20 @@ export interface Verdict {
   expect: string;
   /** The option the reader picked, or "yes" / "no" for a yes/no test. */
   answer: string;
-  /** For a choice test, the model's confidence. For a yes/no test, P(yes). */
+  /**
+   * The number that decided the verdict: for a choice test, the probability of the option the
+   * reader picked; for a yes/no test, P(yes).
+   */
   confidence: number;
   /** Probability the reader gave to the expected answer, from 0 to 1. */
   expectedProb: number;
   /** For a choice test, the probability of every option, `none` included. */
   probabilities?: Record<string, number>;
   pass: boolean;
-  /** The reader picked the expected answer but without enough confidence. Counts as a fail. */
+  /** The reader picked the expected answer, with a probability under the threshold. Counts as a fail. */
   weak: boolean;
+  /** The model declined to answer. Counts as a fail; `answer` is `(refused)`. */
+  refused?: true;
   /**
    * The deciding number is within `thresholds.margin` of what would flip the verdict, so the next
    * run may decide it the other way. A borderline pass still passes.
@@ -58,13 +63,30 @@ const FRAMING =
   'an option quotes an exact value such as a command, a name or a path, compare it with the ' +
   'skill literally: a value that differs in any character is a different value.';
 
+/**
+ * The framing of a yes/no question. It has no `none` to fall back on, so it says what to do when
+ * the skill does not settle the question: give yes and no the same probability, which fails the
+ * test whichever answer it expects. With the choice framing instead, a model may read "answer
+ * `none`" as a reason to doubt and lean the wrong way: on OpenAI's Decisions API, "should the agent
+ * pass `retry` to a POST?" got P(yes) 0.97 with it and 0.03 with this one (2026-11-23).
+ */
+const YES_NO_FRAMING =
+  'The `skill` in the state is a document that an AI coding agent must follow. Answer only from ' +
+  'what the skill says, never from what seems sensible in general. Answer yes only when the ' +
+  'skill says yes, and no only when the skill says no. If the skill does not settle the question, ' +
+  'give yes and no the same probability. When the question quotes an exact value such as a ' +
+  'command, a name or a path, compare it with the skill literally: a value that differs in any ' +
+  'character is a different value.';
+
 /** Added when the state carries `references`, so the reader treats all the files as one skill. */
 const WITH_REFERENCES =
   'The `references` in the state are other files of the same skill, which the agent reads too: ' +
   'read the skill and its references together, and answer from what any of them says.';
 
-export function framing(context?: string, withReferences = false): string {
-  const base = withReferences ? `${FRAMING} ${WITH_REFERENCES}` : FRAMING;
+/** The framing of a choice question, or of a yes/no question with `yesNo`. */
+export function framing(context?: string, withReferences = false, yesNo = false): string {
+  const first = yesNo ? YES_NO_FRAMING : FRAMING;
+  const base = withReferences ? `${first} ${WITH_REFERENCES}` : first;
   return context ? `${base} What the skill is about: ${context}` : base;
 }
 
@@ -89,6 +111,8 @@ export function buildRequest(
           ...Object.entries(test.options).map(([id, description]) => (description === null ? { id } : { id, description })),
           { id: NONE, description: NONE_DESCRIPTION },
         ];
+      } else {
+        question.instructions = framing(context, withReferences, true);
       }
       questions.push(question);
     });
@@ -153,12 +177,13 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
   };
   const near = (value: number, threshold: number) => Math.abs(value - threshold) < th.margin;
   const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false, borderline: false });
+  if (answer && 'refused' in answer) return { ...missing('(refused)'), refused: true };
   const probabilities = answer?.probabilities;
   if (!probabilities || Object.keys(probabilities).length === 0) return missing('(no answer)');
 
   if (test.options) {
     const [choice, top] = Object.entries(probabilities).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
-    const confidence = answer.confidence ?? top;
+    const confidence = top;
     const right = choice === test.expect;
     const sure = confidence >= th.choice;
     const expectedProb = probabilities[test.expect] ?? 0;
@@ -170,7 +195,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
       probabilities: { ...probabilities },
       pass: right && sure,
       weak: right && !sure,
-      // Right: the confidence is near the threshold. Wrong: the expected option is close behind.
+      // Right: its probability is near the threshold. Wrong: the expected option is close behind.
       borderline: right ? near(confidence, th.choice) : near(expectedProb, top),
     };
   }

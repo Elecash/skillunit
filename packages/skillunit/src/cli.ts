@@ -9,11 +9,15 @@ import { loadEnv } from './env.js';
 import { init } from './init.js';
 import { ConfigError, lint } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
-import { loadModel, ModelError } from './models/index.js';
+import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
 import { proof, type ProofResult, type ProofSkipped } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
 import { runAll, type Report } from './test/runner.js';
+
+const pad = (s: string) => s.padEnd(20);
+const ENVIRONMENT = PROVIDER_NAMES.flatMap((name) => PROVIDERS[name].env.map((v) => `  ${pad(v)}key of the ${name} provider, needed by test and check except with --dry-run`)).join('\n');
+const MODELS = PROVIDER_NAMES.map((name) => `${PROVIDERS[name].defaultModel} for ${name}`).join(', ');
 
 const HELP = `SkillUnit checks that an agent skill still says what the code it describes does
 
@@ -36,8 +40,9 @@ Options for test and check
   --changed           test only the specs of skill files that changed in git since --base
   --base <ref>        with --changed: compare HEAD with its merge base with this ref (default:
                       the pull request's target branch, else the default branch)
-  --model <name>      TypeSafe model (default: jev-latest)
-  --choice <0-1>      lowest confidence that passes a choice test (default 0.5)
+  --provider <name>   decision model provider, instead of the one in the settings: ${PROVIDER_NAMES.join(', ')}
+  --model <name>      the provider's model (default: ${MODELS})
+  --choice <0-1>      lowest probability that passes a choice test (default 0.5)
   --yes <0-1>         lowest P(yes) that passes an expected "yes" (default 0.7)
   --no <0-1>          highest P(yes) that passes an expected "no" (default 0.3)
   --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)
@@ -54,8 +59,10 @@ Exit codes
   2  the command itself was wrong: unknown option, missing file, no API key, bad settings
 
 Environment
-  TYPESAFE_API_KEY    needed by test and check, except with --dry-run. Also read from a .env
-                      file next to skillunit.yaml or in a folder above it, up to the git root
+${ENVIRONMENT}
+
+  Keys are also read from a .env file next to skillunit.yaml or in a folder above it, up to the
+  git root.
 `;
 
 interface Args {
@@ -69,6 +76,7 @@ interface Args {
   forget: string[];
   reporter: ReporterName;
   model?: string;
+  provider?: ProviderName;
   thresholds: Partial<Thresholds>;
 }
 
@@ -76,8 +84,8 @@ interface Args {
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
   proof: ['--write', '--forget'],
-  test: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
-  check: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
+  test: ['--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  check: ['--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
 };
 
 async function main() {
@@ -125,6 +133,11 @@ function parseArgs(command: Command, argv: string[]): Args {
       args.forget.push(...ids);
     }
     else if (flag === '--model') args.model = value();
+    else if (flag === '--provider') {
+      const name = value();
+      if (!isProviderName(name)) usage(`--provider takes ${PROVIDER_NAMES.join(', ')}; any other provider goes in a model module`);
+      args.provider = name;
+    }
     else if (flag === '--choice') args.thresholds.choice = fraction();
     else if (flag === '--yes') args.thresholds.yes = fraction();
     else if (flag === '--no') args.thresholds.no = fraction();
@@ -152,9 +165,10 @@ async function runCommand(command: Command, args: Args) {
   }
   if (args.skill) config.skill = resolve(args.skill);
   if (args.specs.length) config.specs = args.specs.map((p) => resolve(p));
+  if (args.provider && args.provider !== config.model.provider) config.model = { provider: args.provider };
   if (args.model) {
-    if (config.model.provider !== 'typesafe') usage('--model sets the TypeSafe model name; the settings use a model module');
-    config.model = { provider: 'typesafe', name: args.model };
+    if (config.model.provider === 'module') usage('--model sets the model of a provider that ships with SkillUnit; the settings use a model module. Add --provider to use one');
+    config.model = { provider: config.model.provider, name: args.model };
   }
   Object.assign(config.thresholds, args.thresholds);
   if (!existsSync(config.skill)) usage(`no skill folder at ${config.skill}`);
@@ -166,8 +180,11 @@ async function runCommand(command: Command, args: Args) {
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
-  if (testing && !args.dryRun && config.model.provider === 'typesafe' && !process.env.TYPESAFE_API_KEY) {
-    usage('TYPESAFE_API_KEY is not set. Add it to the environment, or to a .env file next to skillunit.yaml or at the root of the repository, or use --dry-run.');
+  if (testing && !args.dryRun && config.model.provider !== 'module') {
+    const missing = PROVIDERS[config.model.provider].env.filter((v) => !process.env[v]);
+    if (missing.length) {
+      usage(`${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not set. Add ${missing.length === 1 ? 'it' : 'them'} to the environment, or to a .env file next to skillunit.yaml or at the root of the repository, or use --dry-run.`);
+    }
   }
 
   try {

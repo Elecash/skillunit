@@ -24,7 +24,8 @@ Run `skillunit init skills/my-skill` from the project root. It writes `skillunit
 | `--dry-run` | test, check | check that specs load, headings exist and requests fit; send nothing |
 | `--changed` | test, check | test only what changed in git since `--base` |
 | `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
-| `--model <name>` | test, check | the model name of the `typesafe` adapter |
+| `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
+| `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
 | `--write` | proof | copy each example a test produced into its block, add the units the tests prove to `skillunit.lock`, then check |
 | `--forget <ids>` | proof | take these units off `skillunit.lock`, then check; ids separated by commas, or the option more than once |
@@ -65,6 +66,15 @@ Reports go to stdout, and errors about the command to stderr. With `--reporter j
 an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so
 a script that parses stdout gets an object rather than nothing.
 
+## Keys
+
+`test` and `check` need the key of the provider they ask, except with `--dry-run`:
+`TYPESAFE_API_KEY` for `typesafe` and `OPENAI_API_KEY` for `openai`. Each is read from the
+environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the git
+root. A missing key is an exit 2 that names the variable. So
+`skillunit check --provider openai` asks OpenAI the same specs without editing the settings, and
+needs only `OPENAI_API_KEY`.
+
 ## Dry runs
 
 `--dry-run` sends nothing to the decision model. It checks that every spec loads, every
@@ -89,6 +99,9 @@ size of each. It needs no key. `check --dry-run` also runs lint and proof in ful
 - `json`: the whole report as one object, `{ schema, command, ok, lint, proof, test }`,
   with only the layers that ran; `proof` is `{ configured: false, ok: true }` when `check` ran
   with no `proof` key. `schema` changes only when a field changes meaning or disappears.
+  `test.provider` names the provider asked. A verdict's `confidence` is the number that decided
+  it: the probability of the option the reader picked, or P(yes). A verdict the model refused to
+  answer has `refused: true`.
   Each lint problem has `file`, `line`, `unit` when the line belongs to one, `severity`, `rule`
   and `message`, plus `code`, such as `TS2322`, and `example`, the line where the example
   starts, when the type-check found it. `lint.summary`
@@ -103,9 +116,10 @@ size of each. It needs no key. `check --dry-run` also runs lint and proof in ful
 
 ## Borderline verdicts
 
-A decision model does not give the same number twice: the same tests on the same skill can move
-a little from one run to the next. A verdict is borderline when the number that decided it is
-within `thresholds.margin` (default 0.13) of its threshold: the confidence of a choice test, or
-P(yes) of a yes/no test. A wrong choice is borderline when the expected option is that close
+On `typesafe` the same tests on the same skill can move a little from one run to the next.
+`openai` gives the same numbers for the same request, but a small change to the wording or to the
+order of a test's options moves them. A verdict is borderline when the number that decided it is
+within `thresholds.margin` (default 0.13) of its threshold: the probability of the option a choice
+test picked, or P(yes) of a yes/no test. A wrong choice is borderline when the expected option is that close
 behind the top one. A borderline pass still passes, and every reporter marks it, so the text can
 be made more direct, or the test given more phrasings, before a run fails at random.
