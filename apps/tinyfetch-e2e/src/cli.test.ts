@@ -1,6 +1,6 @@
 /** The built command, called the way a script calls it. */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -53,5 +53,44 @@ describe('a report through a pipe', () => {
     // Nx sets FORCE_COLOR, which wins over NO_COLOR.
     const last = result.stdout.replace(/\x1b\[[0-9;]*m/g, '').trimEnd().split('\n').at(-1);
     expect(last).toMatch(/^FAILED {2}lint 3,?000 errors/);
+  });
+});
+
+describe('the decision model provider', () => {
+  // Outside any git repository, so no .env above it supplies a key.
+  const project = mkdtempSync(join(tmpdir(), 'skillunit-provider-'));
+  writeFileSync(join(project, 'SKILL.md'), '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n');
+  mkdirSync(join(project, 'specs'));
+  writeFileSync(join(project, 'specs', 'a.yaml'), 'tests:\n  - id: get\n    scenario: A GET times out.\n    question: May the agent retry it?\n    expect: yes\n');
+  writeFileSync(join(project, 'mine.mjs'), "export default { id: 'mine', limits: { perQuestionTokens: 1000, perRequestTokens: 2000 }, decide: async () => { throw new Error('not sent'); } };\n");
+  writeFileSync(join(project, 'module.yaml'), 'model: ./mine.mjs\n');
+  afterAll(() => rmSync(project, { recursive: true, force: true }));
+
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.endsWith('_API_KEY')));
+  const inProject = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { cwd: project, encoding: 'utf8', env: { ...env, NO_COLOR: '1' } });
+
+  it('names the key of the provider in use when it is missing, and needs none on a dry run', () => {
+    const missing = inProject('test');
+    expect(missing.status).toBe(2);
+    expect(missing.stderr).toBe(
+      'skillunit: TYPESAFE_API_KEY is not set. Add it to the environment, or to a .env file next to skillunit.yaml or at the root of the repository, or use --dry-run.\n',
+    );
+    expect(inProject('test', '--dry-run').status).toBe(0);
+  });
+
+  it('takes --provider on test and check only, and only a provider that ships', () => {
+    const unknown = inProject('test', '--provider', 'mistral');
+    expect(unknown.status).toBe(2);
+    expect(unknown.stderr).toBe('skillunit: --provider takes typesafe; any other provider goes in a model module\n');
+    expect(inProject('lint', '--provider', 'typesafe').stderr).toContain('lint does not take --provider');
+  });
+
+  it('--provider replaces a model module of the settings, and --model alone does not', () => {
+    const model = inProject('test', '--config', 'module.yaml', '--model', 'jev-latest', '--dry-run');
+    expect(model.status).toBe(2);
+    expect(model.stderr).toContain('--model sets the model of a provider that ships with SkillUnit; the settings use a model module. Add --provider to use one');
+    const provider = inProject('test', '--config', 'module.yaml', '--provider', 'typesafe', '--model', 'jev-latest');
+    expect(provider.stderr).toContain('TYPESAFE_API_KEY is not set');
+    expect(inProject('test', '--config', 'module.yaml', '--provider', 'typesafe', '--dry-run').status).toBe(0);
   });
 });

@@ -25,6 +25,8 @@ export interface Verdict {
   pass: boolean;
   /** The reader picked the expected answer but without enough confidence. Counts as a fail. */
   weak: boolean;
+  /** The model declined to answer. Counts as a fail; `answer` is `(refused)`. */
+  refused?: true;
   /**
    * The deciding number is within `thresholds.margin` of what would flip the verdict, so the next
    * run may decide it the other way. A borderline pass still passes.
@@ -153,6 +155,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
   };
   const near = (value: number, threshold: number) => Math.abs(value - threshold) < th.margin;
   const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false, borderline: false });
+  if (answer && 'refused' in answer) return { ...missing('(refused)'), refused: true };
   const probabilities = answer?.probabilities;
   if (!probabilities || Object.keys(probabilities).length === 0) return missing('(no answer)');
 

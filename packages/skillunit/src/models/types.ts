@@ -1,7 +1,8 @@
 /**
  * A decision model answers closed questions about a state: a yes/no question, or a choice among
  * named options. SkillUnit's `test` layer asks it whether a skill's text settles the decisions it
- * must. Any provider can be plugged in through this interface; `typesafe` ships with SkillUnit.
+ * must. Any provider can be plugged in through this interface; the ones in `providers.ts` ship
+ * with SkillUnit.
  */
 
 export interface DecisionOption {
@@ -25,7 +26,10 @@ export interface DecisionRequest {
   questions: DecisionQuestion[];
 }
 
-export interface DecisionAnswer {
+/** An answer: a probability per option, or a refusal. */
+export type DecisionAnswer = ProbabilityAnswer | RefusedAnswer;
+
+export interface ProbabilityAnswer {
   /** Probability of each option id; `{ yes, no }` for a yes/no question. */
   probabilities: Record<string, number>;
   /**
@@ -33,6 +37,11 @@ export interface DecisionAnswer {
    * uses the top probability.
    */
   confidence?: number;
+}
+
+/** The model declined to answer the question. Its test fails with that reason. */
+export interface RefusedAnswer {
+  refused: true;
 }
 
 export interface DecisionResult {
@@ -51,6 +60,10 @@ export interface DecisionModel {
     perQuestionTokens: number;
     /** Tokens of the whole request. */
     perRequestTokens: number;
+    /** Questions in one request, every phrasing of a test counted. No limit when absent. */
+    questionsPerRequest?: number;
+    /** Options of one choice question, the `none` SkillUnit adds included. No limit when absent. */
+    optionsPerQuestion?: number;
   };
   /** Rejects on a failed request; SkillUnit reports it as a spec that could not run. */
   decide(request: DecisionRequest): Promise<DecisionResult>;

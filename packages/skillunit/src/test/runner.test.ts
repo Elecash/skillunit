@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
-import { loadModel, ModelError, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
+import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
 import { buildRequest, judge, NONE_DESCRIPTION } from './reader.js';
 import { changedSelection } from './changed.js';
 import { runAll } from './runner.js';
@@ -14,7 +14,7 @@ import type { TestCase } from './spec.js';
  * The only stand-in for a decision model: it answers what a test tells it to, for the cases a
  * real model cannot produce on demand (a value just under a threshold, a missing answer, an error).
  */
-function stub(answer: (request: DecisionRequest) => Record<string, DecisionAnswer> | Error, limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 }) {
+function stub(answer: (request: DecisionRequest) => Record<string, DecisionAnswer> | Error, limits: DecisionModel['limits'] = { perQuestionTokens: 32_000, perRequestTokens: 64_000 }) {
   const calls: DecisionRequest[] = [];
   const model: DecisionModel = {
     id: 'stub',
@@ -98,6 +98,13 @@ describe('missing answers', () => {
     expect(judge(choice, { probabilities: {} }, th)).toMatchObject({ answer: '(no answer)', pass: false });
     expect(judge(yes, { probabilities: { maybe: 1 } }, th)).toMatchObject({ answer: '(no yes/no answer)', pass: false });
   });
+
+  it('fails a refused question with that reason, not as a wrong answer', () => {
+    for (const test of [choice, yes]) {
+      expect(judge(test, { refused: true }, th)).toMatchObject({ answer: '(refused)', refused: true, pass: false, weak: false, borderline: false });
+    }
+    expect(judge(choice, { probabilities: { a: 0.9, none: 0.1 }, confidence: 0.9 }, th)).not.toHaveProperty('refused');
+  });
 });
 
 // ---------------------------------------------------------------- runAll on real files
@@ -168,6 +175,31 @@ describe('runAll', () => {
     expect(report.specs[0]!.error).toMatch(/^too large: the skill text plus the longest question is about \d+ tokens; stub takes 50\./);
   });
 
+  it('refuses, on a dry run too, a spec with more questions or options than the model takes', async () => {
+    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+    const limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 };
+    const fewQuestions = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 3 });
+    const report = await runAll(config, fewQuestions.model, { dryRun: true });
+    expect(report.ok).toBe(false);
+    expect(report.specs[0]!.error).toBe(
+      'too many questions: the spec asks 4, every phrasing of a test counted; stub takes 3 in one request. Split the tests into two specs',
+    );
+    const fewOptions = stub(() => new Error('must not be called'), { ...limits, optionsPerQuestion: 2 });
+    expect((await runAll(config, fewOptions.model, { dryRun: true })).specs[0]!.error).toBe(
+      'too many options: test post-retry has 3, `none` included; stub takes 2 in one question',
+    );
+    const enough = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 4, optionsPerQuestion: 3 });
+    expect((await runAll(config, enough.model, { dryRun: true })).ok).toBe(true);
+  });
+
+  it('runs a spec where the model refused one question, and fails only that test', async () => {
+    const config = project({ 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n  - id: u\n    scenario: s\n    question: r?\n    expect: no\n' });
+    const { model } = stub(() => ({ t: { refused: true }, u: { probabilities: { yes: 0.1, no: 0.9 } } }));
+    const report = await runAll(config, model);
+    expect(report.specs[0]!.verdicts.map((v) => [v.id, v.answer, v.pass])).toEqual([['t', '(refused)', false], ['u', 'no', true]]);
+    expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
+  });
+
   it('sends nothing on a dry run, but still checks the limits [skill:dry-run-without-key]', async () => {
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model, calls } = stub(() => new Error('must not be called'));
@@ -234,8 +266,20 @@ describe('loadModel', () => {
     expect((await loadModel({ provider: 'module', module: write('c.mjs', `export default async () => (${MODEL});`) })).id).toBe('mine');
   });
 
+  it('builds every provider that ships, with its default model when no name is given', async () => {
+    for (const name of PROVIDER_NAMES) {
+      expect(PROVIDERS[name].defaultModel).toBeTruthy();
+      expect(PROVIDERS[name].env.length).toBeGreaterThan(0);
+      expect((await loadModel({ provider: name })).id).toBe(name);
+    }
+  });
+
   it('says what a module must export, and when it cannot be loaded', async () => {
     await expect(loadModel({ provider: 'module', module: write('d.mjs', 'export default { id: 1 };') })).rejects.toThrow(ModelError);
+    const badLimit = MODEL.replace('perRequestTokens: 2000', 'perRequestTokens: 2000, questionsPerRequest: 0');
+    await expect(loadModel({ provider: 'module', module: write('e.mjs', `export default ${badLimit};`) })).rejects.toThrow(ModelError);
+    const limits = MODEL.replace('perRequestTokens: 2000', 'perRequestTokens: 2000, questionsPerRequest: 400, optionsPerQuestion: 255');
+    expect((await loadModel({ provider: 'module', module: write('f.mjs', `export default ${limits};`) })).limits).toMatchObject({ questionsPerRequest: 400 });
     await expect(loadModel({ provider: 'module', module: join(dir, 'missing.mjs') })).rejects.toThrow(/could not load the model module/);
   });
 });

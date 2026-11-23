@@ -59,6 +59,12 @@ export function distribution(v: Verdict, sep = ' · '): string {
     .join(sep);
 }
 
+/** What a failed or borderline verdict got, on one line, for the JUnit and GitHub reports. */
+export function gotLine(v: Verdict, report: CheckReport): string {
+  if (v.refused) return `expected ${v.expect}; the model refused to answer`;
+  return `expected ${v.expect}, got ${v.answer} (${decidingNumber(v, report)}): ${distribution(v, ', ')}`;
+}
+
 /** The number that decided the verdict, and what it was compared with. */
 export function decidingNumber(v: Verdict, report: CheckReport): string {
   const th = report.test?.thresholds;

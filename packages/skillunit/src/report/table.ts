@@ -183,8 +183,9 @@ function testFailure(spec: SpecReport, v: SpecReport['verdicts'][number], at: st
     `   scenario:  ${v.scenario}`,
     `   question:  ${v.question}`,
     `   expected:  ${v.expect}`,
-    `   got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`,
-    `              ${distribution(v)}`,
+    ...(v.refused
+      ? [`   got:       nothing: the model refused to answer`]
+      : [`   got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`, `              ${distribution(v)}`]),
     ...(v.variants ? [`   phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
   ];
 }

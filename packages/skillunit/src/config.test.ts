@@ -45,7 +45,7 @@ describe('model', () => {
 
   it('rejects a bare name, an unknown provider and unknown keys', () => {
     expect(() => load('model: jev-latest\n')).toThrow(/`model` is `\{ provider: typesafe, name: <model name> \}`, or the path of a module/);
-    expect(() => load('model: { provider: openai }\n')).toThrow(/unknown model provider `openai`/);
+    expect(() => load('model: { provider: mistral }\n')).toThrow(/unknown model provider `mistral`; SkillUnit ships `typesafe`, and any other goes in a module/);
     expect(() => load('model: { provider: typesafe, temperature: 0 }\n')).toThrow(/unknown key `model.temperature`/);
   });
 });

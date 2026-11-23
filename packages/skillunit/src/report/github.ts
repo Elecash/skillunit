@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { decidingNumber, distribution, lockChange, shown, statusLine, undeclaredNames } from './text.js';
+import { gotLine, lockChange, shown, statusLine, undeclaredNames } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function github(report: CheckReport, options: ReportOptions): string {
@@ -22,7 +22,7 @@ export function github(report: CheckReport, options: ReportOptions): string {
       const file = shown(spec.spec, options);
       if (spec.error) annotate('error', file, 1, 'SkillUnit test', `could not run: ${spec.error}`);
       for (const v of spec.verdicts) {
-        const got = `expected ${v.expect}, got ${v.answer} (${decidingNumber(v, report)}): ${distribution(v, ', ')}`;
+        const got = gotLine(v, report);
         if (!v.pass) annotate('error', file, v.line ?? 1, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}`);
         else if (v.borderline) annotate('warning', file, v.line ?? 1, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
