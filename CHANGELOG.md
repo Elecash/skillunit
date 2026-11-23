@@ -1,3 +1,13 @@
+## 0.2.1 (2026-11-23)
+
+### 🚀 Features
+
+- add OpenAI provider ([#7](https://github.com/Elecash/skillunit/pull/7))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.2.0 (2026-11-23)
 
 ### 🚀 Features
