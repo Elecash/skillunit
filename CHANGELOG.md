@@ -1,3 +1,19 @@
+## 0.2.0 (2026-11-23)
+
+### 🚀 Features
+
+- ⚠️  **proof:** proof replaces sync, and units lose Wrong and Source ([#5](https://github.com/Elecash/skillunit/pull/5))
+- ⚠️  **units:** units lose Applies ([#6](https://github.com/Elecash/skillunit/pull/6))
+
+### ⚠️  Breaking Changes
+
+- **units:** units lose Applies  ([#6](https://github.com/Elecash/skillunit/pull/6))
+- **proof:** proof replaces sync, and units lose Wrong and Source  ([#5](https://github.com/Elecash/skillunit/pull/5))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.1.3 (2026-11-21)
 
 ### 🚀 Features
