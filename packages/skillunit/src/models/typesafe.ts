@@ -1,6 +1,6 @@
 /**
  * The `typesafe` adapter: TypeSafe's System One API (docs.typesafe.ai). One `decide` call is one
- * request. Each question carries the instructions and its own text; a choice question becomes a
+ * request. Each question carries its framing and its own text; a choice question becomes a
  * `choice` with the options as criteria, a yes/no question a `noul`.
  */
 import { TypeSafeClient, type EntryType, type Questions, type SystemOneRequest } from '@typesafe-ai/sdk';
@@ -48,7 +48,7 @@ export function typesafe(options: TypeSafeOptions = {}): DecisionModel {
 export function toTypeSafe(request: DecisionRequest, model?: string): SystemOneRequest<Questions> {
   const questions: Questions = {};
   for (const q of request.questions) {
-    const instructions = { framing: request.instructions, question: q.text };
+    const instructions = { framing: q.instructions ?? request.instructions, question: q.text };
     questions[q.id] = q.options
       ? { type: 'choice', instructions, criteria: Object.fromEntries(q.options.map((o) => [o.id, o.description ?? null])) }
       : { type: 'noul', instructions };

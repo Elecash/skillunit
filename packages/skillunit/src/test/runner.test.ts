@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
-import { buildRequest, judge, NONE_DESCRIPTION } from './reader.js';
+import { buildRequest, framing, judge, NONE_DESCRIPTION } from './reader.js';
 import { changedSelection } from './changed.js';
 import { runAll } from './runner.js';
 import { loadSpec } from './spec.js';
@@ -44,6 +44,7 @@ describe('buildRequest', () => {
       options: [{ id: 'a', description: 'A' }, { id: 'b' }, { id: 'none', description: NONE_DESCRIPTION }],
     });
     expect(request.questions[2]!.options).toBeUndefined();
+    expect(request.questions[0]).not.toHaveProperty('instructions');
     expect(request.state).toEqual({ skill: 'skill text' });
     expect(request.instructions).toMatch(/What the skill is about: A tiny HTTP client\.$/);
   });
@@ -52,6 +53,17 @@ describe('buildRequest', () => {
     const request = buildRequest('skill text', [yes], undefined, { 'ref.md': 'ref' });
     expect(request.state).toEqual({ skill: 'skill text', references: { 'ref.md': 'ref' } });
     expect(request.instructions).toContain('The `references` in the state');
+    expect(request.questions[0]!.instructions).toContain('The `references` in the state');
+  });
+
+  it('frames a yes/no question on its own: no `none` to fall back on, and the same probability when the skill is silent', () => {
+    const request = buildRequest('skill text', [choice, yes], 'A tiny HTTP client.');
+    const yesNo = request.questions.find((q) => q.id === 'allowed')!.instructions!;
+    expect(yesNo).toBe(framing('A tiny HTTP client.', false, true));
+    expect(yesNo).toContain('If the skill does not settle the question, give yes and no the same probability.');
+    expect(yesNo).not.toContain('`none`');
+    expect(yesNo).toMatch(/What the skill is about: A tiny HTTP client\.$/);
+    expect(request.instructions).toContain('answer `none`');
   });
 });
 
@@ -225,7 +237,10 @@ describe('typesafe adapter', () => {
       instructions: { framing: request.instructions, question: 'Situation: A situation.\nQuestion: Which one?' },
       criteria: { a: 'A', b: null, none: NONE_DESCRIPTION },
     });
-    expect(payload.questions.allowed).toMatchObject({ type: 'noul' });
+    expect(payload.questions.allowed).toEqual({
+      type: 'noul',
+      instructions: { framing: request.questions[1]!.instructions, question: 'Situation: A situation.\nQuestion: Is it allowed?' },
+    });
     expect(toTypeSafe(request)).not.toHaveProperty('model');
   });
 

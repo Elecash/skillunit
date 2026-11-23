@@ -15,12 +15,17 @@ export interface DecisionQuestion {
   /** Key of the answer in `DecisionResult.answers`. */
   id: string;
   text: string;
+  /**
+   * Instructions for this question alone, used instead of the request's. SkillUnit sets them on
+   * every yes/no question, whose framing differs from a choice question's.
+   */
+  instructions?: string;
   /** Absent for a yes/no question. */
   options?: DecisionOption[];
 }
 
 export interface DecisionRequest {
-  /** How to read the state and answer; the same for every question. */
+  /** How to read the state and answer: the framing of every question that has no `instructions` of its own. */
   instructions: string;
   state: Record<string, unknown>;
   questions: DecisionQuestion[];

@@ -53,3 +53,24 @@ jobs:
       # answer flips is a finding to look at, not a run to retry.
       - if: env.TYPESAFE_API_KEY != ''
         run: npx nx e2e tinyfetch-e2e
+
+  contract:
+    # The typesafe adapter, asked one fixed request against the real API. CI sets no
+    # OPENAI_API_KEY, so the contract test skips openai here; run `npx nx contract skillunit`
+    # locally with the key in .env to check it. Skipped on forks, which get no secrets.
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    needs: build
+    runs-on: ubuntu-latest
+    env:
+      TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: env.TYPESAFE_API_KEY == ''
+        run: echo "::warning title=Contract test skipped for typesafe::TYPESAFE_API_KEY is not set for this repository."
+      - run: npm ci
+      - if: env.TYPESAFE_API_KEY != ''
+        run: npx nx contract skillunit

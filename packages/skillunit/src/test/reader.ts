@@ -60,13 +60,30 @@ const FRAMING =
   'an option quotes an exact value such as a command, a name or a path, compare it with the ' +
   'skill literally: a value that differs in any character is a different value.';
 
+/**
+ * The framing of a yes/no question. It has no `none` to fall back on, so it says what to do when
+ * the skill does not settle the question: give yes and no the same probability, which fails the
+ * test whichever answer it expects. With the choice framing instead, a model may read "answer
+ * `none`" as a reason to doubt and lean the wrong way: on OpenAI's Decisions API, "should the agent
+ * pass `retry` to a POST?" got P(yes) 0.97 with it and 0.03 with this one (2026-11-23).
+ */
+const YES_NO_FRAMING =
+  'The `skill` in the state is a document that an AI coding agent must follow. Answer only from ' +
+  'what the skill says, never from what seems sensible in general. Answer yes only when the ' +
+  'skill says yes, and no only when the skill says no. If the skill does not settle the question, ' +
+  'give yes and no the same probability. When the question quotes an exact value such as a ' +
+  'command, a name or a path, compare it with the skill literally: a value that differs in any ' +
+  'character is a different value.';
+
 /** Added when the state carries `references`, so the reader treats all the files as one skill. */
 const WITH_REFERENCES =
   'The `references` in the state are other files of the same skill, which the agent reads too: ' +
   'read the skill and its references together, and answer from what any of them says.';
 
-export function framing(context?: string, withReferences = false): string {
-  const base = withReferences ? `${FRAMING} ${WITH_REFERENCES}` : FRAMING;
+/** The framing of a choice question, or of a yes/no question with `yesNo`. */
+export function framing(context?: string, withReferences = false, yesNo = false): string {
+  const first = yesNo ? YES_NO_FRAMING : FRAMING;
+  const base = withReferences ? `${first} ${WITH_REFERENCES}` : first;
   return context ? `${base} What the skill is about: ${context}` : base;
 }
 
@@ -91,6 +108,8 @@ export function buildRequest(
           ...Object.entries(test.options).map(([id, description]) => (description === null ? { id } : { id, description })),
           { id: NONE, description: NONE_DESCRIPTION },
         ];
+      } else {
+        question.instructions = framing(context, withReferences, true);
       }
       questions.push(question);
     });

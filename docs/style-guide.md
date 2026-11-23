@@ -231,6 +231,36 @@ Three ways to keep it short and complete:
 
 `no-check` stays the last resort, for a fragment none of these can make compile.
 
+## Tests
+
+SkillUnit's test layer asks a decision model closed questions about the skill, from the specs
+([writing specs](writing-specs.md)). How a question is asked decides what its answer can tell.
+
+**Write a choice test unless the decision has exactly two outcomes.** SkillUnit adds `none` to
+every choice test, so a model that finds nothing in the skill picks `none` and the test fails. A
+yes/no test has no such answer. When the skill is silent, SkillUnit asks the model to give yes
+and no the same probability, which fails the test whichever answer it expects. Not every model
+does: asked "should the agent log each retry?" about tinyfetch's retries, which say nothing on
+logging, Jev answered no with P(yes) of about 0.15. A test that expects `no` passes there, though
+the skill never says no.
+
+**Ask a yes/no question about one action of the agent.** The skill says yes or no to an action.
+It rarely says yes or no to a question about itself.
+
+| Instead of | Ask |
+| --- | --- |
+| Does the skill ask for a client here? | Should the agent create a client with `create` for this request? |
+| Is `retry` mentioned for PUT? | May the agent pass `retry` to that call? |
+
+A question about the text makes the model decide first what counts as the skill "asking" or
+"mentioning". Models decide that differently, so the same test can pass on one and fail on
+another.
+
+**Turn a question about a choice into a choice test.** "May the agent add an option meaning
+`the skill does not say`?" is really "what should the agent do with that option?", with *add it*
+and *leave it out* as the options. Asked that way, the answer has a `none` to fall back on and
+names what the agent does.
+
 ## Example file
 
 A complete file, from [tinyfetch](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch/skill/features/retries.md):

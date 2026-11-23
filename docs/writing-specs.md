@@ -36,7 +36,7 @@ tests:
 
   - id: preview-needs-tag               # no options: a yes/no test
     scenario: The user wants a preview URL for a branch that has no version tag.
-    question: Does the preview need a tag?
+    question: Should the agent add a version tag before deploying the preview?
     expect: no
 ```
 
@@ -49,7 +49,9 @@ tests:
 | `options` | optional | `label: description` pairs, or a list of labels. Without options the test is yes/no. |
 | `expect` | required | An option label or `none`; `yes` or `no` for a yes/no test. |
 
-A choice test passes when the reader picks `expect` with a confidence of 0.5 or more. A yes/no
+A choice test passes when the reader picks `expect` with a confidence of 0.5 or more: the
+model's own confidence, or the top probability for a model that reports none, such as
+`openai`. A yes/no
 test passes when P(yes) is at least 0.7 for an expected `yes`, or at most 0.3 for an expected
 `no`. The right answer with too little confidence counts as a failure; the report says "right
 answer, too little confidence". A verdict close to its threshold, pass or fail, is marked
@@ -94,7 +96,7 @@ accuracy falls as the state grows with text unrelated to the question
 never opens can settle a test that the agent would get wrong. Keep `all` for small skills.
 
 Each decision model has a limit on the state plus the longest question; TypeSafe's is 32,000
-tokens. SkillUnit estimates the size before sending, prints it with `--dry-run`, and refuses a
+tokens, and OpenAI's is 922,000 for the whole request. SkillUnit estimates the size before sending, prints it with `--dry-run`, and refuses a
 spec that would not fit, naming its largest files. The estimate runs about 8% high.
 
 Keep the specs without `with` as well. The two answer different questions:
@@ -140,9 +142,11 @@ options should be the ones an agent would reach for if the rule were missing: de
 the tests locally, pick the default.
 
 **Prefer choice tests to yes/no.** A yes/no test has no `none`. When the skill says nothing, the
-reader answers from common sense, so a rule that common sense agrees with ("never put the API key
-in the config") passes with the rule deleted. Asked as a choice ("where should the key go?"), the
-same test answers `none` when the rule is gone.
+reader may answer from common sense, so a rule that common sense agrees with ("never put the API
+key in the config") passes with the rule deleted. Asked as a choice ("where should the key go?"),
+the same test answers `none` when the rule is gone. A yes/no question that stays should ask about
+one action of the agent ("should the agent create a client?"), not about the text ("does the
+skill ask for a client?"): the [style guide](style-guide.md#tests) shows both.
 
 **Test where the rule does not apply.** If the rule is "ask which API before writing code", also
 test a request that already names the API. Otherwise you only check that the agent asks, never

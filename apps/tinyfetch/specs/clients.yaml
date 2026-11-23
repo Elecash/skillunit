@@ -16,5 +16,8 @@ tests:
   - id: single-call-other-host
     unit: one-client-per-api
     scenario: A script makes one request to a weather API, once.
-    question: Does the skill ask for a client here?
-    expect: no
+    question: How should the agent make this request?
+    options:
+      client: Create a client with `create` and call it
+      direct: Call `tf` with the full URL
+    expect: direct

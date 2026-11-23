@@ -21,6 +21,16 @@ tests:
       spec: In each spec file
     expect: env
 
+  - id: key-of-the-provider
+    unit: key-outside-the-repo
+    scenario: "The project's `skillunit.yaml` has `model: { provider: openai }`, and the agent is adding the decision model's key to CI."
+    question: Which secret should the agent add?
+    options:
+      openai: "`OPENAI_API_KEY`"
+      typesafe: "`TYPESAFE_API_KEY`"
+      both: "Both `OPENAI_API_KEY` and `TYPESAFE_API_KEY`"
+    expect: openai
+
   - id: no-key-yet
     unit: dry-run-without-key
     scenario:

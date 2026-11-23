@@ -1,8 +1,13 @@
 /**
  * The `openai` adapter: OpenAI's Decisions API (`POST /v1/decisions`, developers.openai.com/api/
  * docs/guides/decisions). One `decide` call is one request, with plain `fetch`. The state is an
- * `input_json` part. Each question carries the instructions and its own text, as the `typesafe`
+ * `input_json` part. Each question carries its framing and its own text, as the `typesafe`
  * adapter sends them: a choice question becomes a `choice`, a yes/no question a `predicate`.
+ *
+ * A choice is judged on its top probability, not on OpenAI's `confidence`. That field runs below
+ * the top probability, by up to 0.27 when the probabilities spread, and on SkillUnit's own specs it
+ * failed six tests whose answer was right. On the top probability those pass, and the broken skills
+ * of the e2e scenarios still fail (measured 2026-11-23).
  */
 import type { DecisionAnswer, DecisionModel, DecisionRequest, DecisionResult } from './types.js';
 
@@ -59,7 +64,7 @@ export function toOpenAI(request: DecisionRequest, model: string = OPENAI_DEFAUL
     model,
     input: [{ role: 'user', content: [{ type: 'input_json', data: request.state }] }],
     questions: request.questions.map((q): Question => {
-      const instructions = `${request.instructions}\n\n${q.text}`;
+      const instructions = `${q.instructions ?? request.instructions}\n\n${q.text}`;
       if (!q.options) return { type: 'predicate', name: q.id, instructions };
       const choices = q.options.map((o) => (o.description === undefined ? { value: o.id } : { value: o.id, description: o.description }));
       return { type: 'choice', name: q.id, instructions, choices };
@@ -85,7 +90,8 @@ export function fromOpenAI(body: OpenAIResponse, request: DecisionRequest): Deci
     } else if (a.type === 'predicate' && 'probability' in a) {
       answers[q.id] = { probabilities: { yes: a.probability, no: 1 - a.probability } };
     } else if (a.type === 'choice' && 'probabilities' in a) {
-      answers[q.id] = { probabilities: Object.fromEntries(a.probabilities.map((p) => [String(p.value), p.probability])), confidence: a.confidence };
+      // No `confidence`: SkillUnit then judges the choice on its top probability.
+      answers[q.id] = { probabilities: Object.fromEntries(a.probabilities.map((p) => [String(p.value), p.probability])) };
     } else {
       throw new Error(`OpenAI answered question ${q.id} with a ${a.type} answer`);
     }

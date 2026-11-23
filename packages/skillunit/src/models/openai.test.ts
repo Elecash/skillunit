@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { errorMessage, fromOpenAI, openai, OPENAI_LIMITS, retryable, toOpenAI, type OpenAIResponse } from './openai.js';
+import { DEFAULT_THRESHOLDS } from '../config.js';
+import { judge } from '../test/reader.js';
 import type { DecisionRequest } from './types.js';
 
 const NONE = { id: 'none', description: 'None of the options above: the skill says something different, or it does not settle this' };
@@ -46,6 +48,8 @@ describe('toOpenAI', () => {
       choices: [{ value: 'retry', description: 'Pass `retry`.' }, { value: 'no-retry', description: 'Leave `retry` out.' }, { value: 'none', description: NONE.description }],
     });
     expect(body.questions[1]).toEqual({ type: 'predicate', name: 'get-may-retry', instructions: `${request.instructions}\n\n${request.questions[1]!.text}` });
+    const own = { ...request, questions: [{ ...request.questions[1]!, instructions: 'Yes/no framing.' }] };
+    expect(toOpenAI(own).questions[0]).toMatchObject({ instructions: `Yes/no framing.\n\n${request.questions[1]!.text}` });
   });
 
   it('leaves out the description of an option without one, and passes the model name as written', () => {
@@ -56,16 +60,28 @@ describe('toOpenAI', () => {
 });
 
 describe('fromOpenAI', () => {
-  it('maps a recorded response: choices with their confidence, a predicate as yes and no, and the usage', () => {
+  it("maps a recorded response: choices without OpenAI's confidence, a predicate as yes and no, and the usage", () => {
     expect(fromOpenAI(recorded, request)).toEqual({
       model: 'gpt-6-luna',
       usage: { inputTokens: 3292, outputTokens: 0 },
       answers: {
-        'post-no-retry#1': { probabilities: { retry: 0.01, 'no-retry': 0.9, none: 0.09 }, confidence: 0.85 },
+        'post-no-retry#1': { probabilities: { retry: 0.01, 'no-retry': 0.9, none: 0.09 } },
         'get-may-retry': { probabilities: { yes: 1, no: 0 } },
-        'retry-methods-bare': { probabilities: { 'get-head-put-delete': 0.88, all: 0.03, none: 0.09 }, confidence: 0.82 },
+        'retry-methods-bare': { probabilities: { 'get-head-put-delete': 0.88, all: 0.03, none: 0.09 } },
       },
     });
+  });
+
+  it('leaves the choice to be judged on its top probability', () => {
+    // Recorded on 2026-11-23 for `prefer-choice` of SkillUnit's own specs: right answer, confidence 0.25.
+    const spread: OpenAIResponse = {
+      model: 'gpt-6-luna',
+      answers: [{ type: 'choice', name: 'pick', choice: 'choice', probabilities: [{ value: 'choice', probability: 0.5 }, { value: 'yes-no', probability: 0.16 }, { value: 'none', probability: 0.34 }], confidence: 0.25 }],
+      usage: { input_tokens: 10, output_tokens: 0 },
+    };
+    const one: DecisionRequest = { instructions: 'i', state: {}, questions: [{ id: 'pick', text: 't', options: [{ id: 'choice' }, { id: 'yes-no' }, NONE] }] };
+    const test = { id: 'pick', scenarios: ['s'], question: 'q', options: { choice: null, 'yes-no': null }, expect: 'choice' };
+    expect(judge(test, fromOpenAI(spread, one).answers.pick, DEFAULT_THRESHOLDS)).toMatchObject({ answer: 'choice', confidence: 0.5, pass: true });
   });
 
   it('maps a refusal to a refused answer, and keeps the other answers', () => {
@@ -73,7 +89,7 @@ describe('fromOpenAI', () => {
     const answers = [recorded.answers[0]!, { type: 'refusal', name: 'get-may-retry' }, recorded.answers[2]!];
     const result = fromOpenAI({ ...recorded, answers }, request);
     expect(result.answers['get-may-retry']).toEqual({ refused: true });
-    expect(result.answers['post-no-retry#1']).toMatchObject({ confidence: 0.85 });
+    expect(result.answers['post-no-retry#1']).toMatchObject({ probabilities: { 'no-retry': 0.9 } });
   });
 
   it('refuses a response that does not line up with the questions', () => {

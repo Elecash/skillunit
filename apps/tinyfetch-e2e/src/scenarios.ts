@@ -140,20 +140,20 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'contradicting prose',
-    change: 'add a sentence that contradicts a rule',
+    change: 'replace a sentence with one that contradicts a rule',
     model: 'required',
     apply(app) {
       app.edit(
         'skill/features/retries.md',
         'Which failures it repeats, and how long it waits, are in the rules below.',
-        'Which failures it repeats, and how long it waits, are in the rules below. tinyfetch sends an `Idempotency-Key` header with every POST and PATCH, and repeats it on each retry, so the server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.',
+        'The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.',
       );
       app.commit('Say retries are always safe');
     },
-    // Measured over six runs: post-no-retry ends at 0.35 to 0.49 and patch-no-retry at 0.31 to
-    // 0.42, so both failed every time; post-no-retry is the closer of the two to its threshold,
-    // so the scenario asks that one of them fails, not which.
-    expect: { oneFails: ['post-no-retry', 'patch-no-retry'] },
+    // The sentence replaces the one that points to the rules. Measured on Jev over five runs:
+    // post-no-retry ends at 0.04 to 0.22 and patch-no-retry at 0.06 to 0.22. retry-methods, which
+    // asks about every method, fell under its threshold in three of them (0.41 to 0.55).
+    expect: { failing: ['post-no-retry', 'patch-no-retry'], mayFail: ['retry-methods'] },
   },
   {
     name: 'ambiguous rule',
