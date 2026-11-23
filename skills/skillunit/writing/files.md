@@ -42,8 +42,6 @@ Do: give each task its own file, named after the thing or feature it covers, and
 
 Even when: the two tasks share a few rules; the shared rule lives in the more specific file, and the other links to it.
 
-Applies: files
-
 ### rule: index-every-file
 
 When: the agent adds a file to a skill.
@@ -56,15 +54,11 @@ Right:
 | Retry a request that failed | [features/retries.md](features/retries.md) |
 ```
 
-Applies: files, index
-
 ### rule: rules-section-last
 
 When: the agent writes the units of a file.
 
 Do: put every unit under one `## Rules` heading, the last `##` section of the file, with nothing else in it.
-
-Applies: files, units
 
 ### rule: instructions-only-in-units
 
@@ -73,5 +67,3 @@ When: a sentence in a reference section tells the agent what to do, or gives an 
 Do: write the instruction as a unit, and the exception inside its unit, under `Even when`; the prose only describes.
 
 Even when: the exception is one short clause; the reader follows the most specific rule it finds, so an exception stated before the rule loses to it.
-
-Applies: files, units, exceptions

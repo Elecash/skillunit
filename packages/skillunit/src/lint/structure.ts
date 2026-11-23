@@ -2,23 +2,23 @@
  * Lint item 1, structure: what the parser could not read, required and allowed labels, label
  * order, one label per paragraph, ids, and where units and `## Rules` sit in a file.
  */
-import { BODY_LABELS, codeSpans, FOOTER_LABELS, type LabelName, type ParsedFile, type ParsedSkill, type Unit, type UnitKind } from '../units/index.js';
+import { codeSpans, LABELS, type LabelName, type ParsedFile, type ParsedSkill, type Unit, type UnitKind } from '../units/index.js';
 import type { Problem } from './types.js';
 
-/** One order for every kind: the body labels, then the footer. */
-const ORDER: readonly LabelName[] = [...BODY_LABELS, ...FOOTER_LABELS];
+/** One order for every kind. */
+const ORDER: readonly LabelName[] = LABELS;
 
-/** Body labels each kind takes. Every kind takes the whole footer. */
+/** Labels each kind takes. */
 const ALLOWED: Record<UnitKind, readonly LabelName[]> = {
-  rule: ['When', 'Do', 'Even when', 'Right'],
-  decision: ['When', 'Decide', 'Even when'],
-  fact: ['When', 'Value', 'Unknown'],
+  rule: ['When', 'Do', 'Even when', 'Right', 'Check'],
+  decision: ['When', 'Decide', 'Even when', 'Check'],
+  fact: ['When', 'Value', 'Unknown', 'Check'],
 };
 
 const REQUIRED: Record<UnitKind, readonly LabelName[]> = {
-  rule: ['When', 'Do', 'Applies'],
-  decision: ['When', 'Decide', 'Applies'],
-  fact: ['When', 'Value', 'Applies'],
+  rule: ['When', 'Do'],
+  decision: ['When', 'Decide'],
+  fact: ['When', 'Value'],
 };
 
 /** Labels whose text may be empty: their content is a list or code on the next lines. */
@@ -72,9 +72,8 @@ function checkUnit(u: Unit): Problem[] {
 
   let last: LabelName | null = null;
   for (const label of u.labels) {
-    const footer = (FOOTER_LABELS as readonly string[]).includes(label.name);
-    if (!footer && !ALLOWED[u.kind].includes(label.name)) {
-      out.push(problem(u, label.line, `a ${u.kind} does not take \`${label.name}\`; its labels are ${ALLOWED[u.kind].map((l) => `\`${l}\``).join(', ')} and the footer`));
+    if (!ALLOWED[u.kind].includes(label.name)) {
+      out.push(problem(u, label.line, `a ${u.kind} does not take \`${label.name}\`; its labels are ${ALLOWED[u.kind].map((l) => `\`${l}\``).join(', ')}`));
     }
     if (last && ORDER.indexOf(label.name) < ORDER.indexOf(last)) {
       out.push(problem(u, label.line, `\`${label.name}\` goes before \`${last}\`; the order is ${ORDER.join(', ')}`));

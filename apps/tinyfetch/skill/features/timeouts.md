@@ -43,8 +43,6 @@ Value: 10 seconds (`timeout: 10_000`), for every method.
 
 Unknown: tinyfetch has no separate connect timeout; say so instead of inventing one.
 
-Applies: timeouts
-
 ### rule: never-disable-timeout
 
 When: a request may take long, such as an upload or a report.
@@ -60,7 +58,5 @@ await tf.post(
   { timeout: 120_000 },
 );
 ```
-
-Applies: timeouts, uploads
 
 Check: forbid `/timeout:\s*0\b/` in ts

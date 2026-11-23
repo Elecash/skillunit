@@ -47,5 +47,3 @@ Decide: whether to create a client.
 - **direct** — one request, or requests to unrelated hosts: call `tf` with full URLs.
 
 Even when: the requests sit in different files: export the client from one module and import it.
-
-Applies: clients

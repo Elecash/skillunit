@@ -7,7 +7,7 @@ import type { Problem } from './types.js';
 const show = (p: Problem) => `${p.file}:${p.line} ${p.unit ?? '-'} ${p.rule} ${p.severity}: ${p.message}`;
 const marksOf = (files: Record<string, string>) => proofMarks(skillOf(files)).map(show);
 
-const rule = (id: string, info: string, footer = '') => `### rule: ${id}
+const rule = (id: string, info: string, more = '') => `### rule: ${id}
 
 When: a request failed.
 
@@ -18,9 +18,7 @@ Right:
 ${F}${info}
 check(error);
 ${F}
-
-Applies: errors
-${footer}`;
+${more}`;
 
 const file = (...units: string[]) => `# T\n\n## Rules\n\n${units.join('\n')}`;
 
@@ -43,8 +41,6 @@ Decide:
   ${F}ts proof=pick.second-way
   b();
   ${F}
-
-Applies: picks
 `;
     expect(marksOf({ 'a.md': file(rule('r', 'ts proof=r'), decision, rule('advice', 'ts')) })).toEqual([]);
   });
@@ -86,8 +82,6 @@ Right:
   ${F}ts proof=r.x
   b();
   ${F}
-
-Applies: a
 `;
     const text = file(two);
     const second = lineOf(text, 'proof=r.x', lineOf(text, 'proof=r.x'));
@@ -108,7 +102,7 @@ Applies: a
   it('reads a Proof line as a paragraph that is not a label', () => {
     const text = file(rule('r', 'ts', '\nProof: none, advice\n'));
     expect(lintSkill(skillOf({ 'a.md': text }), { off: ['index'] }).problems.map((p) => `${p.line} ${p.rule}: ${p.message}`)).toEqual([
-      `${lineOf(text, 'Proof:')} parse: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)`,
+      `${lineOf(text, 'Proof:')} parse: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Check)`,
     ]);
   });
 

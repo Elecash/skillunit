@@ -68,7 +68,7 @@ npx skillunit check
 
 ### Units
 
-Each instruction of a skill is a unit: a heading with its kind and its id, labelled paragraphs that the agent reads, and a footer (`Applies`, `Check`, `Proof`) that the tools read. There are three kinds. The examples are from [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch/skill), the decision without its optional labels, and the [style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md) describes the format.
+Each instruction of a skill is a unit: a heading with its kind and its id, labelled paragraphs that the agent reads, and an optional `Check` that lint reads. There are three kinds. The examples are from [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch/skill), the decision without its optional labels, and the [style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md) describes the format.
 
 **A rule** is a constraint on what the agent writes.
 
@@ -85,8 +85,6 @@ Right:
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
 
-Applies: retries, post, patch
-
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
 ````
 
@@ -102,8 +100,6 @@ Decide: whether to create a client.
 - **shared** — the requests share a base URL or headers: create one client with `create` and reuse it.
 
 - **direct** — one request, or requests to unrelated hosts: call `tf` with full URLs.
-
-Applies: clients
 ```
 
 **A fact** is a value the agent must state exactly.
@@ -116,8 +112,6 @@ When: the user asks how long a request waits by default.
 Value: 10 seconds (`timeout: 10_000`), for every method.
 
 Unknown: tinyfetch has no separate connect timeout; say so instead of inventing one.
-
-Applies: timeouts
 ```
 
 Each layer below is shown with a change to tinyfetch and the line SkillUnit prints for it.
@@ -147,7 +141,7 @@ An example of the skill still passes `retryDelay`:
 ```
 
 ```
-1) skill/features/retries.md:49  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:54)
+1) skill/features/retries.md:45  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:48)
 ```
 
 ### Proof
@@ -239,7 +233,7 @@ In `src/types.ts`, rename the option `retryDelay` to `backoff`, then run `npx sk
 In `skill/features/retries.md`, change the `Right` example of `retry-idempotent-only` to `await tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });`, then run `npx skillunit lint`:
 
 ```
-1) skill/features/retries.md:49  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:54)
+1) skill/features/retries.md:45  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:48)
 ```
 
 ### A default changed

@@ -44,8 +44,6 @@ ${F}ts
 tf.get('/users', { retry: 3 });
 ${F}
 
-Applies: retries, post
-
 Check: forbid \`/post\\([^)]*retry/\` in ts
 
 Check: forbid \`/retry:\\s*_?\\d+/\` in js
@@ -72,8 +70,6 @@ Decide: which way to call.
 
 Even when: the second request is added later.
 
-Applies: clients
-
 ### fact: default-timeout
 
 When: the user asks how long a request waits by default.
@@ -81,8 +77,6 @@ When: the user asks how long a request waits by default.
 Value: 10 seconds (\`timeout: 10_000\`).
 
 Unknown: say that tinyfetch has no per-host timeout; do not invent one.
-
-Applies: timeouts
 `;
 
 /** The same kind of content with labels on consecutive lines, the older way to write a unit. */
@@ -97,7 +91,6 @@ tf.get('/users', { retry: 3 });
 ${F}
 
 Even when: the request looks safe to repeat.
-Applies: retries, post
 Check: forbid \`/post\\([^)]*retry/\` in ts
 
 ### decision: pick-a-client
@@ -107,7 +100,6 @@ Decide:
 - **direct** — one request: call \`tf.get\` directly.
 
 Even when: the second request is added later.
-Applies: clients
 `;
 
 const parse = (text: string, file = 'features/retries.md') => parseFile(text, file);
@@ -144,8 +136,7 @@ describe('rule', () => {
     expect(unit.right[0]).toMatchObject({ type: 'fence', lang: 'ts', code: "tf.get('/users', { retry: 3 });" });
   });
 
-  it('reads the footer, with the Check regex from its code span', () => {
-    expect(unit.applies).toEqual(['retries', 'post']);
+  it('reads the Check regex from its code span', () => {
     expect(unit.check.map((c) => [c.regex.source, c.langs, c.line, c.column])).toEqual([
       ['post\\([^)]*retry', ['ts'], lineOf(RETRIES, 'Check: forbid `/post'), 15],
       ['retry:\\s*_?\\d+', ['js'], lineOf(RETRIES, 'Check: forbid `/retry'), 15],
@@ -163,7 +154,7 @@ describe('decision and fact', () => {
   const file = parse(CLIENTS);
   const [decision, fact] = file.units;
 
-  it('reads the paths of Decide, their fences, Even when and the footer', () => {
+  it('reads the paths of Decide, their fences and Even when', () => {
     expect(file.errors).toEqual([]);
     expect(decision).toMatchObject({ kind: 'decision', decideText: 'which way to call.', evenWhen: 'the second request is added later.' });
     expect(decision!.decide).toEqual([
@@ -175,7 +166,6 @@ describe('decision and fact', () => {
       }),
       expect.objectContaining({ id: 'direct', fences: [] }),
     ]);
-    expect(decision!.applies).toEqual(['clients']);
   });
 
   it('reads Value and Unknown', () => {
@@ -183,7 +173,6 @@ describe('decision and fact', () => {
       kind: 'fact',
       value: '10 seconds (`timeout: 10_000`).',
       unknown: 'say that tinyfetch has no per-host timeout; do not invent one.',
-      applies: ['timeouts'],
     });
   });
 
@@ -194,19 +183,10 @@ describe('decision and fact', () => {
   });
 });
 
-describe('body and footer', () => {
-  it('decides the part by the label name, whatever the blank lines', () => {
-    const unit = parse(RETRIES).units[0]!;
-    expect(unit.labels.map((l) => `${l.name}:${l.part}`)).toEqual([
-      'When:body',
-      'Do:body',
-      'Right:body',
-      'Applies:footer',
-      'Check:footer',
-      'Check:footer',
-    ]);
-    const compact = parse('### rule: r\nWhen: x\nApplies: a\nDo: y\n').units[0]!;
-    expect(compact.labels.map((l) => l.part)).toEqual(['body', 'footer', 'body']);
+describe('labels', () => {
+  it('reads the labels in the order written, whatever the blank lines', () => {
+    expect(parse(RETRIES).units[0]!.labels.map((l) => l.name)).toEqual(['When', 'Do', 'Right', 'Check', 'Check']);
+    expect(parse('### rule: r\nWhen: x\nCheck: forbid `/x/` in ts\nDo: y\n').units[0]!.labels.map((l) => l.name)).toEqual(['When', 'Check', 'Do']);
   });
 
   it('records whether a label shares a paragraph with the one before it', () => {
@@ -217,26 +197,19 @@ describe('body and footer', () => {
       'Do:true',
       'Right:true',
       'Even when:false',
-      'Applies:true',
       'Check:true',
     ]);
   });
 
   it('joins the wrapped lines of a label, indented or not', () => {
-    const unit = parse('### rule: r\n\nWhen: a long\nsituation that\n  wraps.\n\nApplies: a,\nb\n').units[0]!;
+    const unit = parse('### rule: r\n\nWhen: a long\nsituation that\n  wraps.\n\nDo: y\n').units[0]!;
     expect(unit.when).toBe('a long situation that wraps.');
-    expect(unit.applies).toEqual(['a', 'b']);
   });
 
   it('ends a unit at the next heading of any level', () => {
-    const file = parse('### rule: a\n\nWhen: x\n\nDo: y\n\nApplies: z\n\n#### Notes\n\nprose\n');
-    expect(file.units[0]!.endLine).toBe(7);
+    const file = parse('### rule: a\n\nWhen: x\n\nDo: y\n\n#### Notes\n\nprose\n');
+    expect(file.units[0]!.endLine).toBe(5);
     expect(file.errors).toEqual([]);
-  });
-
-  it('reads lists with backticks in Applies', () => {
-    const unit = parse('### rule: r\nApplies: `get`, post\n').units[0]!;
-    expect(unit.applies).toEqual(['get', 'post']);
   });
 });
 
@@ -252,10 +225,9 @@ describe('Prettier', () => {
         id: u.id,
         kind: u.kind,
         section: u.section,
-        labels: u.labels.map((l) => [l.name, l.value, l.part, l.joined]),
+        labels: u.labels.map((l) => [l.name, l.value, l.joined]),
         decide: u.decide.map((d) => [d.id, d.condition, d.fences.length]),
         right: u.right.map((r) => (r.type === 'fence' ? ['fence', r.lang] : ['inline', r.code])),
-        applies: u.applies,
         check: u.check.map((c) => [c.regex.source, c.regex.flags, c.langs]),
       })),
     };
@@ -287,22 +259,22 @@ describe('Prettier', () => {
 
 describe('fenced code inside a unit', () => {
   it('reads nothing inside a fence as a heading or a label', () => {
-    const file = parse(`### rule: r\n\nWhen: x\n\nRight:\n\n${F}md\n### rule: not-a-unit\nDo: not a label\n## Not a heading\n${F}\n\nApplies: a\n`);
+    const file = parse(`### rule: r\n\nWhen: x\n\nRight:\n\n${F}md\n### rule: not-a-unit\nDo: not a label\n## Not a heading\n${F}\n`);
     expect(file.errors).toEqual([]);
     expect(file.units.map((u) => u.id)).toEqual(['r']);
     expect(file.headings.map((h) => h.text)).toEqual(['rule: r']);
-    expect(file.units[0]!.labels.map((l) => l.name)).toEqual(['When', 'Right', 'Applies']);
+    expect(file.units[0]!.labels.map((l) => l.name)).toEqual(['When', 'Right']);
     expect((file.units[0]!.right[0] as Fence).code).toContain('Do: not a label');
   });
 
   it('accepts tildes and longer fences, closed by a run at least as long', () => {
-    const file = parse(`### rule: r\nRight:\n~~~~ts\nconst a = '~~~';\n~~~\n~~~~\n\nApplies: a\n`);
+    const file = parse(`### rule: r\nRight:\n~~~~ts\nconst a = '~~~';\n~~~\n~~~~\n`);
     expect(file.errors).toEqual([]);
     expect((file.units[0]!.right[0] as Fence).code).toBe("const a = '~~~';\n~~~");
   });
 
   it('removes the indentation of a fence inside a list item', () => {
-    const file = parse(`### decision: d\nDecide:\n\n- **loop** — a loop that retries.\n\n  ${F}ts\n  for (;;) {\n    tf.post('/a');\n  }\n  ${F}\n\nApplies: a\n`);
+    const file = parse(`### decision: d\nDecide:\n\n- **loop** — a loop that retries.\n\n  ${F}ts\n  for (;;) {\n    tf.post('/a');\n  }\n  ${F}\n`);
     expect(file.errors).toEqual([]);
     const fence = file.units[0]!.decide[0]!.fences[0]!;
     expect(fence.code).toBe("for (;;) {\n  tf.post('/a');\n}");
@@ -394,8 +366,6 @@ Right:
 
 + Several: \`tf.create({ baseUrl })\`
 
-Applies: a
-
 ### decision: d
 
 When: x
@@ -409,8 +379,6 @@ Decide:
   ${F}
 
 - **direct** — one request.
-
-Applies: a
 `);
 
   it('assigns each fence to reference, right or decide', () => {
@@ -524,7 +492,7 @@ describe('malformed input', () => {
 
   it('reports a paragraph that is not a label, and labels that repeat', () => {
     expect(messages('### rule: r\n\nDo: y\n\nThis also matters.\n')).toEqual([
-      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)',
+      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Check)',
     ]);
     expect(messages('### rule: r\nWhy: a reason\n')[0]).toMatch(/^2: this paragraph is not a label/);
     expect(messages('### rule: r\n\n  indented\n')).toEqual(['3: indented text outside a list item']);
@@ -560,7 +528,7 @@ describe('parseSkill', () => {
     dir = mkdtempSync(join(tmpdir(), 'skillunit-units-'));
     mkdirSync(join(dir, 'features'));
     mkdirSync(join(dir, 'node_modules'));
-    writeFileSync(join(dir, 'SKILL.md'), '# tinyfetch\n\n## Rules\n\n### fact: name\n\nWhen: x\n\nValue: tinyfetch\n\nApplies: all\n');
+    writeFileSync(join(dir, 'SKILL.md'), '# tinyfetch\n\n## Rules\n\n### fact: name\n\nWhen: x\n\nValue: tinyfetch\n');
     const broken = `${RETRIES}\n### rule: broken\n\nnot a label\n`;
     writeFileSync(join(dir, 'features', 'retries.md'), broken);
     writeFileSync(join(dir, 'node_modules', 'x.md'), '### rule: ignored\n');
@@ -580,7 +548,7 @@ describe('parseSkill', () => {
 
 describe('skipped items', () => {
   it('skips a fence inside a malformed Decide path', () => {
-    const file = parse(`### decision: d\n\nDecide:\n\n- shared: when x\n\n  ${F}ts\n  const a = 1;\n  ${F}\n\nApplies: a\n`);
+    const file = parse(`### decision: d\n\nDecide:\n\n- shared: when x\n\n  ${F}ts\n  const a = 1;\n  ${F}\n`);
     expect(file.errors.map((e) => e.line)).toEqual([5]);
     expect(file.fences.map((f) => f.owner.kind)).toEqual(['skipped']);
     expect(file.units[0]).toMatchObject({ decide: [], skipped: 1 });
@@ -620,8 +588,6 @@ ${F}ts proof=check-status
 isHttpError(error);
 ${F}
 
-Applies: errors
-
 ### decision: pick-a-client
 
 When: more than one request.
@@ -643,8 +609,6 @@ Decide:
   ${F}ts
   tf.get('/b');
   ${F}
-
-Applies: clients
 `;
   const file = parse(PROVED);
 
@@ -666,7 +630,7 @@ Applies: clients
   });
 
   it('reads Proof as a paragraph that is not a label', () => {
-    const f = parse(`### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nProof: none, advice\n`);
-    expect(f.errors.map((e) => e.message)).toEqual([expect.stringMatching(/^this paragraph is not a label; a unit holds only labels \(When, .*, Applies, Check\)$/)]);
+    const f = parse(`### fact: f\n\nWhen: a.\n\nValue: 1.\n\nProof: none, advice\n`);
+    expect(f.errors.map((e) => e.message)).toEqual([expect.stringMatching(/^this paragraph is not a label; a unit holds only labels \(When, .*, Right, Check\)$/)]);
   });
 });

@@ -70,23 +70,17 @@ ${F}ts proof=check-status
 if (isHttpError(error)) return null;
 ${F}
 
-Applies: errors
-
 ### fact: retry-delay
 
 When: no \`retryDelay\` is set.
 
 Value: 1000 ms.
 
-Applies: retries
-
 ### rule: one-client
 
 When: calling one API many times.
 
 Do: reuse one client.
-
-Applies: clients
 `;
 
 const TEST = `test('[skill:check-status]', () => {
@@ -138,7 +132,7 @@ describe('what fails the layer', () => {
   it('a tagged test failed: always, whether the lock lists the unit or not', () => {
     const report = junit(['checks the status [skill:check-status]', 'passed'], ['reads the delay [skill:retry-delay]', 'failed']);
     const expected = [
-      'SKILL.md:19 retry-delay error: the test "tests/a.test.ts › reads the delay [skill:retry-delay]" (reports/junit.xml:4) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does',
+      'SKILL.md:17 retry-delay error: the test "tests/a.test.ts › reads the delay [skill:retry-delay]" (reports/junit.xml:4) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does',
     ];
     const listed = run(project({ ...GOOD, 'reports/junit.xml': report }));
     expect(errors(listed)).toEqual(expected);
@@ -152,11 +146,11 @@ describe('what fails the layer', () => {
     const skipped = run(project({ ...GOOD, 'reports/junit.xml': SKIPPED }));
     expect(errors(skipped)).toEqual([
       lost('check-status', 5, 'every test tagged `[skill:check-status]` was skipped ("tests/a.test.ts › checks the status [skill:check-status]")'),
-      lost('retry-delay', 19, 'every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]")'),
+      lost('retry-delay', 17, 'every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]")'),
     ]);
     expect(skipped.summary).toMatchObject({ proved: 0, failed: 2, unproved: 1 });
     const gone = run(project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed']) }));
-    expect(errors(gone)).toEqual([lost('retry-delay', 19, 'no test in the reports is tagged `[skill:retry-delay]`')]);
+    expect(errors(gone)).toEqual([lost('retry-delay', 17, 'no test in the reports is tagged `[skill:retry-delay]`')]);
   });
 
   it('every tagged test of an unlisted unit was skipped: an error with a block, a warning without', () => {
@@ -165,7 +159,7 @@ describe('what fails the layer', () => {
       'SKILL.md:5 check-status error: every test tagged `[skill:check-status]` was skipped ("tests/a.test.ts › checks the status [skill:check-status]"), so nothing proves this unit or produces its block',
     ]);
     expect(warnings(r)).toEqual([
-      'SKILL.md:19 retry-delay warning: every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]"), so the unit counts as unproved',
+      'SKILL.md:17 retry-delay warning: every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]"), so the unit counts as unproved',
     ]);
     expect(r.summary).toMatchObject({ proved: 0, failed: 0, unproved: 3 });
   });
@@ -207,7 +201,7 @@ describe('what fails the layer', () => {
 
   it('a unit a test proves and the lock does not list', () => {
     expect(errors(run(project({ ...GOOD, 'skillunit.lock': formatLock(['check-status']) })))).toEqual([
-      'SKILL.md:19 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
+      'SKILL.md:17 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
     ]);
   });
 
@@ -292,8 +286,6 @@ Decide:
   ~~~~json title="client.json" proof=pick.shared
   {}
   ~~~~
-
-Applies: picks
 `;
 
   it('rewrites each flagged block at its indentation, keeps its info string, and touches nothing else', () => {
@@ -318,7 +310,7 @@ Applies: picks
     expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 3, added: ['check-status', 'retry-delay'], dropped: ['gone'], forgot: [], written: true });
     expect(lockOf(root)).toBe(formatLock(['check-status', 'one-client', 'retry-delay']));
     expect(errors(r)).toEqual([
-      'SKILL.md:27 one-client error: `skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:one-client]`. Bring the test back, or run `skillunit proof --forget one-client` if the unit is no longer meant to be proved',
+      'SKILL.md:23 one-client error: `skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:one-client]`. Bring the test back, or run `skillunit proof --forget one-client` if the unit is no longer meant to be proved',
     ]);
     expect(run(root, {}, { write: true }).lock.written).toBe(false);
   });
@@ -377,7 +369,7 @@ describe('--forget', () => {
   it('a forgotten unit that a test still proves fails the check', () => {
     const root = project(GOOD);
     expect(errors(run(root, {}, { forget: ['retry-delay'] }))).toEqual([
-      'SKILL.md:19 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
+      'SKILL.md:17 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
     ]);
     expect(lockOf(root)).toBe(formatLock(['check-status']));
   });

@@ -30,23 +30,17 @@ import { tf } from "tinyfetch";
 ```
 ````
 
-Applies: examples, setup
-
 ### rule: setup-per-version
 
 When: a file shows code of another library or of an older version under a name the `Setup` it uses declares, such as the "before" blocks of a migration guide.
 
 Do: give that file a `Setup` of its own that declares the names its examples need, or mark the "before" blocks `no-check`.
 
-Applies: examples, setup
-
 ### rule: complete-examples
 
 When: the agent writes an example.
 
 Do: make it compile on its own after the file's `Setup`: declare every name it uses, in the block or in `Setup`.
-
-Applies: examples
 
 ### rule: short-complete-examples
 
@@ -71,8 +65,6 @@ const order = await tf.post<Order>("https://api.example.com/orders", draft);
 ```
 ````
 
-Applies: examples, setup
-
 ### rule: signatures-in-tables
 
 When: the agent shows a signature or the shape of an object rather than code to copy.
@@ -87,15 +79,11 @@ Right:
 | `tf.get(path, options)` | the parsed body |
 ```
 
-Applies: examples
-
 ### rule: language-on-every-example
 
 When: the agent writes a fenced block under `Right` or a path of `Decide`.
 
 Do: name its language after the opening fence, such as `ts`, `sh` or `yaml`.
-
-Applies: examples
 
 ### rule: no-check-rarely
 
@@ -104,5 +92,3 @@ When: a block cannot compile on purpose, such as a fragment that shows one line 
 Do: mark it `no-check` after the language (`ts no-check`), and only that block.
 
 Even when: many blocks fail after a change to the library; fix them, since that failure is what lint is for.
-
-Applies: examples
