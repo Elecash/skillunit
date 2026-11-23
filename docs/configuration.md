@@ -16,12 +16,17 @@ thresholds:
   yes: 0.7                   # lowest P(yes) that passes an expected "yes"
   no: 0.3                    # highest P(yes) that passes an expected "no"
   margin: 0.13               # how close to a threshold a verdict is marked borderline
-sourceRoot: .                # where `Source:` paths start (default: the folder of this file)
 examples:
   ts: { tsconfig: ./tsconfig.json }                 # ts, tsx, js and jsx, with the project's tsc
   sh: { command: "sh -n {file}" }                   # any other language: a command with {file}
 lint:
   off: [length]              # lint rules not to report
+proof:
+  reports: ./reports/junit.xml               # the JUnit XML of the test run: a glob or a list
+  examples: ./tmp/skill-proof                # where tests write examples (the default)
+  sources: ["src/**/*.test.ts"]              # test files with `#region skill:<id>` examples
+  format: "npx --no-install prettier --write {file}"   # run on a skill file after writing it
+  require: true              # a unit no test proves and with no `Proof: none` is an error
 ```
 
 - `skill`: the folder with `SKILL.md`. `--skill` overrides it.
@@ -33,8 +38,6 @@ lint:
 - `thresholds`: what a test needs to pass, and `margin`, how close to a threshold a verdict is
   marked borderline. The default margin, 0.13, is the largest move measured across six runs of
   SkillUnit's own specs with no change, among tests whose answer stayed the same.
-- `sourceRoot`: the folder `Source:` paths start from. Set it when the code is not next to
-  `skillunit.yaml`, as in the layout below.
 - `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,
   `js` and `jsx` example is type-checked with the project's own `tsc` (TypeScript 5 or later,
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
@@ -47,10 +50,20 @@ lint:
   This works in a skill that is not written in units too. A block marked `no-check` after its language is not
   checked. The [style guide](style-guide.md#setup) has the details.
 - `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
-  the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `wrong-code`, `command`,
-  `index`, `length`, `source` and `fence`. `length` is the warning about a file above about 300 lines,
+  the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `command`,
+  `index`, `length`, `fence` and `proof`. `length` is the warning about a file above about 300 lines,
   the first to turn off on a skill someone else wrote; `fence` is the warning about a word after
-  a fence's language that SkillUnit does not know. The summary says which rules are off.
+  a fence's language that SkillUnit does not know; `proof` is about the marks of the proof layer
+  in the skill, a `proof=<id>` that names another unit or a `Proof:` that is not `none`. The
+  summary says which rules are off.
+- `proof`: the proof layer, which reads what the project's test run left. `reports` is required:
+  the JUnit XML report, as a glob or a list. `examples` is the folder where tests write examples
+  (default `./tmp/skill-proof`). `sources` are globs of the test files with
+  `#region skill:<id>` examples. `format` is a command with `{file}`, run on each skill file
+  `skillunit proof --write` changes; the check compares the blocks as it leaves them. `require`
+  (default `true`) makes a unit that no test proves and that has no `Proof: none` an error; set
+  it to `false` to adopt proof one unit at a time. Globs start from the folder of this file and
+  leave out `node_modules`. [Proof](proof.md) has the details.
 
 Any other key is an error.
 
@@ -60,71 +73,13 @@ SkillUnit's own repository keeps its settings at the root, next to `package-lock
 skill folder holds only what an agent reads, which is what someone who installs the skill gets:
 
 ```
-skillunit.yaml       skill: ./skills/skillunit, specs: ./specs, sourceRoot: ./packages/skillunit
-skillunit.lock
+skillunit.yaml       skill: ./skills/skillunit, specs: ./specs, proof: { reports: ./packages/skillunit/reports/junit.xml }
 specs/               the spec files
 skills/skillunit/    SKILL.md and the files it links to
-packages/skillunit/  the code the units describe
+packages/skillunit/  the code the units describe, and the tests that prove them
 ```
 
 From the root, every command runs with no `--config`.
-
-## skillunit.lock
-
-`skillunit.lock` sits next to `skillunit.yaml`, or in the skill folder when there is no
-config file, and is committed. It has one entry per unit with a `Source`: each `Source` as the
-unit writes it, and the fingerprint of that code when the unit was last reviewed.
-
-```json
-{
-  "version": 1,
-  "units": {
-    "check-with-is-http-error": { "src/errors.ts#isHttpError": "3683aa817c8469a4" },
-    "retry-idempotent-only": { "src/retry.ts": "f303dfe1b57c6c92" }
-  }
-}
-```
-
-Units are sorted by id, one per line, so two branches conflict only when both reviewed the same
-unit. It stores no commit, date or author. Only `skillunit review` writes it; nobody edits it by
-hand. The name has no `.json` extension, so a formatter leaves it alone.
-
-| State | Meaning | Severity |
-| --- | --- | --- |
-| in sync | every `Source` fingerprint equals the lock | none |
-| stale | a fingerprint differs: the code changed since the last review | error |
-| new | the unit, or one of its `Source` values, is not in the lock | error |
-| orphan | the lock names a unit or a `Source` that no longer exists | warning |
-
-No lock while some unit has a `Source` is one error, which says to read the units and run
-`skillunit review --accept-all`.
-
-A fingerprint is the first 16 hex characters of a SHA-256 of the code:
-
-- A file: in `ts`, `tsx`, `js`, `jsx`, `mts`, `cts`, `mjs` and `cjs`, its tokens without the
-  comments, so a comment-only edit or a reformat that keeps the tokens leaves it as it was. In
-  any other file, the text with every run of whitespace made one space. Line endings do not
-  count.
-- `path#name`: only the top-level declarations with that name (a function with its overloads,
-  a class, a `const`, `let` or `var`, an interface, a type, an enum, a namespace), so a change
-  elsewhere in the file leaves it as it was.
-- A folder: the sorted list of its files' paths and fingerprints, without dot folders and
-  `node_modules`.
-
-What it does not catch:
-
-- A symbol's fingerprint does not follow the helpers it calls. A unit that depends on two
-  declarations lists both: `Source: src/errors.ts#isHttpError, src/errors.ts#HttpError`.
-- A formatter that changes tokens (quote style, added semicolons, trailing commas) changes the
-  fingerprint, and the units that point at the file come up for review.
-- A code file that does not parse falls back to whitespace only, comments included; lint warns
-  about it.
-
-The way a fingerprint is computed is fixed by the lock's `version`. A lock with a higher
-version than this SkillUnit knows is an error that says to upgrade.
-
-A merge conflict in the lock: take either side, then run `skillunit review`. Any unit whose
-fingerprint the other side changed comes up as stale, and accepting it writes the lock again.
 
 ## The API key
 

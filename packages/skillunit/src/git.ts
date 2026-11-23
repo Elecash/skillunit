@@ -1,7 +1,6 @@
 /**
- * The few git commands SkillUnit needs, run as subprocesses in one working folder. Sync compares
- * the lock and needs none; `test --changed` uses git to find the skill files that changed, and
- * `review` to show what changed in the code.
+ * The few git commands SkillUnit needs, run as subprocesses in one working folder: `test
+ * --changed` uses git to find the skill files that changed.
  */
 import { spawnSync } from 'node:child_process';
 import { ConfigError } from './lint/types.js';
@@ -38,29 +37,6 @@ export class Git {
   /** Paths, from the top folder, that differ between two commits. */
   changedFiles(from: string, to: string): string[] {
     return this.run(['diff', '--name-only', '-z', from, to])!.split('\0').filter(Boolean);
-  }
-
-  /** A file as committed, or null when the commit does not have it. `path` is from the top folder. */
-  show(commit: string, path: string): string | null {
-    return this.run(['show', `${commit}:${path}`], true);
-  }
-
-  /** The unified diff of a path (file or folder, from the top folder) from a commit to the working tree. */
-  diffToWorkingTree(commit: string, path: string): string {
-    return this.run(['-c', 'core.quotePath=false', 'diff', '--no-color', '--no-ext-diff', commit, '--', `:(top)${path}`])!;
-  }
-
-  /** Files under a path that git does not track and does not ignore, from the top folder. */
-  untracked(path: string): string[] {
-    return this.run(['ls-files', '-z', '--others', '--exclude-standard', '--', `:(top)${path}`])!.split('\0').filter(Boolean);
-  }
-
-  /** The unified diff of two files outside the repository; empty when they are the same. */
-  diffFiles(a: string, b: string): string {
-    const result = spawnSync('git', ['diff', '--no-index', '--no-color', '--no-ext-diff', a, b], { cwd: this.cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-    if (result.error) throw new ConfigError(`could not run git: ${result.error.message}`);
-    if (result.status !== 0 && result.status !== 1) throw new ConfigError(`git diff --no-index failed: ${result.stderr.trim()}`);
-    return result.stdout;
   }
 }
 

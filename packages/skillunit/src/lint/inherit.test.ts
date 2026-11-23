@@ -46,7 +46,7 @@ function project(typescript: string | null, files: Record<string, string>): stri
 const run = (root: string) => lint(join(root, 'skill'), { examples: { ts: { tsconfig: join(root, 'tsconfig.json') }, commands: {}, cwd: root } });
 
 /** `file:line TSnnnn` of each type problem. */
-const types = (r: LintResult) => r.problems.filter((p) => p.rule === 'types' || p.rule === 'wrong-code').map((p) => `${p.file}:${p.line} ${p.code ?? p.rule}`);
+const types = (r: LintResult) => r.problems.filter((p) => p.rule === 'types').map((p) => `${p.file}:${p.line} ${p.code ?? p.rule}`);
 
 const ROOT = `# Skill\n\nSee [a](features/a.md), [b](features/b.md) and [the nested skill](nested/SKILL.md).\n\nSetup:\n\n${F}ts\nimport { answer } from "lib";\n${F}\n`;
 // No Setup: `answer` comes from SKILL.md, so the only error is the string.
@@ -72,14 +72,6 @@ describe.each(COMPILERS)('the Setup of SKILL.md, with %s', (_, typescript) => {
     const broken = ROOT.replace('import { answer } from "lib";', 'import { answer, missing } from "lib";');
     const r = run(project(typescript, { 'SKILL.md': broken, 'features/a.md': A, 'features/b.md': A.replace('# A', '# B') }));
     expect(types(r).filter((l) => l.includes('TS2305'))).toEqual([`SKILL.md:${lineOf(broken, 'import { answer, missing }')} TS2305`]);
-  });
-
-  it('gives Wrong code its language from an inherited Setup', () => {
-    const unit = `# Rules file\n\n## Rules\n\n### rule: use-answer\n\nWhen: code needs the number.\n\nDo: read \`answer\`.\n\nWrong:\n\n- Doing: \`answer.toUpperCase()\`\n\n  Because: it is a number.\n\nApplies: lib\n`;
-    const r = run(project(typescript, { 'SKILL.md': ROOT.replace('[a](features/a.md)', '[a](features/a.md), [rules](features/rules.md)'), 'features/a.md': A, 'features/b.md': B, 'features/rules.md': unit }));
-    // Type-checked with `answer` in scope: the mistake is caught by the types, so there is no warning.
-    expect(r.summary.wrongCode).toEqual({ checked: 1, unchecked: 0 });
-    expect(r.problems.filter((p) => p.file === 'features/rules.md')).toEqual([]);
   });
 });
 

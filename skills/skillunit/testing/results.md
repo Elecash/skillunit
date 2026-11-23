@@ -2,7 +2,7 @@
 
 How to run the layers, read what they report, and act on a failure.
 
-The default report is a table per layer, then the failures, the borderline verdicts and the warnings. Lint and sync findings read `file:line  unit-id  what is wrong`. A test failure shows the scenario, the expected answer, the answer the reader gave and the probability of each option. Exit codes: 0 when every check passed, 1 when one failed, 2 when the command itself was wrong (an unknown option, a missing file, no API key). `--reporter` also takes `json`, `junit` and `github` (annotations on the pull request).
+The default report is a table per layer, then the failures, the borderline verdicts and the warnings. Lint and proof findings read `file:line  unit-id  what is wrong`. A test failure shows the scenario, the expected answer, the answer the reader gave and the probability of each option. Exit codes: 0 when every check passed, 1 when one failed, 2 when the command itself was wrong (an unknown option, a missing file, no API key). `--reporter` also takes `json`, `junit` and `github` (annotations on the pull request).
 
 | What the failure shows | What it means |
 | --- | --- |
@@ -26,15 +26,7 @@ Right:
 npx skillunit test --dry-run
 ```
 
-Wrong:
-
-- Doing: running the real tests straight away.
-
-  Because: a spec that does not load, a heading that does not exist or a request that is too large wastes the run; the dry run finds them without the model.
-
 Applies: commands, test
-
-Source: src/test/runner.ts
 
 Proof: none, advice on running tests
 
@@ -51,15 +43,7 @@ cp -R skills/my-skill /tmp/my-skill-copy
 npx skillunit test specs/retries.yaml --skill /tmp/my-skill-copy
 ```
 
-Wrong:
-
-- Doing: deleting the sentence in the real skill and restoring it with git afterwards.
-
-  Because: a mistake in the restore changes the skill the user ships.
-
 Applies: test, proof
-
-Source: src/test/runner.ts
 
 Proof: none, advice on reading results
 
@@ -69,15 +53,7 @@ When: a test still passes on a copy with its rule deleted.
 
 Do: look for the cause in this order: an option gives the answer away, the scenario contains the answer, the skill states the rule somewhere else, the reader knows the answer without the skill; fix the test in the first two cases, and tell the user in the last two.
 
-Wrong:
-
-- Doing: deleting the test, or lowering a threshold so it fails.
-
-  Because: the test may be fine; the cause is usually its wording or a second copy of the rule.
-
 Applies: test, proof
-
-Source: src/test/reader.ts
 
 Proof: none, advice on reading results
 
@@ -91,8 +67,6 @@ Unknown: there is no mutation setting or tool; say so instead of adding one to t
 
 Applies: test, proof
 
-Source: src/test/spec.ts
-
 Proof: none, it says a feature does not exist
 
 ### rule: report-dont-bend
@@ -103,15 +77,7 @@ Do: report the failure as a finding about the skill, with the sentence that woul
 
 Even when: the user wants the run green; a test bent to pass protects nothing.
 
-Wrong:
-
-- Doing: changing `expect` to the answer the reader picked.
-
-  Because: the test then passes on the text that misleads agents.
-
 Applies: test, failures
-
-Source: src/test/reader.ts
 
 Proof: none, advice on reading results
 
@@ -121,15 +87,7 @@ When: a test fails because the skill is unclear, and the user asked the agent to
 
 Do: rewrite the unclear part of the skill, adding the idea the rule is missing rather than the test's wording, and run the test again.
 
-Wrong:
-
-- Doing: copying the scenario's words into the skill.
-
-  Because: that one test passes, and the reader learns nothing about the next phrasing.
-
 Applies: test, failures
-
-Source: src/test/reader.ts
 
 Proof: none, advice on reading results
 
@@ -139,39 +97,6 @@ When: the report marks a verdict borderline.
 
 Do: make the skill's text more direct on that point, or give the test more phrasings so the median decides; leave `thresholds.margin` as it is.
 
-Wrong:
-
-- Doing: raising `thresholds.margin` or lowering a threshold until the mark goes away.
-
-  Because: the verdict still sits near its threshold, so the next run can still flip it.
-
 Applies: test, borderline
 
-Source: src/report/table.ts
-
 Proof: none, advice on reading results
-
-### rule: review-what-sync-reports
-
-When: sync reports a unit as stale or new.
-
-Do: list the units with `npx skillunit review --list`, read each change next to its unit, edit the unit if it is now wrong, then accept it with `npx skillunit review --accept <unit-id>` and commit `skillunit.lock` with the change.
-
-Right:
-
-```sh
-npx skillunit review --list
-npx skillunit review --accept retry-idempotent-only
-```
-
-Wrong:
-
-- Doing: `npx skillunit review --accept-all` before reading the changes.
-
-  Because: the lock is the only record that someone checked each unit against its code; accepting units nobody read records a check that never happened.
-
-Applies: sync, review
-
-Source: src/review/review.ts
-
-Proof: none, advice on working with sync

@@ -119,16 +119,16 @@ describe('a skill whose tests prove it', () => {
 describe('what fails the layer', () => {
   it('no report matches proof.reports', () => {
     const { 'reports/junit.xml': _, ...rest } = GOOD;
+    expect(run(project(rest)).problems.length).toBe(1);
     expect(errors(run(project(rest)))[0]).toBe(
       '../skillunit.yaml:2 - error: no report matches `proof.reports` (`reports/*.xml`); run the tests with a JUnit reporter first, such as `vitest run --reporter=junit --outputFile=reports/junit.xml`',
     );
   });
 
   it('a report that cannot be read', () => {
+    // Without a report read, what the tests proved is unknown: only the report is reported.
     expect(errors(run(project({ ...GOOD, 'reports/junit.xml': '<testsuites>\n<testcase name="a">\n' })))).toEqual([
       '../reports/junit.xml:3 - error: this report cannot be read: the report ends inside `<testcase>`; was it cut short?',
-      expect.stringContaining('check-status error: no test is tagged'),
-      expect.stringContaining('retry-delay error: no test proves this unit'),
     ]);
   });
 

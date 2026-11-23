@@ -228,21 +228,4 @@ describe.each(COMPILERS)('an example that declares a name of the Setup, with %s'
     expect(r.summary.typeChecked).toBe(2);
     expect(r.problems.map((p) => `${p.line} ${p.unit} ${p.code}`)).toEqual([`${lineOf(unit, '  const n')} pick TS2322`, `${lineOf(unit, 'const n', lineOf(unit, 'proof=r'))} r TS2322`]);
   });
-
-  it('gives Wrong code the same treatment', () => {
-    const unit = [
-      '# Rules',
-      'Setup:',
-      `${F}ts\n${SETUP}\n${F}`,
-      '## Rules',
-      '### rule: one-client',
-      'When: code sends a message.',
-      'Do: use `client`.',
-      `Wrong:\n\n- Doing: creating a client of its own.\n\n  ${F}ts\n  import { Client } from "lib";\n  const client = new Client();\n  client.send("x");\n  ${F}\n\n  Because: it opens a second connection.`,
-      'Applies: lib',
-    ].join('\n\n') + '\n';
-    const r = run(project(typescript, unit));
-    // It compiles once `client` is its own, so the types do not catch the mistake, and lint says so.
-    expect(r.problems.map((p) => `${p.rule} ${p.severity}`)).toEqual(['wrong-code warning']);
-  });
 });

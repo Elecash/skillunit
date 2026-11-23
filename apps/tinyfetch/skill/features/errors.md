@@ -35,20 +35,4 @@ try {
 }
 ```
 
-Wrong:
-
-- Doing: reading `status` straight off the caught error.
-
-  Because: the caught value may be a timeout or a network error, which has no status.
-
-  ```ts
-  try {
-    await tf.get("https://api.example.com/users/1");
-  } catch (error) {
-    if (error.status === 404) console.log("no such user");
-  }
-  ```
-
 Applies: errors
-
-Source: src/errors.ts#isHttpError

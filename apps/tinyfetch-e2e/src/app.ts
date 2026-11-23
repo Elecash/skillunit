@@ -1,6 +1,6 @@
 /**
- * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is,
- * with its committed `skillunit.lock`, a scenario changes it and commits, `test` runs the app's
+ * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is, a
+ * scenario changes it and commits, `test` runs the app's
  * tests as CI does (they write the JUnit report the proof layer reads), and `run` calls the built
  * SkillUnit CLI on the copy.
  */
@@ -41,7 +41,7 @@ export class App {
 
   private constructor(name: string) {
     this.root = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
-    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'skillunit.lock', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
+    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
       cpSync(join(appSource, part), join(this.root, part), { recursive: true });
     }
     // The type-check runs the project's own tsc, found in node_modules at or above the tsconfig.
@@ -83,22 +83,11 @@ export class App {
     writeFileSync(join(this.root, path), text);
   }
 
-  remove(path: string) {
-    rmSync(join(this.root, path));
-  }
-
   /** Replaces `from` with `to` in a file. Throws when `from` is not there, so a stale scenario fails loudly. */
   edit(path: string, from: string, to: string) {
     const text = this.read(path);
     if (!text.includes(from)) throw new Error(`scenario edit: ${path} does not contain ${JSON.stringify(from)}`);
     this.write(path, text.replace(from, to));
-  }
-
-  /** `skillunit review --accept <ids>`, or `--accept-all` with no ids. Throws when it fails. */
-  accept(...ids: string[]) {
-    const args = ids.length ? ['--accept', ...ids] : ['--accept-all'];
-    const result = spawnSync(process.execPath, [CLI, 'review', ...args], { cwd: this.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
-    if (result.status !== 0) throw new Error(`skillunit review ${args.join(' ')} failed (exit ${result.status}): ${result.stdout}${result.stderr}`.trim());
   }
 
   commit(message: string) {
@@ -114,7 +103,7 @@ export class App {
   }
 
   /** Runs `skillunit <command> --reporter json` on the copy. With `--changed`, `--base` is the base commit. */
-  run(command: 'check' | 'lint' | 'sync' | 'proof' | 'test', ...args: string[]): Run {
+  run(command: 'check' | 'lint' | 'proof' | 'test', ...args: string[]): Run {
     const base = args.includes('--changed') ? ['--base', this.base] : [];
     const key = apiKey();
     const result = spawnSync(process.execPath, [CLI, command, '--reporter', 'json', ...base, ...args], {

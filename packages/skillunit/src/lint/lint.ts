@@ -1,31 +1,25 @@
 /**
  * `skillunit lint`: parses the skill and runs every lint rule. The type-check of `ts`, `tsx`, `js`
- * and `jsx` examples and `Wrong` code happens in one `tsc` run, here.
+ * and `jsx` examples happens in one `tsc` run, here.
  */
 import { TS_LANGS, type ExamplesConfig } from '../config.js';
 import { parseSkill, type Fence, type ParsedFile, type ParsedSkill } from '../units/index.js';
-import { checks, guardedByCheck } from './check.js';
+import { checks } from './check.js';
 import { runCommands } from './commands.js';
-import { collectWrongCode, isExample, isNoCheck, ownerUnit, setupFor, type WrongCode } from './examples.js';
+import { isExample, isNoCheck, ownerUnit, setupFor } from './examples.js';
 import { index } from './links.js';
 import { fenceFlags } from './fences.js';
 import { proofMarks } from './proof.js';
 import { setups } from './setup.js';
-import { sources } from './sources.js';
 import { structure } from './structure.js';
 import { runTsc, type TsBlock, type TsDiagnostic } from './tsc.js';
 import type { LintResult, LintRule, LintSummary, Problem } from './types.js';
 
 export interface LintOptions {
   examples?: ExamplesConfig;
-  /** Folder that `Source:` paths start from. Without it, `Source` paths are not checked. */
-  sourceRoot?: string;
   /** Rules whose problems are not reported. */
   off?: LintRule[];
 }
-
-/** An undefined name in `Wrong` code would make the mistake look caught by the types. */
-const UNDEFINED_NAME = 'TS2304';
 
 export function lint(dir: string, options: LintOptions = {}): LintResult {
   return lintSkill(parseSkill(dir), options);
@@ -42,14 +36,10 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     noCheck: 0,
     notConfigured: 0,
     off: [...(options.off ?? [])],
-    wrongCode: { checked: 0, unchecked: 0 },
     undeclared: [],
   };
-  const wrong = collectWrongCode(skill);
-  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill), ...fenceFlags(skill), ...proofMarks(skill)];
-  if (options.sourceRoot) problems.push(...sources(skill, options.sourceRoot));
-
-  problems.push(...typeCheck(skill, wrong, options.examples, summary));
+  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill), ...index(skill), ...fenceFlags(skill), ...proofMarks(skill)];
+  problems.push(...typeCheck(skill, options.examples, summary));
   if (options.examples) {
     const commands = runCommands(skill, options.examples);
     problems.push(...commands.problems);
@@ -69,11 +59,14 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
 }
 
 /** `setupFile` is the file whose `Setup` the block uses: its own, or its skill's `SKILL.md`. */
-type Job =
-  | { kind: 'example'; file: ParsedFile; fence: Fence; isSetup: boolean; setupFile?: ParsedFile }
-  | { kind: 'wrong'; wrong: WrongCode; setupFile?: ParsedFile };
+interface Job {
+  file: ParsedFile;
+  fence: Fence;
+  isSetup: boolean;
+  setupFile?: ParsedFile;
+}
 
-function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesConfig | undefined, summary: LintSummary): Problem[] {
+function typeCheck(skill: ParsedSkill, examples: ExamplesConfig | undefined, summary: LintSummary): Problem[] {
   const ts = examples?.ts;
   const jobs: Job[] = [];
   const blocks: TsBlock[] = [];
@@ -96,28 +89,12 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
         continue;
       }
       const setup = isSetup ? undefined : setupOf(file, fence.lang);
-      jobs.push({ kind: 'example', file, fence, isSetup, ...(setup ? { setupFile: setup.file } : {}) });
+      jobs.push({ file, fence, isSetup, ...(setup ? { setupFile: setup.file } : {}) });
       blocks.push({ lang: fence.lang, code: fence.code, line: fence.line + 1, ...(setup ? { setup: setup.block } : {}) });
     }
   }
 
   const problems: Problem[] = [];
-  for (const w of wrong) {
-    if (w.fence && isNoCheck(w.fence)) {
-      summary.noCheck++;
-      continue;
-    }
-    if (ts && tsLang(w.lang)) {
-      const setup = setupOf(w.file, w.lang);
-      jobs.push({ kind: 'wrong', wrong: w, ...(setup ? { setupFile: setup.file } : {}) });
-      blocks.push({ lang: w.lang, code: w.code, line: w.line, ...(setup ? { setup: setup.block } : {}) });
-      continue;
-    }
-    // Not type-checked: a Check that matches still guards it, but "compiles" cannot be told.
-    if (w.lang !== null && guardedByCheck(w)) summary.wrongCode.checked++;
-    else summary.wrongCode.unchecked++;
-  }
-
   if (!ts || blocks.length === 0) return problems;
   const run = runTsc(ts.tsconfig, blocks);
   summary.typescript = run.version;
@@ -141,55 +118,20 @@ function typeCheck(skill: ParsedSkill, wrong: WrongCode[], examples: ExamplesCon
 
   jobs.forEach((job, i) => {
     const diagnostics = withJsxHint(run.diagnostics[i]!, blocks[i]!);
-    if (job.kind === 'example') {
-      // A block whose code, or whose `Setup`, did not parse never reached the type-check.
-      if (diagnostics.some((d) => d.syntax)) summary.notParsed++;
-      else summary.typeChecked++;
-      for (const d of diagnostics) {
-        if (d.inSetup || job.isSetup) {
-          // Once, at the `Setup` itself: an inherited one is in `SKILL.md`.
-          const setup = d.inSetup ? blocks[i]!.setup!.line - 1 : job.fence.line;
-          report(setupProblem(d.inSetup ? job.setupFile! : job.file, d, setup));
-          continue;
-        }
-        const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`, code: d.code, example: job.fence.line };
-        const unit = ownerUnit(job.fence.owner);
-        if (unit) p.unit = unit;
-        report(p);
+    // A block whose code, or whose `Setup`, did not parse never reached the type-check.
+    if (diagnostics.some((d) => d.syntax)) summary.notParsed++;
+    else summary.typeChecked++;
+    for (const d of diagnostics) {
+      if (d.inSetup || job.isSetup) {
+        // Once, at the `Setup` itself: an inherited one is in `SKILL.md`.
+        const setup = d.inSetup ? blocks[i]!.setup!.line - 1 : job.fence.line;
+        report(setupProblem(d.inSetup ? job.setupFile! : job.file, d, setup));
+        continue;
       }
-      return;
-    }
-
-    const w = job.wrong;
-    summary.wrongCode.checked++;
-    const own = diagnostics.filter((d) => !d.inSetup);
-    for (const d of diagnostics.filter((d) => d.inSetup)) report(setupProblem(job.setupFile!, d, blocks[i]!.setup!.line - 1));
-    const syntax = own.find((d) => d.syntax);
-    const undefinedName = own.find((d) => d.code === UNDEFINED_NAME);
-    const base = { file: w.file.file, unit: w.unit.id, rule: 'wrong-code' as const, example: w.line };
-    if (syntax) {
-      report({
-        ...base,
-        line: syntax.line,
-        severity: 'error',
-        message: `this \`Wrong\` code does not parse (${syntax.code} ${syntax.message}); write it as complete code, or describe the mistake in prose`,
-        code: syntax.code,
-      });
-    } else if (undefinedName) {
-      report({
-        ...base,
-        line: undefinedName.line,
-        severity: 'error',
-        message: `this \`Wrong\` code uses a name that is not defined (${undefinedName.code} ${undefinedName.message}); define it in \`Setup\` or in the code, or the mistake looks caught by the types when it is not`,
-        code: undefinedName.code,
-      });
-    } else if (own.length === 0 && !guardedByCheck(w)) {
-      report({
-        ...base,
-        line: w.line,
-        severity: 'warning',
-        message: 'this `Wrong` code compiles and no `Check` of the unit matches it: nothing reports an example that makes this mistake',
-      });
+      const p: Problem = { file: job.file.file, line: d.line, severity: 'error', rule: 'types', message: `${d.syntax ? 'does not parse' : 'does not type-check'}: ${d.code} ${d.message}`, code: d.code, example: job.fence.line };
+      const unit = ownerUnit(job.fence.owner);
+      if (unit) p.unit = unit;
+      report(p);
     }
   });
   return problems;

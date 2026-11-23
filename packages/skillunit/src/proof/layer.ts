@@ -129,9 +129,12 @@ export function proof(options: ProofOptions): ProofResult {
   }
   const cases: TestCase[] = [];
   let started: number | undefined;
+  /** At least one report was read. Without one, what the tests proved is unknown, not failed. */
+  let read = false;
   for (const path of reportPaths) {
     try {
       const report = readJUnit(readFileSync(path, 'utf8'), fromSkill(path));
+      read = true;
       cases.push(...report.cases);
       if (report.started) {
         const at = report.started.ms - (report.started.zoned ? 2000 : UNZONED_SLACK_MS);
@@ -179,6 +182,11 @@ export function proof(options: ProofOptions): ProofResult {
     const fences = unit.proofs.filter((f) => f.proof && namesUnit(f.proof, unit.id));
     const at = (message: string, line = unit.line) => add(unit.file, line, message, 'error', unit.id);
 
+    // With no report read, only the report is reported: every unit would look unproved.
+    if (!read) {
+      results.push({ id: unit.id, file: unit.file, line: unit.line, state: none ? 'none' : 'pending', tests: [], fences: [] });
+      continue;
+    }
     if (none && tests.length) {
       at(`this unit says \`Proof: none\`, and ${tests.length === 1 ? 'a test is' : `${tests.length} tests are`} tagged \`[skill:${unit.id}]\` (${tests.map(quoteTitle).join(', ')}); keep one: the test, or \`Proof: none\``);
     }
@@ -222,10 +230,10 @@ export function proof(options: ProofOptions): ProofResult {
     results.push({ id: unit.id, file: unit.file, line: unit.line, state, tests: tests.map((t) => ({ report: t.report, line: t.line, title: title(t), status: t.status })), fences: proofFences });
   }
 
-  for (const [id, file] of folder.examples) {
+  for (const [id, file] of read ? folder.examples : []) {
     if (!usedFiles.has(id)) add(fromSkill(file.path), 1, `no block has \`proof=${id}\`, so nothing uses \`${file.name}\``, 'warning');
   }
-  for (const [id, region] of found.regions) {
+  for (const [id, region] of read ? found.regions : []) {
     if (!usedRegions.has(id)) add(region.file, region.line, `no block has \`proof=${id}\`, so nothing uses this region`, 'warning');
   }
 

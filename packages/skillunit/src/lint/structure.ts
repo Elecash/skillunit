@@ -10,8 +10,8 @@ const ORDER: readonly LabelName[] = [...BODY_LABELS, ...FOOTER_LABELS];
 
 /** Body labels each kind takes. Every kind takes the whole footer. */
 const ALLOWED: Record<UnitKind, readonly LabelName[]> = {
-  rule: ['When', 'Do', 'Even when', 'Right', 'Wrong'],
-  decision: ['When', 'Decide', 'Even when', 'Wrong'],
+  rule: ['When', 'Do', 'Even when', 'Right'],
+  decision: ['When', 'Decide', 'Even when'],
   fact: ['When', 'Value', 'Unknown'],
 };
 
@@ -22,12 +22,12 @@ const REQUIRED: Record<UnitKind, readonly LabelName[]> = {
 };
 
 /** Labels whose text may be empty: their content is a list or code on the next lines. */
-const MAY_BE_EMPTY: readonly LabelName[] = ['Decide', 'Right', 'Wrong'];
+const MAY_BE_EMPTY: readonly LabelName[] = ['Decide', 'Right'];
 
 const KEBAB = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const UNIT_HEADING = /^(rule|decision|fact):/;
 /** A label name inside another label's text: what a formatter that joins lines leaves behind. */
-const INNER_LABEL = new RegExp(`(?:^|\\s)(${[...ORDER, 'Doing', 'Because'].join('|')}):(?=\\s|$)`);
+const INNER_LABEL = new RegExp(`(?:^|\\s)(${ORDER.join('|')}):(?=\\s|$)`);
 
 export function structure(skill: ParsedSkill): Problem[] {
   const out: Problem[] = skill.errors.map((e) => ({ ...e, severity: 'error' as const, rule: 'parse' as const }));
@@ -36,7 +36,7 @@ export function structure(skill: ParsedSkill): Problem[] {
     out.push(...rulesSection(file));
     for (const fence of file.fences) {
       const kind = fence.owner.kind;
-      if (fence.lang || !(kind === 'right' || kind === 'wrong' || kind === 'decide')) continue;
+      if (fence.lang || !(kind === 'right' || kind === 'decide')) continue;
       out.push({
         file: file.file,
         line: fence.line,
@@ -96,16 +96,6 @@ function checkUnit(u: Unit): Problem[] {
   if (decide && u.decide.length === 0 && u.skipped === 0) out.push(problem(u, decide.line, '`Decide` needs at least one `- **path** — condition` item'));
   const right = u.labels.find((l) => l.name === 'Right');
   if (right && u.right.length === 0) out.push(problem(u, right.line, '`Right` has no example: add a fenced block or inline code'));
-  const wrong = u.labels.find((l) => l.name === 'Wrong');
-  if (wrong && u.wrong.length === 0 && u.skipped === 0) out.push(problem(u, wrong.line, '`Wrong` has no `- Doing:` items'));
-
-  for (const w of u.wrong) {
-    if (!w.doing) out.push(problem(u, w.line, '`Doing` is empty'));
-    if (!w.because) out.push(problem(u, w.line, 'this `Wrong` item has no `Because:`; say what breaks'));
-    if (w.becauseJoined) out.push(problem(u, w.becauseLine ?? w.line, 'put `Because:` in a paragraph of its own, with a blank line before it', 'warning'));
-    out.push(...sharedLine(u, w.line, 'Doing', w.doing));
-    if (w.because) out.push(...sharedLine(u, w.becauseLine ?? w.line, 'Because', w.because));
-  }
   return out;
 }
 

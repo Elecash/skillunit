@@ -255,6 +255,25 @@ describe('review --accept and --prune', () => {
     expect(sync(p.options)).toMatchObject({ ok: true, orphans: [] });
   });
 
+  it('drops orphan entries with any review that writes the lock, and says how many', async () => {
+    const p = await reviewed();
+    p.edit('app/skill/SKILL.md', unit('helpers', 'src/lib'), '');
+    p.edit('app/src/retry.ts', '= 1', '= 2');
+    const { code, out } = await p.run({ accept: ['retry-idempotent-only'] });
+    expect(code).toBe(0);
+    expect(out).toBe('Updated skillunit.lock: accepted 1 unit (retry-idempotent-only); dropped 1 orphan entry. Commit it with the change.\n');
+    expect(sync(p.options)).toMatchObject({ ok: true, orphans: [] });
+  });
+
+  it('drops orphan entries at a terminal when nothing else needs review', async () => {
+    const p = await reviewed();
+    p.edit('app/skill/SKILL.md', unit('helpers', 'src/lib'), '');
+    const { code, out } = await p.run({}, '', true);
+    expect(code).toBe(0);
+    expect(out).toContain('Updated skillunit.lock: dropped 1 orphan entry. Commit it with the change.');
+    expect(p.lockUnits()).not.toContain('helpers');
+  });
+
   it('prints what it did as JSON', async () => {
     const p = await reviewed();
     p.edit('app/src/retry.ts', '= 1', '= 2');

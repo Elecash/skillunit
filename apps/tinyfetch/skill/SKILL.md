@@ -43,12 +43,4 @@ const user = await tf.get<{ name: string }>("https://api.example.com/users/1");
 console.log(user.name);
 ```
 
-Wrong:
-
-- Doing: `tf.get<{ name: string }>("https://api.example.com/users/1").name`
-
-  Because: the call returns a promise, so `.name` is undefined.
-
 Applies: requests
-
-Source: src/client.ts

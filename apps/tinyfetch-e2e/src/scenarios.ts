@@ -1,9 +1,8 @@
 /**
  * The acceptance scenarios: each changes tinyfetch or its skill in a copy of the app, and lists
  * what SkillUnit must report. Findings are written `rule file unit code`, the code being a
- * TypeScript code when there is one; sync findings are unit ids (`lock` for one about the lock
- * itself); proof findings are unit ids, or the file for one about no unit; model findings are
- * test ids. Before `check`, the app's tests run, as in CI, and write the report proof reads.
+ * TypeScript code when there is one; proof findings are unit ids, or the file for one about no
+ * unit; model findings are test ids. Before `check`, the app's tests run, as in CI, and write the report proof reads.
  * Anything reported that is not listed fails the scenario, as does anything listed that is not
  * reported.
  */
@@ -14,10 +13,6 @@ export interface Expected {
   /** Lint errors. */
   lint?: string[];
   lintWarnings?: string[];
-  /** Units sync reports for review: stale or new, and `lock` when there is no lock. */
-  sync?: string[];
-  /** Orphan entries sync warns about, by unit id. */
-  syncWarnings?: string[];
   /** Proof errors, by unit id, or by file for one about no unit (a report, a test file). */
   proof?: string[];
   proofWarnings?: string[];
@@ -25,6 +20,8 @@ export interface Expected {
   failing?: string[];
   /** Tests that may fail too: the change touches what they ask about. */
   mayFail?: string[];
+  /** At least one of these tests must fail; any of them may. For a change several tests ask about, each near its threshold. */
+  oneFails?: string[];
 }
 
 export interface Scenario {
@@ -63,10 +60,7 @@ export const scenarios: Scenario[] = [
       app.edit('src/retry.ts', 'retry = 0, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = 0): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
       app.commit('Drop retryDelay');
     },
-    expect: {
-      lint: ['types skill/features/retries.md - TS2353'],
-      sync: ['body-as-object', 'query-in-options', 'retry-idempotent-only'],
-    },
+    expect: { lint: ['types skill/features/retries.md - TS2353'] },
   },
   {
     name: 'renamed function',
@@ -77,21 +71,12 @@ export const scenarios: Scenario[] = [
       app.edit('src/index.ts', 'export { create, tf,', 'export { createClient, tf,');
       app.commit('Rename create to createClient');
     },
-    expect: {
-      lint: ['types skill/features/clients.md - TS2305', 'source skill/features/clients.md one-client-per-api'],
-      sync: ['await-every-request', 'one-client-per-api'],
-    },
+    expect: { lint: ['types skill/features/clients.md - TS2305'] },
   },
   {
     name: 'stale example',
     change: 'fix a rule (tinyfetch sets content-type, so a Check now forbids setting it), leave an old example that sets it',
     apply(app) {
-      const wrong = '- Doing: `tf.post("https://api.example.com/users", JSON.stringify({ name: "Ada" }))`\n\n  Because: the server receives a JSON string instead of an object.\n';
-      app.edit(
-        'skill/features/requests.md',
-        wrong,
-        `${wrong}\n- Doing: \`tf.post("https://api.example.com/users", { name: "Ada" }, { headers: { "content-type": "application/json" } })\`\n\n  Because: tinyfetch sets \`content-type\` itself, and a second value can disagree with the body.\n`,
-      );
       app.edit('skill/features/requests.md', 'Check: forbid `/JSON\\.stringify/` in ts\n', 'Check: forbid `/JSON\\.stringify/` in ts\n\nCheck: forbid `/["\']content-type["\']\\s*:/` in ts\n');
       app.commit('body-as-object: do not set content-type');
     },
@@ -108,7 +93,6 @@ export const scenarios: Scenario[] = [
     },
     expect: {
       lint: ['types skill/features/requests.md - TS1005', 'types skill/features/requests.md query-in-options TS2353'],
-      sync: ['body-as-object', 'query-in-options'],
       // The test that proves `query-in-options` fails without the option.
       proof: ['query-in-options'],
     },
@@ -155,28 +139,6 @@ export const scenarios: Scenario[] = [
     expect: { lint: ['types skill/features/timeouts.md - TS2307', 'types skill/features/timeouts.md - TS18046'] },
   },
   {
-    name: 'unguarded rule',
-    change: 'remove the `Check` of a rule whose `Wrong` code compiles',
-    apply(app) {
-      app.edit('skill/features/retries.md', 'Check: forbid `/\\.(post|patch)\\([^)]*retry/` in ts\n\n', '');
-      app.commit('Drop the retry Check');
-    },
-    expect: { lintWarnings: ['wrong-code skill/features/retries.md retry-idempotent-only'] },
-  },
-  {
-    name: 'mistyped Check',
-    change: 'change a `forbid` regex so it no longer matches its own `Wrong` code',
-    apply(app) {
-      app.edit('skill/features/retries.md', 'Check: forbid `/\\.(post|patch)\\([^)]*retry/` in ts', 'Check: forbid `/\\.(post|patch)\\(\\s*retry/` in ts');
-      app.commit('Mistype the retry Check');
-    },
-    expect: {
-      lint: ['check skill/features/retries.md retry-idempotent-only'],
-      // The regex no longer matches the Wrong code, so nothing guards it either.
-      lintWarnings: ['wrong-code skill/features/retries.md retry-idempotent-only'],
-    },
-  },
-  {
     name: 'contradicting prose',
     change: 'add a sentence that contradicts a rule',
     model: 'required',
@@ -188,7 +150,9 @@ export const scenarios: Scenario[] = [
       );
       app.commit('Say retries are always safe');
     },
-    expect: { failing: ['post-no-retry'], mayFail: ['patch-no-retry'] },
+    // Both tests of the rule end near their threshold (post-no-retry 0.52, patch-no-retry 0.49 in
+    // two runs), so the scenario asks that one of them fails, not which.
+    expect: { oneFails: ['post-no-retry', 'patch-no-retry'] },
   },
   {
     name: 'ambiguous rule',
@@ -201,91 +165,27 @@ export const scenarios: Scenario[] = [
     expect: { failing: ['put-may-retry'], mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   {
-    name: 'comment-only change',
-    change: 'edit a comment in a `Source` file: its fingerprint leaves comments out',
-    apply(app) {
-      app.edit('src/retry.ts', 'export const DEFAULT_RETRY_DELAY = 300;', '// Milliseconds.\nexport const DEFAULT_RETRY_DELAY = 300;');
-      app.commit('Comment');
-    },
-    expect: {},
-  },
-  {
-    name: 'other declaration of a #symbol file',
-    change: 'change `HttpError` in `src/errors.ts`, where a unit points at `#isHttpError` only',
-    apply(app) {
-      app.edit('src/errors.ts', 'super(`HTTP ${status}`);', 'super(`HTTP status ${status}`);');
-      app.commit('Reword the HttpError message');
-    },
-    expect: {},
-  },
-  {
-    name: 'changed symbol',
-    change: 'change `isHttpError` itself, which a unit points at with `#isHttpError`',
-    apply(app) {
-      app.edit('src/errors.ts', "error.name === 'HttpError' &&", "(error.name === 'HttpError' || error instanceof HttpError) &&");
-      app.commit('Accept a local HttpError too');
-    },
-    expect: { sync: ['check-with-is-http-error'] },
-  },
-  {
-    name: 'unit added without a review',
-    change: 'add a unit with a `Source`, and do not accept it',
+    name: 'unit added with no test',
+    change: 'add a fact that no test proves and that has no `Proof: none`',
     apply(app) {
       const unit =
-        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n\nApplies: timeouts, errors\n\nSource: src/errors.ts#TimeoutError\n';
+        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n\nApplies: timeouts, errors\n';
       app.write('skill/features/timeouts.md', app.read('skill/features/timeouts.md') + unit);
       app.commit('Add a unit about TimeoutError');
     },
     // With `require` on, a new unit that no test proves and with no `Proof: none` is an error.
-    expect: { sync: ['timeout-error-names-its-limit'], proof: ['timeout-error-names-its-limit'] },
-  },
-  {
-    name: 'orphan entry',
-    change: 'delete a unit and its test; the lock still has its entry',
-    apply(app) {
-      const file = app.read('skill/features/timeouts.md');
-      const start = file.indexOf('### rule: never-disable-timeout');
-      const after = file.indexOf('\n### ', start + 1);
-      app.write('skill/features/timeouts.md', file.slice(0, start) + (after < 0 ? '' : file.slice(after + 1)));
-      const spec = app.read('specs/timeouts.yaml');
-      const test = spec.indexOf('  - id: long-upload');
-      const next = spec.indexOf('\n  - id:', test + 1);
-      app.write('specs/timeouts.yaml', spec.slice(0, test) + (next < 0 ? '' : spec.slice(next + 1)));
-      app.commit('Drop the never-disable-timeout rule');
-    },
-    expect: { syncWarnings: ['never-disable-timeout'] },
-  },
-  {
-    name: 'missing lock',
-    change: 'delete `skillunit.lock`',
-    apply(app) {
-      app.remove('skillunit.lock');
-      app.commit('Drop the lock');
-    },
-    expect: { sync: ['lock'] },
-  },
-  {
-    name: 'reviewed refactor',
-    change: 'change a `Source`, then `skillunit review --accept` its unit',
-    apply(app) {
-      app.edit('src/retry.ts', 'const retryable = !isHttpError(error) || error.status >= 500;', 'const serverSide = !isHttpError(error) || error.status >= 500;');
-      app.edit('src/retry.ts', '!retryable ||', '!serverSide ||');
-      app.accept('retry-idempotent-only');
-      app.commit('Rename a variable\n\nThe behaviour is the same.');
-    },
-    expect: {},
+    expect: { proof: ['timeout-error-names-its-limit'] },
   },
   ...(['preserve', 'always', 'never'] as const).map(
     (proseWrap): Scenario => ({
       name: `formatter run (proseWrap: ${proseWrap})`,
-      change: `run Prettier over the skill with proseWrap ${proseWrap}, next to a change in a Source file`,
+      change: `run Prettier over the skill with proseWrap ${proseWrap}`,
       async apply(app) {
-        app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 10000;');
         await prettier(app, SKILL_FILES, proseWrap);
         app.commit(`Format the skill (${proseWrap})`);
       },
-      // The units of the changed Source are still to review: formatting is not an edit.
-      expect: { sync: ['default-timeout', 'never-disable-timeout'] },
+      // Formatting changes no unit, no example and no block a test produced.
+      expect: {},
     }),
   ),
   {
@@ -310,8 +210,8 @@ export const scenarios: Scenario[] = [
     },
   },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
-  // stops reporting what the README shows. Its fifth, the contradicting sentence, is the
-  // scenario `contradicting prose` above.
+  // stops reporting what the README shows. The contradicting sentence is the scenario
+  // `contradicting prose` above.
   {
     name: 'README 1: renamed option',
     change: 'in `src/types.ts`, rename the option `retryDelay` to `backoff`',
@@ -319,7 +219,6 @@ export const scenarios: Scenario[] = [
       app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
       app.commit('Rename retryDelay to backoff');
     },
-    // No unit has `src/types.ts` as its `Source`, so sync reports nothing.
     expect: { lint: ['types skill/features/retries.md - TS2353'] },
   },
   {
@@ -336,19 +235,6 @@ export const scenarios: Scenario[] = [
     expect: { lint: ['check skill/features/retries.md retry-idempotent-only'] },
   },
   {
-    name: 'README 3: comment reworded',
-    change: 'in `src/timeout.ts`, reword the comment above `withTimeout`',
-    apply(app) {
-      app.edit(
-        'src/timeout.ts',
-        ' * A signal that aborts after `timeout` milliseconds, or when `signal` aborts. A timeout of 0\n * never fires.',
-        ' * Returns a signal that aborts once `timeout` milliseconds pass, or as soon as `signal` aborts.\n * A timeout of 0 never fires.',
-      );
-      app.commit('Reword a comment');
-    },
-    expect: {},
-  },
-  {
     name: 'README 4: default changed',
     change: 'in `src/timeout.ts`, change `DEFAULT_TIMEOUT` from `10_000` to `5_000`',
     apply(app) {
@@ -356,17 +242,16 @@ export const scenarios: Scenario[] = [
       app.commit('Lower the default timeout');
     },
     // The test tagged `[skill:default-timeout]` fails too: it asserts 10 seconds.
-    expect: { sync: ['default-timeout', 'never-disable-timeout'], proof: ['default-timeout'] },
+    expect: { proof: ['default-timeout'] },
   },
   {
-    name: 'README 4: default changed, unit edited and accepted',
-    change: 'the same change, then edit `default-timeout` and `skillunit review --accept` both units',
+    name: 'README 4: default changed, unit and test edited',
+    change: 'the same change, then edit the `Value` of `default-timeout` and the test that proves it',
     apply(app) {
       app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
       app.edit('skill/features/timeouts.md', 'Value: 10 seconds (`timeout: 10_000`), for every method.', 'Value: 5 seconds (`timeout: 5_000`), for every method.');
       // The test that proves `default-timeout` asserts the value too.
       app.write(TEST, app.read(TEST).replace('times out after 10 seconds', 'times out after 5 seconds').replaceAll('10_000', '5_000').replace('9_999', '4_999'));
-      app.accept('default-timeout', 'never-disable-timeout');
       app.commit('Lower the default timeout');
     },
     expect: {},
@@ -379,7 +264,7 @@ export const scenarios: Scenario[] = [
       app.commit('Raise the retry delay');
     },
     // The test tagged `[skill:retry-defaults]` fails, and proof names the unit.
-    expect: { sync: ['retry-idempotent-only'], proof: ['retry-defaults'] },
+    expect: { proof: ['retry-defaults'] },
   },
   {
     name: 'proof 2: region changed without --write',

@@ -110,7 +110,7 @@ function project(specs: Record<string, string>): Config {
   writeFileSync(join(root, 'SKILL.md'), '# Skill\n\n## Retries\n\nRetry only GET requests.\n');
   mkdirSync(join(root, 'specs'));
   for (const [name, text] of Object.entries(specs)) writeFileSync(join(root, 'specs', name), text);
-  return { skill: root, specs: [join(root, 'specs')], model: { provider: 'typesafe' }, thresholds: { ...th }, sourceRoot: root };
+  return { skill: root, specs: [join(root, 'specs')], model: { provider: 'typesafe' }, thresholds: { ...th } };
 }
 
 const SPEC = `section: Retries
@@ -286,8 +286,6 @@ describe('specs: unit and line', () => {
 });
 
 describe('test --changed', () => {
-  const syncResult = (units: { id: string; state: 'in-sync' | 'stale' | 'new' }[]) =>
-    ({ units: units.map((u) => ({ ...u, file: 'SKILL.md', line: 1, sources: [] })) }) as unknown as Parameters<typeof changedSelection>[0];
   const changed = (files: string[]) => ({ ref: 'main', commit: 'abc', files });
   const spec = (file: string, withFiles: string[] | 'all', units: (string | undefined)[]) => ({
     path: 'x.yaml',
@@ -297,19 +295,14 @@ describe('test --changed', () => {
     tests: units.map((unit, i) => ({ id: `t${i}`, scenarios: ['s'], question: 'q', expect: 'yes', ...(unit ? { unit } : {}) })),
   });
 
-  it('runs whole specs of changed skill files, and the tests of units sync reports as stale or new [skill:link-tests-to-units]', () => {
-    const units = syncResult([
-      { id: 'a', state: 'stale' },
-      { id: 'b', state: 'in-sync' },
-      { id: 'c', state: 'new' },
-    ]);
-    const select = changedSelection(units, changed(['features/retries.md']));
-    expect(select(spec('features/retries.md', [], [undefined]))).toBe('all');
-    expect(select(spec('./features/../features/retries.md', [], []))).toBe('all');
-    expect(select(spec('SKILL.md', ['features/retries.md'], []))).toBe('all');
-    expect(select(spec('SKILL.md', 'all', []))).toBe('all');
-    expect(select(spec('SKILL.md', [], ['a', 'b', undefined, 'c']))).toEqual(new Set(['t0', 't3']));
-    expect(select(spec('SKILL.md', [], ['b']))).toBeNull();
-    expect(changedSelection(units, changed([]))(spec('SKILL.md', 'all', []))).toBeNull();
+  it('runs whole specs whose skill file or `with` files changed, and leaves the others out', () => {
+    const select = changedSelection(changed(['features/retries.md']));
+    expect(select(spec('features/retries.md', [], [undefined]))).toBe(true);
+    expect(select(spec('./features/../features/retries.md', [], []))).toBe(true);
+    expect(select(spec('SKILL.md', ['features/retries.md'], []))).toBe(true);
+    expect(select(spec('SKILL.md', 'all', []))).toBe(true);
+    expect(select(spec('SKILL.md', [], ['a', 'b', undefined, 'c']))).toBe(false);
+    expect(select(spec('SKILL.md', ['other.md'], []))).toBe(false);
+    expect(changedSelection(changed([]))(spec('SKILL.md', 'all', []))).toBe(false);
   });
 });

@@ -73,11 +73,11 @@ every instruction the agent must follow is a unit in `## Rules`. Concretely:
 ## Units
 
 A unit has two parts: the body, which the agent reads, and the footer, which the tools read.
-The label decides the part: `Applies`, `Check` and `Source` are footer, every other label is
+The label decides the part: `Applies`, `Check` and `Proof` are footer, every other label is
 body.
 
-Every label is its own paragraph, with a blank line before and after it, `Doing` and `Because`
-included. GitHub then shows one label per line, and a formatter leaves the unit as it is.
+Every label is its own paragraph, with a blank line before and after it. GitHub then shows one
+label per line, and a formatter leaves the unit as it is.
 
 ````
 ### rule: retry-idempotent-only
@@ -92,34 +92,27 @@ Right:
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 })`
-
-  Because: a retried POST can create the same order twice.
-
-- Doing: retrying a POST by hand in an interceptor.
-
-  Because: same duplicate, and the retry is invisible in the call.
-
 Applies: retries, post
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
 
-Source: src/retry.ts
+Proof: none, it is about what a server does with a repeated request
 ````
 
 Three kinds. Labels always in this order; omit the optional ones you do not need.
 
 | Kind | Body | Footer | Use it for |
 |---|---|---|---|
-| `rule` | When, Do, Even when, Right, Wrong | Applies, Check, Source | a constraint on what the agent writes |
-| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when, Wrong | Applies, Check, Source | choosing between paths |
-| `fact` | When, Value, Unknown | Applies, Check, Source | a value the agent must state exactly |
+| `rule` | When, Do, Even when, Right | Applies, Check, Proof | a constraint on what the agent writes |
+| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when | Applies, Check, Proof | choosing between paths |
+| `fact` | When, Value, Unknown | Applies, Check, Proof | a value the agent must state exactly |
 
 Required: `When` and `Applies`, plus `Do` (rule), `Decide` (decision) or `Value` (fact).
 
-**Structure is flat.** A label and its text are one paragraph; a long line may wrap. Only `Right`, `Wrong` and the paths of `Decide`
+A unit is its instruction and one example. The other labels are there for the case that needs
+them, not to fill in.
+
+**Structure is flat.** A label and its text are one paragraph; a long line may wrap. Only `Right` and the paths of `Decide`
 may be lists, and lists go one level deep, never more. If a rule needs two `Do`, it is two
 rules, or a `decision`.
 
@@ -134,14 +127,6 @@ Body:
   not (autonomous runs, "one option seems obvious").
 - **Right**: the smallest example that does it correctly, or a list of them. Each must pass
   every `Check` and type-check with the file's `Setup`.
-- **Wrong**: the mistakes an agent is likely to make, one list item each:
-  `- Doing:` the mistake, ideally as code, and below it, as a second paragraph of the same
-  item, `Because:` what breaks ("renders blank with no
-  error", not "it is better"). This is the only place where an anti-pattern may appear. Each
-  item becomes a wrong option in the generated tests, so more realistic mistakes mean
-  stricter tests. When the mistake can be shown as code, write `Doing` as code and nothing
-  else: the linter type-checks it, and warns when the wrong code compiles and no `Check` of the
-  unit matches it, because then nothing guards the rule.
 - **Value / Unknown** (fact): the value, and what to say about cases it does not cover, so the
   agent does not invent.
 
@@ -152,14 +137,12 @@ Footer:
   Drives the coverage report and test selection.
 - **Check**: `` forbid `/regex/` in <langs> ``, when the wrong pattern can be matched. The
   regex is written in a code span. The linter runs it over every fenced block in those
-  languages and over every inline code span of the skill, except `Wrong` items. It must match
-  the unit's own `Wrong` code, or the linter reports it as a regex that guards nothing. The
-  flags `g` and `y` are not allowed. Any kind of unit may have a `Check`.
-- **Source**: the code the unit describes, `path` or `path#symbol`, relative to the folder of
-  `skillunit.yaml` or to its `sourceRoot`. When that code changes, comments and formatting
-  aside, `skillunit sync` reports the unit until someone reads the change and accepts the unit
-  in `skillunit review`, and `skillunit test --changed` runs the tests that name it. With
-  `#symbol`, only that declaration counts; list every declaration the unit relies on.
+  languages and over every inline code span of the skill. The flags `g` and `y` are not
+  allowed. Any kind of unit may have a `Check`.
+- **Proof**: `none`, then the reason, when no test can prove the unit: advice, or a claim about
+  something the library's tests cannot see (`Proof: none, advice on which timeout to choose`).
+  A unit a test proves has no `Proof` label; its test carries `[skill:<id>]` in its title. See
+  [Proof](proof.md).
 
 ### Naming
 
@@ -193,7 +176,7 @@ Two more habits:
 
 - Every code example in the skill follows every unit. The linter enforces it with `Check`.
 - Agents copy examples before they read rules. An example that breaks a rule wins over the rule.
-- Keep anti-patterns out of examples. They belong in `Wrong`.
+- Keep anti-patterns out of the skill. An agent copies the code it sees.
 - Every example type-checks against the current API, on its own or with the file's `Setup`.
   A name that is not defined is a lint error, not a snippet the linter forgives.
 - A block that shows a signature or a shape, not code to copy, does not type-check. Put
@@ -269,7 +252,7 @@ A complete file, from [tinyfetch](https://github.com/Elecash/skillunit/blob/main
 ````md
 # tinyfetch — retries
 
-tinyfetch can repeat a request that failed with a network error or a 5xx status. It never retries a 4xx status or a timeout.
+tinyfetch can repeat a request that failed. Which failures it repeats, and how long it waits, are in the rules below.
 
 Setup:
 
@@ -279,16 +262,32 @@ import { tf } from "tinyfetch";
 
 ## Options
 
-| Option       | Type        | Default | Meaning                                              |
-| ------------ | ----------- | ------- | ---------------------------------------------------- |
-| `retry`      | number      | 0       | extra attempts after the first one                   |
-| `retryDelay` | number (ms) | 300     | wait before the first new attempt, doubled each time |
+| Option       | Type        | Meaning                                              |
+| ------------ | ----------- | ---------------------------------------------------- |
+| `retry`      | number      | extra attempts after the first one                   |
+| `retryDelay` | number (ms) | wait before the first new attempt, doubled each time |
 
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
 ```
 
 ## Rules
+
+### fact: retry-defaults
+
+When: a request sets no `retry`, or no `retryDelay`.
+
+Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, doubled before each next one.
+
+Applies: retries
+
+### fact: what-is-retried
+
+When: a request with `retry` fails.
+
+Value: a network error and a 5xx status are retried; a 4xx status and a timeout never are.
+
+Applies: retries, errors
 
 ### rule: retry-idempotent-only
 
@@ -302,15 +301,9 @@ Right:
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 })`
-
-  Because: a retried POST can create the same order twice.
-
 Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
 
-Source: src/retry.ts
+Proof: none, it is about what a server does with a repeated request, which the tests of tinyfetch cannot see
 ````

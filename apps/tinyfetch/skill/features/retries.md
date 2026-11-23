@@ -49,16 +49,8 @@ Right:
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 })`
-
-  Because: a retried POST can create the same order twice.
-
 Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Source: src/retry.ts
 
 Proof: none, it is about what a server does with a repeated request, which the tests of tinyfetch cannot see

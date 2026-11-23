@@ -52,22 +52,9 @@ await tf.get("https://api.example.com/users", {
 });
 ```
 
-Wrong:
-
-- Doing: building the query string by hand.
-
-  Because: a value with a space, `&` or `#` breaks the URL, and nothing encodes it.
-
-  ```ts
-  const page = 2;
-  await tf.get("https://api.example.com/users?page=" + page);
-  ```
-
 Applies: requests, query
 
 Check: forbid `/\.(get|head|post|put|patch|delete)(<[^>]*>)?\(\s*["'][^"']*\?/` in ts
-
-Source: src/request.ts
 
 ### rule: body-as-object
 
@@ -81,14 +68,6 @@ Right:
 await tf.post("https://api.example.com/users", { name: "Ada" });
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/users", JSON.stringify({ name: "Ada" }))`
-
-  Because: the server receives a JSON string instead of an object.
-
 Applies: requests, post, put, patch
 
 Check: forbid `/JSON\.stringify/` in ts
-
-Source: src/request.ts

@@ -21,14 +21,14 @@ describe('init', () => {
     const root = project();
     expect(init('skills/my-skill', root)).toEqual([
       'created skillunit.yaml and specs/example.yaml',
-      'next: run `skillunit lint`, then `skillunit review --accept-all` once you have read the units, and commit skillunit.lock',
+      'next: run `skillunit lint`, then `skillunit test --dry-run`',
     ]);
     expect(existsSync(join(root, 'specs', 'example.yaml'))).toBe(true);
     expect(existsSync(join(root, 'skills', 'my-skill', 'skillunit.yaml'))).toBe(false);
     const config = loadConfig(join(root, 'skillunit.yaml'));
     expect(config.skill).toBe(join(root, 'skills', 'my-skill'));
     expect(config.specs).toEqual([join(root, 'specs')]);
-    expect(config.sourceRoot).toBe(root);
+    expect(config.configDir).toBe(root);
     expect(config.examples?.ts).toBeUndefined();
   });
 

@@ -206,7 +206,7 @@ describe('lint as a whole', () => {
     const result = lint(root);
     expect(result.ok).toBe(false);
     expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain(
-      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof)',
+      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof)',
     );
   });
 
@@ -220,50 +220,5 @@ describe('lint as a whole', () => {
     const withSh = lint(root, { examples: { commands: { sh: 'sh -n {file}' }, cwd: root } });
     expect(withSh.summary.unchecked).toEqual({ py: 2 });
     expect(withSh.summary).toMatchObject({ commandChecked: 1, noCheck: 1 });
-  });
-});
-
-describe('Source paths', () => {
-  it('reports a Source that does not exist and an absolute one, and passes one that does', () => {
-    const root = skillDir({
-      'src/retry.ts': 'export const retry = 1;\n',
-      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/retry.ts#retry, src/gone.ts, /abs/path.ts\n',
-    });
-    const show = (p: Problem) => `${p.line} ${p.unit} ${p.rule}: ${p.message}`;
-    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
-    expect(problems.map(show)).toEqual([
-      expect.stringMatching(/^13 a source: `Source` src\/gone\.ts does not exist in /),
-      '13 a source: `Source` /abs/path.ts is an absolute path; write it relative to the folder of skillunit.yaml, or to its `sourceRoot`',
-    ]);
-    expect(lint(join(root, 'skill')).problems.filter((p) => p.rule === 'source')).toEqual([]);
-  });
-
-  it('reports a #symbol that is not a top-level declaration of its file', () => {
-    const root = skillDir({
-      'src/retry.ts': "export const retry = 1;\nexport { helper } from './helper';\n",
-      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/retry.ts#retry, src/retry.ts#gone, src/retry.ts#helper, src#retry\n',
-    });
-    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
-    expect(problems.map((p) => `${p.severity} ${p.line} ${p.unit}: ${p.message}`)).toEqual([
-      'error 13 a: `Source` src/retry.ts has no top-level declaration `gone`',
-      "error 13 a: `Source` src/retry.ts re-exports `helper` from ./helper and does not declare it; point `Source` at the file that declares it",
-      'error 13 a: `Source` src is a folder, so `#retry` names nothing',
-    ]);
-  });
-
-  it('warns about a code file under a Source that cannot be parsed, alone or in a folder', () => {
-    const root = skillDir({
-      'src/broken.ts': 'export function f( {\n',
-      'src/lib/ok.ts': 'export const ok = 1;\n',
-      'src/lib/bad.js': 'const = 1;\n',
-      'src/notes.md': 'not ( code\n',
-      'skill/SKILL.md': '# T\n\n## Rules\n\n### fact: a\n\nWhen: x\n\nValue: y\n\nApplies: z\n\nSource: src/broken.ts, src/lib, src/notes.md\n',
-    });
-    const problems = lint(join(root, 'skill'), { sourceRoot: root }).problems.filter((p) => p.rule === 'source');
-    expect(problems.map((p) => `${p.severity} ${p.line} ${p.unit}: ${p.message}`)).toEqual([
-      expect.stringMatching(/^warning 13 a: `Source` src\/broken\.ts could not be parsed, so a comment edit in it counts as a change until it parses: .+\(\d+:\d+\)$/),
-      expect.stringMatching(/^warning 13 a: `Source` src\/lib\/bad\.js could not be parsed, so a comment edit in it counts as a change until it parses: .+\(\d+:\d+\)$/),
-    ]);
-    expect(lint(join(root, 'skill'), { sourceRoot: root }).ok).toBe(true);
   });
 });

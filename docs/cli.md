@@ -1,17 +1,17 @@
 # Command line
 
 ```
-skillunit check [options]           lint, sync and test: what CI runs
-skillunit lint [skill] [options]    the skill's format, examples, Check rules, links and Source paths
-skillunit sync [skill] [options]    units whose code changed since skillunit.lock recorded their review
-skillunit review [options]          show what changed for each unit sync reports, and accept it
+skillunit check [options]           lint, proof and test: what CI runs
+skillunit lint [skill] [options]    the skill's format, examples, Check rules and links
+skillunit proof [skill] [options]   units the project's tests prove, from their JUnit report, and
+                                    whether each block flagged proof=<id> holds what its test produced
 skillunit test [specs...] [options] ask a decision model the spec tests about the skill
 skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
 ```
 
 `skillunit` with no command, or `--help`, prints the help.
 
-Run `skillunit init skills/my-skill` from the project root. It writes `skillunit.yaml`, with `skill: ./skills/my-skill`, and `specs/example.yaml` in that root, and turns on the type-check of TypeScript examples when a `tsconfig.json` is there. `Source:` paths and `skillunit.lock` start from the same folder, so every other command runs from it with no `--config`.
+Run `skillunit init skills/my-skill` from the project root. It writes `skillunit.yaml`, with `skill: ./skills/my-skill`, and `specs/example.yaml` in that root, and turns on the type-check of TypeScript examples when a `tsconfig.json` is there. Every other command runs from that folder with no `--config`.
 
 ## Options
 
@@ -26,59 +26,34 @@ Run `skillunit init skills/my-skill` from the project root. It writes `skillunit
 | `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
 | `--model <name>` | test, check | the model name of the `typesafe` adapter |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
+| `--write` | proof | copy each example a test produced into its block, then check |
 
 A command rejects an option it does not take.
 
-Sync compares `skillunit.lock` with the code and needs no git (see
-[the lock](configuration.md#skillunitlock)), so it takes no `--base`. Only `--changed` reads git
-history.
+Only `--changed` reads git history.
 
-`test --changed` runs the specs of the skill files that changed in git since `--base` (a spec
-runs when its `file`, or a file in its `with`, changed), and the tests whose `unit` names a unit
-that sync reports as stale or new. Without `--base` it uses the pull request's target branch in
+`test --changed` runs the specs of the skill files that changed in git since `--base`: a spec
+runs when its `file`, or a file in its `with`, changed. Without `--base` it uses the pull request's target branch in
 GitHub Actions, then the remote's default branch, then `origin/main`, `origin/master`, `main` or
 `master`, and compares HEAD with the merge base of that ref and HEAD, so commits that landed on
 the main branch after the branch point do not count.
 
-## Review
+## Proof
 
-`skillunit review` clears the units sync reports. It groups the units by source file,
-and for each file shows what changed, then each unit with its `file:line` and its text. Inside a
-git repository, what changed is the diff from the merge base with the default branch to the
-working tree, cut down to the declaration when the `Source` names a `#symbol`; outside git it is
-only the path. A new unit has no diff: review prints where its code is, `path:line`, to open in
-an editor. Every path is printed from the folder the command runs in, so an editor's terminal
-can open it. A unit whose text differs from the merge base is marked "edited in this change",
-as a hint; it still has to be accepted.
-
-At a terminal, review asks about each unit: `a` accept, `e` open the unit in `$VISUAL` or
-`$EDITOR` at its line and ask again, `s` skip, `A` accept the rest of this file, `q` quit and
-keep what was accepted. Without a terminal, or for an agent:
-
-| Option | Meaning |
-| --- | --- |
-| `--list` | print the units to review and what changed; change nothing. The default without a terminal |
-| `--json` | the same as `--list`, as JSON, with `path`, `line` and the line range of each `Source` |
-| `--accept <id>...` | accept these units: write the fingerprints of their code as it is now |
-| `--accept-all` | accept every unit to review |
-| `--prune` | drop lock entries for units, or `Source` values, that no longer exist |
-
-Review writes `skillunit.lock`, says what it changed, and never commits. On the first run there
-is no lock and every unit is new; `review --accept-all` writes it, which records every unit as
-reviewed, so read the units once before running it.
-
-For `e`, VS Code and its forks get `--goto file:line`, Sublime Text and Zed `file:line`,
-JetBrains IDEs `--line <n> file`, and other editors `+<n> file`. The editor command must wait
-until the file is closed, such as `code --wait`.
+`skillunit proof` reads the JUnit XML report of a test run, the examples the tests wrote and the
+regions of the test files, as `proof` in `skillunit.yaml` says, and reports the units the tests
+prove, the units with `Proof: none` and the pending ones. It fails on a tagged test that failed,
+on a block flagged `proof=<id>` that differs from what its test produced, and on the other
+cases [Proof](proof.md#what-it-reports) lists. `--write` copies every example into its block
+first. It never runs the tests: run them before it. Without a `proof` key it exits 2, and
+`check` skips the layer and says so.
 
 ## Exit codes
 
 - `0`: every check passed. Lint warnings and borderline verdicts do not fail a run.
-- `1`: a check failed. For `review --list`, and `review` without a terminal: some unit needs
-  review.
+- `1`: a check failed.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
-  for a run that needs one, a `tsc` that rejects the tsconfig, a lock this version cannot read,
-  or `review --accept` with an id that is not a unit.
+  for a run that needs one, a `tsc` that rejects the tsconfig, or `proof` with no `proof` key.
 
 Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
 an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so
@@ -88,12 +63,12 @@ a script that parses stdout gets an object rather than nothing.
 
 `--dry-run` sends nothing to the decision model. It checks that every spec loads, every
 `section` heading exists, and every request fits the model's limits, and prints the estimated
-size of each. It needs no key. `check --dry-run` also runs lint and sync in full.
+size of each. It needs no key. `check --dry-run` also runs lint and proof in full.
 
 ## Reporters
 
 - `table`, for people: one row per file or spec with counts, then each failure, the borderline
-  verdicts and the warnings, and a status line. Lint and sync findings read
+  verdicts and the warnings, and a status line. Lint and proof findings read
   `file:line  unit-id  what is wrong`, with `-` when the line belongs to no unit. A test failure
   shows the scenario, the question, the expected answer, the answer given and the probability of
   each option. Colour is on in a terminal, and off with `NO_COLOR`.
@@ -105,15 +80,17 @@ size of each. It needs no key. `check --dry-run` also runs lint and sync in full
   line on the `Setup` block that declares them. Clean files get no row, only their number. A
   message is cut after 400 characters. Paths start from the current folder, or from the skill
   folder, which the header names, when the skill is outside it.
-- `json`: the whole report as one object, `{ schema, command, ok, lint, sync, test }`, with only
-  the layers that ran. `schema` changes only when a field changes meaning or disappears.
+- `json`: the whole report as one object, `{ schema, command, ok, lint, proof, test }`,
+  with only the layers that ran; `proof` is `{ configured: false, ok: true }` when `check` ran
+  with no `proof` key. `schema` changes only when a field changes meaning or disappears.
   Each lint problem has `file`, `line`, `unit` when the line belongs to one, `severity`, `rule`
   and `message`, plus `code`, such as `TS2322`, and `example`, the line where the example
   starts, when the type-check found it. `lint.summary`
   counts the examples that went through the type-check (`typeChecked`) apart from those that did
   not parse (`notParsed`), and lists in `undeclared` every name that nothing declares, as
   `{ name, count }`, the most frequent first. The JSON keeps every finding, whole.
-- `junit`: JUnit XML, one suite per layer and one per spec, for CI systems that read it.
+- `junit`: JUnit XML, one suite per layer and one per spec, for CI systems that read it. The
+  proof suite has one case per unit, with its state as a property.
 - `github`: GitHub Actions annotations, so each finding shows on its file and line in the pull
   request; a notice with the names that nothing declares, when there are some; then the status
   line.

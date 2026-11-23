@@ -45,8 +45,6 @@ Unknown: tinyfetch has no separate connect timeout; say so instead of inventing 
 
 Applies: timeouts
 
-Source: src/timeout.ts
-
 ### rule: never-disable-timeout
 
 When: a request may take long, such as an upload or a report.
@@ -63,16 +61,8 @@ await tf.post(
 );
 ```
 
-Wrong:
-
-- Doing: `tf.post("https://api.example.com/uploads", { size: 1 }, { timeout: 0 })`
-
-  Because: `0` turns the timeout off, so a stalled connection hangs the caller forever.
-
 Applies: timeouts, uploads
 
 Check: forbid `/timeout:\s*0\b/` in ts
-
-Source: src/timeout.ts
 
 Proof: none, advice on which timeout to choose

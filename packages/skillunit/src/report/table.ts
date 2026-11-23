@@ -22,12 +22,12 @@ export function table(report: CheckReport, options: ReportOptions): string {
   const borderline: string[] = [];
   let codes = '';
 
-  /** Lint and sync findings keep the one-line form `file:line  unit-id  what is wrong`. */
+  /** Lint and proof findings keep the one-line form `file:line  unit-id  what is wrong`. */
   // A message of several lines, such as a command's output, goes on under the finding, indented.
   const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`];
 
   // ---------------------------------------------------------------- lint
-  const { lint, sync, test } = report;
+  const { lint, test } = report;
   if (lint) {
     out.push('', `${c.bold('Lint')}  ${c.dim(shown(lint.skill, options))}`);
     const rows = lint.files.map((file) => {
@@ -63,7 +63,6 @@ export function table(report: CheckReport, options: ReportOptions): string {
             .map(([lang, n]) => `${n} ${lang}`)
             .join(', ')}`
         : '',
-      s.wrongCode.unchecked ? `${s.wrongCode.unchecked} Wrong code not checked` : '',
       s.off.length ? `off: ${s.off.join(', ')}` : '',
     ].filter(Boolean);
     out.push(c.dim(`  ${notes.join(' · ')}`));
@@ -72,32 +71,6 @@ export function table(report: CheckReport, options: ReportOptions): string {
     for (const lines of byFile(lint.problems.filter((p) => p.severity === 'error'), line)) failures.push([lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
     for (const lines of byFile(lint.problems.filter((p) => p.severity === 'warning'), line)) warnings.push(...lines);
     codes = codeCounts(lint.problems);
-  }
-
-  // ---------------------------------------------------------------- sync
-  if (sync) {
-    out.push('', `${c.bold('Sync')}  ${c.dim(sync.lock.found ? shown(sync.lock.path, options) : `no ${shown(sync.lock.path, options)}`)}`);
-    const files = [...new Set(sync.units.map((u) => u.file))];
-    const w = Math.max(24, ...files.map((f) => f.length)) + 2;
-    if (files.length) {
-      out.push(c.dim(`    ${pad('FILE', w)}${padStart('STALE', 7)}${padStart('NEW', 6)}${padStart('IN SYNC', 9)}`));
-      for (const file of files) {
-        const mine = sync.units.filter((u) => u.file === file);
-        const n = (state: string) => mine.filter((u) => u.state === state).length;
-        const state = n('stale') || n('new') ? 'fail' : 'ok';
-        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('stale')), 7)}${padStart(String(n('new')), 6)}${padStart(String(n('in-sync')), 9)}`);
-      }
-    }
-    const s = sync.summary;
-    const notes = [
-      `${plural(s.withSource, 'unit')} with a Source${s.withSource ? `: ${s.inSync} in sync, ${s.stale} stale, ${s.new} new` : ''}`,
-      s.orphans ? `${s.orphans} orphan ${s.orphans === 1 ? 'entry' : 'entries'} in the lock` : '',
-    ].filter(Boolean);
-    out.push(c.dim(`  ${notes.join(' · ')}`));
-    for (const p of sync.problems) {
-      if (p.severity === 'error') failures.push(problemBlock(sync.skill, p));
-      else warnings.push(`${where(sync.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
-    }
   }
 
   // ---------------------------------------------------------------- proof

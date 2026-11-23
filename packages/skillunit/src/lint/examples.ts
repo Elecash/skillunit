@@ -1,4 +1,4 @@
-/** Helpers shared by the lint rules that look at code: whose a fence is, its `Setup`, `Wrong` code. */
+/** Helpers shared by the lint rules that look at code: whose a fence is, and its `Setup`. */
 import type { Fence, FenceOwner, ParsedFile, ParsedSkill, Unit } from '../units/index.js';
 
 /** The unit a fence belongs to, if any. */
@@ -64,38 +64,6 @@ export function setupFor(skill: ParsedSkill, file: ParsedFile, lang: string): Se
 /** The languages that have a `Setup` for `file`, its own or one of a `SKILL.md` above it. */
 export function setupLanguages(skill: ParsedSkill, file: ParsedFile): string[] {
   return [...new Set([file, ...skillIndexesOf(skill, file)].flatMap((f) => Object.keys(f.setup)))];
-}
-
-/** Code of a `Wrong` item: its `Doing` when that is one code span, or a fence inside the item. */
-export interface WrongCode {
-  file: ParsedFile;
-  unit: Unit;
-  item: number;
-  kind: 'inline' | 'fence';
-  code: string;
-  /** Markdown line of the code's first line. */
-  line: number;
-  /** null when the language cannot be told: a span in a unit with no `Right` fence, in a file with no single `Setup`. */
-  lang: string | null;
-  fence?: Fence;
-}
-
-export function collectWrongCode(skill: ParsedSkill): WrongCode[] {
-  const out: WrongCode[] = [];
-  for (const file of skill.files) {
-    for (const unit of file.units) {
-      const right = unit.right.find((r): r is Fence => r.type === 'fence');
-      const setups = setupLanguages(skill, file);
-      const spanLang = right?.lang || (setups.length === 1 ? setups[0]! : null);
-      unit.wrong.forEach((w, item) => {
-        if (w.code) out.push({ file, unit, item, kind: 'inline', code: w.code.code, line: w.code.line, lang: spanLang });
-        for (const fence of w.fences) {
-          out.push({ file, unit, item, kind: 'fence', code: fence.code, line: fence.line + 1, lang: fence.lang || null, fence });
-        }
-      });
-    }
-  }
-  return out;
 }
 
 /** The text of a match, shortened for a message. */

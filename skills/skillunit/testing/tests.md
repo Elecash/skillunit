@@ -34,15 +34,7 @@ Right:
 scenario: Production is down after a deploy, and the user has a fix ready.
 ```
 
-Wrong:
-
-- Doing: `scenario: Production is down after a deploy; a rollback takes a minute and a fix takes ten.`
-
-  Because: the reason gives the answer away, so the test passes with the rule deleted.
-
 Applies: tests, scenario
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -58,15 +50,7 @@ Right:
 question: What should the agent do first?
 ```
 
-Wrong:
-
-- Doing: `question: Does the skill mention rollbacks?`
-
-  Because: a question about the text passes even when the text no longer leads to the action.
-
 Applies: tests, question
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -76,19 +60,7 @@ When: the agent chooses between a choice test and a yes/no test.
 
 Do: write a choice test, and keep yes/no for a decision with exactly two outcomes that common sense would get wrong.
 
-Wrong:
-
-- Doing: a yes/no test for "may the agent commit the API key?".
-
-  Because: a yes/no test has no `none`, so common sense answers it and the test passes with the rule deleted.
-
-- Doing: a yes/no test for a choice among four commands.
-
-  Because: the reader can only say yes or no to one of them, and the others are never tested.
-
 Applies: tests, options
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -110,15 +82,7 @@ Right:
   expect: retry
 ```
 
-Wrong:
-
-- Doing: testing only the case the rule forbids.
-
-  Because: caution is common sense, so that test still passes when the rule is weakened; the allowed case is the one that fails.
-
 Applies: tests, coverage
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -128,15 +92,7 @@ When: the skill leaves out a task close to the ones it covers.
 
 Do: write one test about that task with options an agent might stretch the skill to, and expect `none`.
 
-Wrong:
-
-- Doing: testing only what the skill covers.
-
-  Because: nothing then catches a reader, or an agent, that stretches a rule to a case it never mentions.
-
 Applies: tests, coverage
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -154,15 +110,7 @@ options:
   loose: "Quote the command in backticks, and ask which command the skill gives"
 ```
 
-Wrong:
-
-- Doing: an expected option that leaves out part of what the skill says on the point.
-
-  Because: the reader gives the missing part to `none`, and the test fails or passes weakly on a skill that is right.
-
 Applies: tests, options
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -172,15 +120,7 @@ When: the agent writes the wrong options of a test.
 
 Do: use the answers an agent would give if the rule were missing, such as the shortcut, the default, or what the user literally asked for.
 
-Wrong:
-
-- Doing: a wrong option nobody would pick, such as "roll back the branch" next to "deploy only a preview".
-
-  Because: the right answer then wins by elimination, with or without the rule.
-
 Applies: tests, options
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -190,15 +130,7 @@ When: the agent wants an option that means "other", "none of these" or "the skil
 
 Do: leave it out: SkillUnit adds `none` to every choice test.
 
-Wrong:
-
-- Doing: `none: The skill does not say` under `options`
-
-  Because: a spec that defines `none` does not load, and an option like "other" competes with `none` for the same answer.
-
 Applies: tests, options
-
-Source: src/test/spec.ts
 
 ### rule: expect-none-only-for-silence
 
@@ -206,15 +138,7 @@ When: the agent sets `expect` and no option matches what the skill says.
 
 Do: add an option that says what the skill says, and expect it; expect `none` only where the skill should be silent.
 
-Wrong:
-
-- Doing: expecting `none` because the options miss the skill's answer.
-
-  Because: that test also passes when the rule is deleted: the reader answers `none` because the skill is then silent.
-
 Applies: tests, options
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -224,15 +148,7 @@ When: a test checks a value whose spelling matters, such as a command, a file na
 
 Do: quote the value in backticks in the options, and ask for it "exactly as written".
 
-Wrong:
-
-- Doing: asking "which command does the skill give?" for a command that must match.
-
-  Because: the reader compares meaning, so a renamed command still passes.
-
 Applies: tests, options
-
-Source: src/test/reader.ts
 
 Proof: none, advice on writing a test
 
@@ -242,15 +158,7 @@ When: the agent names the options of a test.
 
 Do: label each option with a short lowercase word or two (`stop`, `no-retry`), and put the meaning in its description.
 
-Wrong:
-
-- Doing: labels `a`, `b` and `c`, or a whole sentence as the label.
-
-  Because: the report shows labels, and a reader of the report cannot tell `b` from `c`.
-
 Applies: tests, options
-
-Source: src/test/spec.ts
 
 Proof: none, advice on writing a test
 
@@ -266,12 +174,4 @@ Right:
 cast: "Cast the error to `{ status: number }`"
 ```
 
-Wrong:
-
-- Doing: `cast: Cast the error to { status: number }` with no quotes.
-
-  Because: YAML reads the inner `: ` as a mapping, and the spec does not load.
-
 Applies: tests, yaml
-
-Source: src/test/spec.ts

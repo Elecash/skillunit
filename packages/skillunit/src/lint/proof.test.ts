@@ -115,12 +115,12 @@ Applies: a
   });
 
   it('places Proof in the footer for the structure rules, on every kind', () => {
-    const fact = `### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nSource: src/a.ts\n\nProof: none\n`;
+    const fact = `### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nCheck: forbid \`/x/\` in ts\n\nProof: none\n`;
     expect(structure(skillOf({ 'a.md': file(fact, rule('r', 'ts', '\nProof: none\n')) }))).toEqual([]);
     const early = `### fact: f\n\nWhen: a.\n\nProof: none\n\nValue: 1.\n\nApplies: a\n`;
     expect(structure(skillOf({ 'a.md': file(early) })).map((p) => p.message)).toEqual([
-      '`Value` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof',
-      '`Applies` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof',
+      '`Value` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof',
+      '`Applies` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof',
     ]);
     expect(structure(skillOf({ 'a.md': file(rule('r', 'ts', '\nProof:\n')) })).map((p) => p.message)).toEqual(['`Proof` is empty']);
   });

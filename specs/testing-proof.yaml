@@ -1,0 +1,52 @@
+file: testing/proof.md
+
+tests:
+  - id: tag-the-test
+    unit: tag-the-test-that-asserts-it
+    scenario: The skill says requests time out after 10 seconds by default, and the project has a test that asserts the default timeout is 10,000 ms.
+    question: How should the agent tie the unit to that test?
+    options:
+      tag: Put `[skill:<unit id>]` in the title of that test
+      comment: Name the test file in a sentence of the unit
+      proof-none: "Add `Proof: none` to the unit"
+    expect: tag
+
+  - id: example-is-a-value
+    unit: region-or-file
+    scenario: A unit's example is the JSON configuration that a TypeScript test builds and checks.
+    question: How should the test hand that example to the skill?
+    options:
+      file: Write it with `skillExample(id, value)` and flag the block `proof=<id>`
+      region: Put the JSON between `#region` and `#endregion` comments in the test
+      paste: Paste the JSON into the skill by hand after the test passes
+    expect: file
+
+  - id: block-differs
+    unit: write-blocks-from-tests
+    scenario: "`npx skillunit proof` reports that a block flagged `proof=query-in-options` differs from the region of its test."
+    question: What should the agent do?
+    options:
+      write: Run the tests, then `npx skillunit proof --write`
+      edit: Edit the block by hand until it matches the region
+      unflag: Remove `proof=` from the block
+    expect: write
+
+  - id: advice-unit
+    unit: proof-none-when-no-test-can
+    scenario: A unit advises using one client per API. No test of the library can check that, and the project has a test of how a client is created.
+    question: What should the unit get?
+    options:
+      proof-none: "`Proof: none` with the reason"
+      tag: The tag of the test of how a client is created
+      nothing: Nothing, so it stays pending
+    expect: proof-none
+
+  - id: test-fails
+    unit: fix-the-unit-when-its-test-fails
+    scenario: The team raised the default retry delay from 300 to 500 ms on purpose, and the test tagged `[skill:retry-defaults]` now fails.
+    question: What should the agent do?
+    options:
+      fix: Change what the unit says and what the test asserts to 500 ms
+      skip: Skip the test until someone updates the skill
+      untag: Remove the tag from the test
+    expect: fix

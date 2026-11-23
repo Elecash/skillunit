@@ -77,26 +77,6 @@ tests:
       ignore: Nothing; it passed
     expect: strengthen
 
-  - id: sync-review
-    unit: review-what-sync-reports
-    scenario: Sync reports a unit whose source file changed. The agent reads the change, and the unit still describes the code correctly.
-    question: What should the agent do?
-    options:
-      accept: Accept it in skillunit review, which records the review in the lock file
-      edit: Edit the unit anyway, so its text changes
-      ignore: Nothing; sync will stop reporting it on its own
-    expect: accept
-
-  - id: review-before-accept-all
-    unit: review-what-sync-reports
-    scenario: After a refactor, sync reports twelve stale units. The agent has not read the changes yet.
-    question: What should the agent do?
-    options:
-      read: Read each change next to its unit, then accept the units that still hold
-      all: Accept all twelve at once, so sync passes
-      lock: Edit the lock file by hand
-    expect: read
-
   - id: read-none
     scenario: A failing test shows `none 90%` in the distribution.
     question: What does that mean?

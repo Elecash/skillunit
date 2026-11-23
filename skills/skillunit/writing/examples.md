@@ -30,19 +30,7 @@ import { tf } from "tinyfetch";
 ```
 ````
 
-Wrong:
-
-- Doing: the same `import` at the top of every example.
-
-  Because: the agent reads the noise each time, and an example that forgets it fails to compile.
-
-- Doing: a `Setup` in a file that imports only what `SKILL.md`'s `Setup` does not.
-
-  Because: a file with its own `Setup` uses only that one, so the names `SKILL.md` declares are missing from its examples.
-
 Applies: examples, setup
-
-Source: src/lint/setup.ts, src/lint/examples.ts#setupFor
 
 ### rule: setup-per-version
 
@@ -50,15 +38,7 @@ When: a file shows code of another library or of an older version under a name t
 
 Do: give that file a `Setup` of its own that declares the names its examples need, or mark the "before" blocks `no-check`.
 
-Wrong:
-
-- Doing: leaving a migration guide under the `Setup` of `SKILL.md`, which types `redis` as the new client.
-
-  Because: lint checks the old code against the new types, and every finding it reports there is false.
-
 Applies: examples, setup
-
-Source: src/lint/examples.ts#setupFor
 
 ### rule: complete-examples
 
@@ -66,15 +46,7 @@ When: the agent writes an example.
 
 Do: make it compile on its own after the file's `Setup`: declare every name it uses, in the block or in `Setup`.
 
-Wrong:
-
-- Doing: an example that uses `user` or `api` without declaring it.
-
-  Because: lint reports an undefined name as an error; a snippet that only makes sense in the agent's head is one that goes stale unseen.
-
 Applies: examples
-
-Source: src/lint/tsc.ts
 
 ### rule: short-complete-examples
 
@@ -99,15 +71,7 @@ const order = await tf.post<Order>("https://api.example.com/orders", draft);
 ```
 ````
 
-Wrong:
-
-- Doing: three dots where the part left out would be.
-
-  Because: three dots do not parse, so lint reports the block, and marking it `no-check` leaves the rest of it unchecked.
-
 Applies: examples, setup
-
-Source: src/lint/tsc.ts
 
 Proof: none, advice on writing examples
 
@@ -125,31 +89,15 @@ Right:
 | `tf.get(path, options)` | the parsed body |
 ```
 
-Wrong:
-
-- Doing: a fenced `ts` block with a bare signature such as `get(path: string): Promise<T>`.
-
-  Because: it does not compile, so lint reports it, and an agent may copy it as code.
-
 Applies: examples
-
-Source: src/lint/tsc.ts
 
 ### rule: language-on-every-example
 
-When: the agent writes a fenced block under `Right`, `Wrong` or a path of `Decide`.
+When: the agent writes a fenced block under `Right` or a path of `Decide`.
 
 Do: name its language after the opening fence, such as `ts`, `sh` or `yaml`.
 
-Wrong:
-
-- Doing: a fence with no language under `Right`.
-
-  Because: nothing can check a block whose language is unknown; lint reports it.
-
 Applies: examples
-
-Source: src/lint/structure.ts
 
 ### rule: no-check-rarely
 
@@ -159,14 +107,6 @@ Do: mark it `no-check` after the language (`ts no-check`), and only that block.
 
 Even when: many blocks fail after a change to the library; fix them, since that failure is what lint is for.
 
-Wrong:
-
-- Doing: marking blocks `no-check` because they stopped compiling.
-
-  Because: an unchecked block is the one that goes stale next, and the lint summary counts every one.
-
 Applies: examples
-
-Source: src/lint/lint.ts
 
 Proof: none, advice on writing examples

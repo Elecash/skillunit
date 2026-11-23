@@ -1,6 +1,6 @@
 # CI
 
-`skillunit check` runs the three layers and exits 1 when one fails. In GitHub Actions:
+`skillunit check` runs lint, proof and test, and exits 1 when one fails. In GitHub Actions:
 
 ```yaml
 # .github/workflows/skill.yml
@@ -16,19 +16,21 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
+      # The tests write the JUnit report the proof layer reads; leave this out without `proof`.
+      - run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
       - run: npx skillunit check --dry-run --reporter github
       - run: npx skillunit check --reporter github
 ```
 
-- Sync compares the committed `skillunit.lock` with the code, so the default shallow clone is
-  enough. Only `check --changed` reads git history: with it, add `with: { fetch-depth: 0 }` to
-  the checkout step.
-- When sync fails, a unit's code changed since it was last reviewed, or a unit is new. The
-  author runs `skillunit review` on the branch, reads each change, and commits the lock with the
-  change.
+- The default shallow clone is enough. Only `check --changed` reads git history: with it, add
+  `with: { fetch-depth: 0 }` to the checkout step.
+- With `proof` in `skillunit.yaml`, run the tests with a JUnit reporter before `check`, and
+  empty the examples folder before they run. A failing test fails its own step first; `check`
+  then names the unit it proves. [Proof](proof.md#wiring-a-test-run) has the reporter for
+  Vitest, Jest and pytest.
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
-- The dry run needs no key. It runs lint and sync in full, and checks that every spec loads and
-  fits, so a renamed heading or a broken spec fails it before the model is asked.
+- The dry run needs no key. It runs lint and proof in full, and checks that every spec
+  loads and fits, so a renamed heading or a broken spec fails it before the model is asked.
 
 ## Pull requests from forks
 
@@ -54,4 +56,4 @@ At TypeSafe's price for Jev 1.14 on 2026-11-21, $0.042 per million input tokens 
 tokens free ([its models page](https://docs.typesafe.ai/models)), a run of tinyfetch costs
 about $0.0004 and a run of SkillUnit's own skill about $0.0012.
 
-Lint and sync make no request. `test --changed` sends only the specs a change touches.
+Lint and proof make no request. `test --changed` sends only the specs a change touches.

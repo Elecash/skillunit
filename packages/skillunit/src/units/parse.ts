@@ -25,7 +25,6 @@ import {
   type ParsedSkill,
   type ParseError,
   type ProofLabel,
-  type SourceRef,
   type Unit,
   type UnitKind,
 } from './types.js';
@@ -37,8 +36,6 @@ const LABEL = new RegExp(`^(${LABELS.join('|')}):(?:\\s+(.*)|\\s*)$`);
 /** A list item at the top level: up to one space of indentation, then `-`, `*` or `+`. */
 const LIST_ITEM = /^ ?[-*+]\s+(.*)$/;
 const NESTED_ITEM = /^\s{2,}[-*+]\s/;
-const DOING = /^Doing:\s*(.*)$/;
-const BECAUSE = /^Because:\s*(.*)$/;
 const DECIDE_PATH = /^\*\*([^*]+)\*\*\s+[—–-]\s+(.*)$/;
 const SETUP = /^Setup:\s*(.*)$/;
 /** Long language names, read as the short ones so the type-check and `Check … in ts` see them. */
@@ -162,14 +159,10 @@ export function codeSpans(line: string): { column: number; code: string; raw: st
 // ---------------------------------------------------------------- the parser
 
 /** The list item the parser is in, if any. `ignore` swallows the lines of a malformed item. */
-type Item = { kind: 'wrong'; index: number } | { kind: 'decide'; index: number } | { kind: 'right' } | { kind: 'ignore' };
+type Item = { kind: 'decide'; index: number } | { kind: 'right' } | { kind: 'ignore' };
 
 /** What the current paragraph belongs to: wrapped lines are joined to it. */
-type Para =
-  | { kind: 'label'; label: LabelLine }
-  | { kind: 'doing' | 'because' | 'decide'; index: number }
-  | { kind: 'right' }
-  | { kind: 'ignore' };
+type Para = { kind: 'label'; label: LabelLine } | { kind: 'decide'; index: number } | { kind: 'right' } | { kind: 'ignore' };
 
 const isFooter = (name: LabelName) => (FOOTER_LABELS as readonly string[]).includes(name);
 
@@ -198,7 +191,7 @@ class FileParser {
     // Frontmatter is blanked, not removed, so line numbers stay those of the file.
     const front = frontmatterLength(this.lines);
     for (let i = 0; i < front; i++) this.lines[i] = '';
-    this.result = { file, text, frontmatter: front, units: [], fences: [], inlineCode: [], setup: {}, wrongCode: [], headings: [], errors: [] };
+    this.result = { file, text, frontmatter: front, units: [], fences: [], inlineCode: [], setup: {}, headings: [], errors: [] };
   }
 
   parse(): ParsedFile {
@@ -258,11 +251,9 @@ class FileParser {
       labels: [],
       decide: [],
       right: [],
-      wrong: [],
       skipped: 0,
       applies: [],
       check: [],
-      source: [],
       proofs: [],
       text: '',
     };
@@ -290,21 +281,6 @@ class FileParser {
     u.text = this.lines.slice(u.line - 1, u.endLine).join('\n');
 
     for (const l of u.labels) this.applyLabel(u, l);
-
-    u.wrong.forEach((w, index) => {
-      const spans = codeSpans(w.doing);
-      const only = spans.length === 1 && spans[0]!.raw === w.doing ? spans[0]! : null;
-      if (!only) return;
-      w.code = {
-        type: 'inline',
-        file: this.file,
-        line: w.line,
-        column: Math.max(0, this.lines[w.line - 1]!.indexOf(only.raw)) + 1,
-        code: only.code,
-        owner: { kind: 'unit', unit: u.id, label: 'Wrong', item: index },
-      };
-      this.result.wrongCode.push({ unit: u.id, item: index, code: w.code });
-    });
     this.result.units.push(u);
     this.unit = null;
   }
@@ -333,9 +309,6 @@ class FileParser {
       case 'Applies':
         u.applies = splitList(l.value);
         break;
-      case 'Source':
-        u.source = splitList(l.value).map(parseSource);
-        break;
       case 'Proof':
         u.proof = parseProof(l.value, l.line);
         break;
@@ -351,7 +324,6 @@ class FileParser {
         break;
       }
       case 'Right':
-      case 'Wrong':
         break;
     }
   }
@@ -423,13 +395,6 @@ class FileParser {
       u.right.push(fence);
       return { kind: 'right', unit: u.id };
     }
-    if (this.label === 'Wrong') {
-      if (this.item?.kind !== 'wrong' || raw.indent < 2) {
-        return misplaced('a fenced block under `Wrong` goes inside a `- Doing:` item, indented');
-      }
-      u.wrong[this.item.index]!.fences.push(fence);
-      return { kind: 'wrong', unit: u.id, item: this.item.index };
-    }
     if (this.label === 'Decide') {
       if (this.item?.kind !== 'decide' || raw.indent < 2) {
         return misplaced('a fenced block under `Decide` goes inside a `- **path** — condition` item, indented');
@@ -439,7 +404,7 @@ class FileParser {
       return { kind: 'decide', unit: u.id, path: path.id };
     }
     const where = this.label ? `\`${this.label}\`` : 'the unit heading';
-    return misplaced(`fenced blocks go under \`Right\`, \`Wrong\` or \`Decide\`, not under ${where}`);
+    return misplaced(`fenced blocks go under \`Right\` or \`Decide\`, not under ${where}`);
   }
 
   // ---------------------------------------------------------------- lines inside a unit
@@ -483,11 +448,6 @@ class FileParser {
         this.para = { kind: 'ignore' };
         return;
       }
-      // An unindented `Because:` right after `Doing:` still belongs to the item (a lazy line).
-      if (!afterBlank && this.para?.kind === 'doing' && BECAUSE.test(text)) {
-        this.startBecause(i, text, line, true);
-        return;
-      }
       if (!afterBlank && this.para) {
         this.continuePara(i, line);
         return;
@@ -498,10 +458,6 @@ class FileParser {
     }
 
     // Indented: inside a list item, or the wrapped text of a label.
-    if (this.item?.kind === 'wrong' && BECAUSE.test(text)) {
-      this.startBecause(i, text, line, !afterBlank);
-      return;
-    }
     const label = (this.item && this.item.kind !== 'ignore') || indentedLabel ? LABEL.exec(text) : null;
     if (label) {
       const name = label[1] as LabelName;
@@ -520,14 +476,7 @@ class FileParser {
       this.unit!.right.push(...this.collectInline(i, line, { kind: 'unit', unit: this.unit!.id, label: 'Right' }));
       return;
     }
-    this.error(
-      i,
-      this.item?.kind === 'wrong'
-        ? 'a `Wrong` item holds a `Doing:` paragraph, a `Because:` paragraph and fenced blocks, nothing else'
-        : this.item?.kind === 'decide'
-          ? 'a `Decide` path holds its condition and fenced blocks, nothing else'
-          : 'indented text outside a list item',
-    );
+    this.error(i, this.item?.kind === 'decide' ? 'a `Decide` path holds its condition and fenced blocks, nothing else' : 'indented text outside a list item');
     this.para = { kind: 'ignore' };
   }
 
@@ -542,43 +491,13 @@ class FileParser {
     this.item = null;
     this.para = { kind: 'label', label };
 
-    if (name === 'Wrong' && label.value) {
-      this.error(i, '`Wrong:` takes a list of `- Doing:` items on the next lines, not text on the same line');
-    }
     if (name === 'Check') return; // the regex span is not an example
     const found = this.collectInline(i, line, { kind: 'unit', unit: u.id, label: name });
     if (name === 'Right') u.right.push(...found);
   }
 
-  private startBecause(i: number, text: string, line: string, joined: boolean) {
-    const item = this.item as { kind: 'wrong'; index: number };
-    const w = this.unit!.wrong[item.index]!;
-    if (w.becauseLine !== undefined) this.error(i, 'this `Wrong` item already has a `Because:` line');
-    w.because = BECAUSE.exec(text)![1]!.trim();
-    w.becauseLine = i + 1;
-    w.becauseJoined = joined;
-    this.para = { kind: 'because', index: item.index };
-    this.collectInline(i, line, { kind: 'unit', unit: this.unit!.id, label: 'Wrong', item: item.index });
-  }
-
   private onListItem(i: number, content: string, line: string) {
     const u = this.unit!;
-    if (this.label === 'Wrong') {
-      const doing = DOING.exec(content);
-      if (!doing) {
-        this.error(i, 'an item under `Wrong` starts with `Doing:`');
-        u.skipped++;
-        this.item = { kind: 'ignore' };
-        this.para = { kind: 'ignore' };
-        return;
-      }
-      u.wrong.push({ line: i + 1, doing: doing[1]!.trim(), because: '', becauseJoined: false, code: null, fences: [] });
-      const index = u.wrong.length - 1;
-      this.item = { kind: 'wrong', index };
-      this.para = { kind: 'doing', index };
-      this.collectInline(i, line, { kind: 'unit', unit: u.id, label: 'Wrong', item: index });
-      return;
-    }
     if (this.label === 'Decide') {
       const path = DECIDE_PATH.exec(content);
       if (!path) {
@@ -602,7 +521,7 @@ class FileParser {
       return;
     }
     const where = this.label ? `\`${this.label}\`` : 'the unit heading';
-    this.error(i, `only \`Right\`, \`Wrong\` and \`Decide\` take a list, not ${where}`);
+    this.error(i, `only \`Right\` and \`Decide\` take a list, not ${where}`);
     this.item = { kind: 'ignore' };
     this.para = { kind: 'ignore' };
   }
@@ -619,14 +538,6 @@ class FileParser {
         if (para.label.name === 'Check') return;
         const found = this.collectInline(i, line, { kind: 'unit', unit: u.id, label: para.label.name });
         if (para.label.name === 'Right') u.right.push(...found);
-        return;
-      }
-      case 'doing':
-      case 'because': {
-        const w = u.wrong[para.index]!;
-        if (para.kind === 'doing') w.doing = join(w.doing);
-        else w.because = join(w.because);
-        this.collectInline(i, line, { kind: 'unit', unit: u.id, label: 'Wrong', item: para.index });
         return;
       }
       case 'decide':
@@ -658,13 +569,6 @@ function splitList(value: string): string[] {
     .split(',')
     .map((s) => s.trim().replace(/^`(.*)`$/, '$1').trim())
     .filter(Boolean);
-}
-
-function parseSource(value: string): SourceRef {
-  const hash = value.indexOf('#');
-  if (hash < 0) return { path: value };
-  const symbol = value.slice(hash + 1).trim();
-  return symbol ? { path: value.slice(0, hash).trim(), symbol } : { path: value.slice(0, hash).trim() };
 }
 
 /** The value of the first `proof=` flag of a fence, with quotes around it taken off. */

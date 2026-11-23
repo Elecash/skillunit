@@ -10,6 +10,7 @@
     "dry-run-first": { "src/test/runner.ts": "e2602084a7ba5c88" },
     "dry-run-without-key": { "src/cli.ts": "3c0a0462e37847d2" },
     "expect-none-only-for-silence": { "src/test/reader.ts": "9f247f47a70ffd31" },
+    "fix-the-unit-when-its-test-fails": { "src/proof/layer.ts": "c8920298e246dbbf" },
     "fix-when-asked": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "id-names-the-instruction": { "src/lint/structure.ts": "356eddf32fcf5b98" },
     "index-every-file": { "src/lint/links.ts": "f98d5a8a5a7481ce" },
@@ -29,8 +30,10 @@
     "options-cover-the-rule": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "pick-a-kind": { "src/lint/structure.ts": "356eddf32fcf5b98" },
     "prefer-choice-tests": { "src/test/reader.ts": "9f247f47a70ffd31" },
+    "proof-none-when-no-test-can": { "src/lint/proof.ts": "1b5ea04a542515c0" },
     "prove-on-a-copy": { "src/test/runner.ts": "e2602084a7ba5c88" },
     "quote-yaml-values": { "src/test/spec.ts": "e374fbf6e29a1d09" },
+    "region-or-file": { "src/proof/layer.ts": "c8920298e246dbbf" },
     "report-dont-bend": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "review-what-sync-reports": { "src/review/review.ts": "7f468f51f09df6fc" },
     "rules-section-last": { "src/lint/structure.ts": "356eddf32fcf5b98" },
@@ -44,11 +47,13 @@
     "source-from-the-config-folder": { "src/lint/sources.ts": "53dd4f71e8f2b014" },
     "still-green-without-the-rule": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "strengthen-borderline-tests": { "src/report/table.ts": "e8cd52306aa6b4e6" },
+    "tag-the-test-that-asserts-it": { "src/proof/junit.ts#skillTags": "87ae2acb5e63e12c" },
     "tempting-wrong-options": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-rule-allows": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-skill-is-silent": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "which-command": { "src/cli.ts": "3c0a0462e37847d2" },
     "with-only-what-the-agent-reads": { "src/test/skill-text.ts": "5c2fa352ca73585c" },
+    "write-blocks-from-tests": { "src/proof/layer.ts": "c8920298e246dbbf" },
     "wrong-as-code": { "src/lint/lint.ts": "09becc6e689b0004" }
   }
 }

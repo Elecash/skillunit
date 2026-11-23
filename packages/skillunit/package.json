@@ -1,7 +1,7 @@
 {
   "name": "skillunit",
   "version": "0.0.0",
-  "description": "Checks that an agent skill still matches the code it describes: lint for its examples and format, sync against a lock file, and closed-question tests with a decision model.",
+  "description": "Checks that an agent skill still says what the code it describes does: lint for its examples and format, proof from the project's own tests, and closed-question tests with a decision model.",
   "license": "MIT",
   "author": "Raúl Jiménez",
   "homepage": "https://github.com/Elecash/skillunit#readme",

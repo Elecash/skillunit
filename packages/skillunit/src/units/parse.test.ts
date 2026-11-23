@@ -44,23 +44,11 @@ ${F}ts
 tf.get('/users', { retry: 3 });
 ${F}
 
-Wrong:
-
-- Doing: \`tf.post('/users', { name: 'Ada' }, { retry: 3 });\`
-
-  Because: a retried POST can create the same resource twice.
-
-- Doing: retrying a POST by hand in an interceptor that catches the error and calls \`tf.post\` again with the same body.
-
-  Because: same duplicate, and the retry is invisible in the call.
-
 Applies: retries, post
 
 Check: forbid \`/post\\([^)]*retry/\` in ts
 
 Check: forbid \`/retry:\\s*_?\\d+/\` in js
-
-Source: src/retry.ts
 `;
 
 /** A decision and a fact, one label per paragraph. */
@@ -84,15 +72,7 @@ Decide: which way to call.
 
 Even when: the second request is added later.
 
-Wrong:
-
-- Doing: a new client per request.
-
-  Because: settings drift apart between calls.
-
 Applies: clients
-
-Source: src/create.ts#create
 
 ### fact: default-timeout
 
@@ -103,8 +83,6 @@ Value: 10 seconds (\`timeout: 10_000\`).
 Unknown: say that tinyfetch has no per-host timeout; do not invent one.
 
 Applies: timeouts
-
-Source: src/timeout.ts
 `;
 
 /** The same kind of content with labels on consecutive lines, the older way to write a unit. */
@@ -117,14 +95,10 @@ Right:
 ${F}ts
 tf.get('/users', { retry: 3 });
 ${F}
-Wrong:
-- Doing: \`tf.post('/users', { name: 'Ada' }, { retry: 3 });\`
-  Because: a retried POST can create the same resource twice.
 
 Even when: the request looks safe to repeat.
 Applies: retries, post
 Check: forbid \`/post\\([^)]*retry/\` in ts
-Source: src/retry.ts
 
 ### decision: pick-a-client
 When: the code makes more than one request.
@@ -156,51 +130,27 @@ describe('rule', () => {
       kind: 'rule',
       file: 'features/retries.md',
       line: lineOf(RETRIES, '### rule'),
-      endLine: lineOf(RETRIES, 'Source:'),
+      endLine: lineOf(RETRIES, 'Check: forbid `/retry'),
       section: 'Rules',
       when: 'a request may be retried, which happens when the caller passes `retry` or sets it on a client created with `tf.create`.',
       do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',
     });
     expect(unit.text.split('\n')[0]).toBe('### rule: retry-idempotent-only');
-    expect(unit.text.split('\n').at(-1)).toBe('Source: src/retry.ts');
+    expect(unit.text.split('\n').at(-1)).toBe('Check: forbid `/retry:\\s*_?\\d+/` in js');
   });
 
-  it('reads Right as a fence and each Wrong item as doing and because', () => {
+  it('reads Right as a fence', () => {
     expect(unit.right).toHaveLength(1);
     expect(unit.right[0]).toMatchObject({ type: 'fence', lang: 'ts', code: "tf.get('/users', { retry: 3 });" });
-    expect(unit.wrong).toEqual([
-      expect.objectContaining({
-        line: lineOf(RETRIES, '- Doing: `tf.post'),
-        doing: "`tf.post('/users', { name: 'Ada' }, { retry: 3 });`",
-        because: 'a retried POST can create the same resource twice.',
-        becauseLine: lineOf(RETRIES, 'Because: a retried'),
-        becauseJoined: false,
-      }),
-      expect.objectContaining({
-        doing: 'retrying a POST by hand in an interceptor that catches the error and calls `tf.post` again with the same body.',
-        because: 'same duplicate, and the retry is invisible in the call.',
-        code: null,
-      }),
-    ]);
-  });
-
-  it('marks a Doing that is one code span as Wrong code', () => {
-    expect(unit.wrong[0]!.code).toMatchObject({
-      line: lineOf(RETRIES, '- Doing: `tf.post'),
-      column: 10,
-      code: "tf.post('/users', { name: 'Ada' }, { retry: 3 });",
-    });
-    expect(file.wrongCode).toEqual([{ unit: 'retry-idempotent-only', item: 0, code: unit.wrong[0]!.code }]);
   });
 
   it('reads the footer, with the Check regex from its code span', () => {
     expect(unit.applies).toEqual(['retries', 'post']);
-    expect(unit.source).toEqual([{ path: 'src/retry.ts' }]);
     expect(unit.check.map((c) => [c.regex.source, c.langs, c.line, c.column])).toEqual([
       ['post\\([^)]*retry', ['ts'], lineOf(RETRIES, 'Check: forbid `/post'), 15],
       ['retry:\\s*_?\\d+', ['js'], lineOf(RETRIES, 'Check: forbid `/retry'), 15],
     ]);
-    expect(unit.check[0]!.regex.test(unit.wrong[0]!.code!.code)).toBe(true);
+    expect(unit.check[0]!.regex.test("tf.post('/users', { name: 'Ada' }, { retry: 3 });")).toBe(true);
     expect(unit.check[0]!.regex.test("tf.get('/users', { retry: 3 });")).toBe(false);
   });
 
@@ -225,8 +175,7 @@ describe('decision and fact', () => {
       }),
       expect.objectContaining({ id: 'direct', fences: [] }),
     ]);
-    expect(decision!.wrong[0]).toMatchObject({ doing: 'a new client per request.', because: 'settings drift apart between calls.' });
-    expect(decision!.source).toEqual([{ path: 'src/create.ts', symbol: 'create' }]);
+    expect(decision!.applies).toEqual(['clients']);
   });
 
   it('reads Value and Unknown', () => {
@@ -252,11 +201,9 @@ describe('body and footer', () => {
       'When:body',
       'Do:body',
       'Right:body',
-      'Wrong:body',
       'Applies:footer',
       'Check:footer',
       'Check:footer',
-      'Source:footer',
     ]);
     const compact = parse('### rule: r\nWhen: x\nApplies: a\nDo: y\n').units[0]!;
     expect(compact.labels.map((l) => l.part)).toEqual(['body', 'footer', 'body']);
@@ -269,13 +216,10 @@ describe('body and footer', () => {
       'When:false',
       'Do:true',
       'Right:true',
-      'Wrong:false',
       'Even when:false',
       'Applies:true',
       'Check:true',
-      'Source:true',
     ]);
-    expect(unit.wrong[0]!.becauseJoined).toBe(true);
   });
 
   it('joins the wrapped lines of a label, indented or not', () => {
@@ -290,15 +234,14 @@ describe('body and footer', () => {
     expect(file.errors).toEqual([]);
   });
 
-  it('reads lists with backticks in Applies and several Source paths', () => {
-    const unit = parse('### rule: r\nApplies: `get`, post\nSource: src/a.ts, src/b.ts#B\n').units[0]!;
+  it('reads lists with backticks in Applies', () => {
+    const unit = parse('### rule: r\nApplies: `get`, post\n').units[0]!;
     expect(unit.applies).toEqual(['get', 'post']);
-    expect(unit.source).toEqual([{ path: 'src/a.ts' }, { path: 'src/b.ts', symbol: 'B' }]);
   });
 });
 
 describe('Prettier', () => {
-  /** What lint and sync read from a file: everything but line numbers and the code in fences. */
+  /** What lint reads from a file: everything but line numbers and the code in fences. */
   const shape = (text: string) => {
     const f = parse(text);
     return {
@@ -310,12 +253,10 @@ describe('Prettier', () => {
         kind: u.kind,
         section: u.section,
         labels: u.labels.map((l) => [l.name, l.value, l.part, l.joined]),
-        wrong: u.wrong.map((w) => [w.doing, w.because, w.becauseJoined, w.code?.code ?? null, w.fences.length]),
         decide: u.decide.map((d) => [d.id, d.condition, d.fences.length]),
         right: u.right.map((r) => (r.type === 'fence' ? ['fence', r.lang] : ['inline', r.code])),
         applies: u.applies,
         check: u.check.map((c) => [c.regex.source, c.regex.flags, c.langs]),
-        source: u.source,
       })),
     };
   };
@@ -361,11 +302,11 @@ describe('fenced code inside a unit', () => {
   });
 
   it('removes the indentation of a fence inside a list item', () => {
-    const file = parse(`### rule: r\nWrong:\n\n- Doing: a loop that retries.\n\n  Because: duplicates.\n\n  ${F}ts\n  for (;;) {\n    tf.post('/a');\n  }\n  ${F}\n\nApplies: a\n`);
+    const file = parse(`### decision: d\nDecide:\n\n- **loop** — a loop that retries.\n\n  ${F}ts\n  for (;;) {\n    tf.post('/a');\n  }\n  ${F}\n\nApplies: a\n`);
     expect(file.errors).toEqual([]);
-    const fence = file.units[0]!.wrong[0]!.fences[0]!;
+    const fence = file.units[0]!.decide[0]!.fences[0]!;
     expect(fence.code).toBe("for (;;) {\n  tf.post('/a');\n}");
-    expect(fence.owner).toEqual({ kind: 'wrong', unit: 'r', item: 0 });
+    expect(fence.owner).toEqual({ kind: 'decide', unit: 'd', path: 'loop' });
   });
 });
 
@@ -453,16 +394,6 @@ Right:
 
 + Several: \`tf.create({ baseUrl })\`
 
-Wrong:
-
-- Doing: \`tf.post('/a', {}, { retry: 1 })\`
-
-  Because: duplicates.
-
-  ${F}ts
-  tf.post('/b', {}, { retry: 1 });
-  ${F}
-
 Applies: a
 
 ### decision: d
@@ -482,12 +413,11 @@ Decide:
 Applies: a
 `);
 
-  it('assigns each fence to reference, right, wrong or decide', () => {
+  it('assigns each fence to reference, right or decide', () => {
     expect(file.errors).toEqual([]);
     expect(file.fences.map((f) => f.owner)).toEqual([
       { kind: 'reference' },
       { kind: 'right', unit: 'r' },
-      { kind: 'wrong', unit: 'r', item: 0 },
       { kind: 'decide', unit: 'd', path: 'shared' },
     ]);
   });
@@ -498,22 +428,13 @@ Applies: a
     expect((right[1] as InlineCode).code).toBe('tf.create({ baseUrl })');
   });
 
-  it('marks inline code in Wrong items, so Check can skip it', () => {
-    const wrong = file.inlineCode.filter((c) => c.owner.kind === 'unit' && c.owner.label === 'Wrong');
-    expect(wrong.map((c) => c.code)).toEqual(["tf.post('/a', {}, { retry: 1 })"]);
-    expect(wrong[0]!.owner).toEqual({ kind: 'unit', unit: 'r', label: 'Wrong', item: 0 });
-  });
-
   it('reports a fence under a label that takes no code', () => {
     const f = parse(`### rule: r\n\nDo: y\n\n${F}ts\nx\n${F}\n`);
     expect(f.fences[0]!.owner).toEqual({ kind: 'misplaced', unit: 'r', label: 'Do' });
-    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Wrong` or `Decide`, not under `Do`']);
+    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right` or `Decide`, not under `Do`']);
   });
 
-  it('reports a fence under Wrong or Decide that is not inside an item', () => {
-    expect(messages(`### rule: r\nWrong:\n${F}ts\nx\n${F}\n`)).toEqual([
-      '3: a fenced block under `Wrong` goes inside a `- Doing:` item, indented',
-    ]);
+  it('reports a fence under Decide that is not inside an item', () => {
     expect(messages(`### decision: d\nDecide:\n- **a** — x\n\n${F}ts\nx\n${F}\n`)).toEqual([
       '5: a fenced block under `Decide` goes inside a `- **path** — condition` item, indented',
     ]);
@@ -558,23 +479,18 @@ describe('labels and lists', () => {
   });
 
   it('reports a label indented into a list item, as a formatter leaves it, without joining it', () => {
-    const file = parse('### decision: d\nDecide:\n- **a** — x\n  Even when: y\n  Wrong:\n- Doing: z\n');
+    const file = parse('### decision: d\nDecide:\n- **a** — x\n  Even when: y\n  Right:\n- `z`\n');
     expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual([
       '4: `Even when:` is indented into the list item above it; start it at the beginning of the line, after a blank line',
-      '5: `Wrong:` is indented into the list item above it; start it at the beginning of the line, after a blank line',
+      '5: `Right:` is indented into the list item above it; start it at the beginning of the line, after a blank line',
     ]);
     expect(file.units[0]!.decide[0]!.condition).toBe('x');
-    expect(file.units[0]!.wrong[0]!.doing).toBe('z');
-  });
-
-  it('reads an unindented Because right after Doing as the item’s Because', () => {
-    const unit = parse('### rule: r\nWrong:\n- Doing: a\nBecause: b\n').units[0]!;
-    expect(unit.wrong[0]).toMatchObject({ doing: 'a', because: 'b', becauseJoined: true });
+    expect(file.units[0]!.right.map((r) => r.code)).toEqual(['z']);
   });
 
   it('joins a list item wrapped onto the next line', () => {
-    const unit = parse('### rule: r\nWrong:\n- Doing: a long\n  mistake.\n\n  Because: it\nbreaks.\n').units[0]!;
-    expect(unit.wrong[0]).toMatchObject({ doing: 'a long mistake.', because: 'it breaks.', code: null });
+    const unit = parse('### decision: d\nDecide:\n- **a** — a long\n  condition.\n\n- **b** — it\nbreaks.\n').units[0]!;
+    expect(unit.decide.map((p) => p.condition)).toEqual(['a long condition.', 'it breaks.']);
   });
 });
 
@@ -599,33 +515,20 @@ describe('malformed input', () => {
     expect(file.errors).toEqual([]);
   });
 
-  it('reports Wrong items that do not follow the format', () => {
-    expect(messages('### rule: r\nWrong: a POST with retry\n')).toEqual([
-      '2: `Wrong:` takes a list of `- Doing:` items on the next lines, not text on the same line',
-    ]);
-    expect(messages('### rule: r\nWrong:\n- a POST with retry\n\n  Because: it duplicates.\n')).toEqual([
-      '3: an item under `Wrong` starts with `Doing:`',
-    ]);
-    expect(messages('### rule: r\nWrong:\n- Doing: a\n\n  Because: b\n\n  Because: c\n')).toEqual([
-      '7: this `Wrong` item already has a `Because:` line',
-    ]);
-    expect(messages('### rule: r\nWrong:\n- Doing: a\n\n  Some more text.\n')).toEqual([
-      '5: a `Wrong` item holds a `Doing:` paragraph, a `Because:` paragraph and fenced blocks, nothing else',
-    ]);
-  });
-
   it('reports lists nested beyond one level, and lists under labels that take none', () => {
-    expect(messages('### rule: r\nWrong:\n- Doing: a\n  - Doing: b\n')).toEqual(['4: lists go one level deep']);
+    expect(messages('### decision: d\nDecide:\n- **a** — x\n  - **b** — y\n')).toEqual(['4: lists go one level deep']);
     expect(messages('### rule: r\nRight:\n  * `a`\n')).toEqual(['3: lists go one level deep']);
-    expect(messages('### rule: r\nDo: y\n\n- and also z\n')).toEqual(['4: only `Right`, `Wrong` and `Decide` take a list, not `Do`']);
+    expect(messages('### rule: r\nDo: y\n\n- and also z\n')).toEqual(['4: only `Right` and `Decide` take a list, not `Do`']);
     expect(messages('### decision: d\nDecide:\n- shared: when x\n')).toEqual(['3: a path under `Decide` reads `- **path** — condition`']);
   });
 
   it('reports a paragraph that is not a label, and labels that repeat', () => {
     expect(messages('### rule: r\n\nDo: y\n\nThis also matters.\n')).toEqual([
-      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof)',
+      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof)',
     ]);
     expect(messages('### rule: r\nWhy: old label\n')[0]).toMatch(/^2: this paragraph is not a label/);
+    expect(messages('### rule: r\n\nWrong: old label\n')[0]).toMatch(/^3: this paragraph is not a label/);
+    expect(messages('### rule: r\n\nSource: src/a.ts\n')[0]).toMatch(/^3: this paragraph is not a label/);
     expect(messages('### rule: r\n\n  indented\n')).toEqual(['3: indented text outside a list item']);
     expect(messages('### rule: r\nDo: a\n\nDo: b\n')).toEqual(['4: `Do` appears twice in this unit']);
   });
@@ -638,7 +541,8 @@ describe('malformed input', () => {
   it('reads Windows line endings', () => {
     const file = parse(RETRIES.replace(/\n/g, '\r\n'));
     expect(file.errors).toEqual([]);
-    expect(file.units[0]!.wrong[0]!.code!.code).toBe("tf.post('/users', { name: 'Ada' }, { retry: 3 });");
+    expect(file.units[0]!.right[0]).toMatchObject({ code: "tf.get('/users', { retry: 3 });" });
+    expect(file.units[0]!.endLine).toBe(lineOf(RETRIES, 'Check: forbid `/retry'));
   });
 });
 
@@ -677,14 +581,6 @@ describe('parseSkill', () => {
 });
 
 describe('skipped items', () => {
-  it('skips a fence inside a malformed Wrong item, with one error for the item', () => {
-    const file = parse(`### rule: r\n\nWrong:\n\n- a POST with retry\n\n  ${F}ts\n  tf.post('/a', {}, { retry: 1 });\n  ${F}\n\nApplies: a\n`);
-    expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual(['5: an item under `Wrong` starts with `Doing:`']);
-    expect(file.fences.map((f) => f.owner)).toEqual([{ kind: 'skipped', unit: 'r' }]);
-    expect(file.units[0]).toMatchObject({ wrong: [], skipped: 1 });
-    expect(file.inlineCode).toEqual([]);
-  });
-
   it('skips a fence inside a malformed Decide path', () => {
     const file = parse(`### decision: d\n\nDecide:\n\n- shared: when x\n\n  ${F}ts\n  const a = 1;\n  ${F}\n\nApplies: a\n`);
     expect(file.errors.map((e) => e.line)).toEqual([5]);
@@ -750,16 +646,6 @@ Decide:
   tf.get('/b');
   ${F}
 
-Wrong:
-
-- Doing: one client per request.
-
-  Because: it repeats the base URL.
-
-  ${F}ts proof=pick-a-client.wrong
-  tf.create({}).get('/a');
-  ${F}
-
 Applies: clients
 
 Proof: none, a recommendation
@@ -779,7 +665,6 @@ Proof: none, a recommendation
     expect(decision!.proofs.map((f) => [f.proof, f.owner])).toEqual([
       ['pick-a-client.shared', { kind: 'decide', unit: 'pick-a-client', path: 'shared' }],
       ['pick-a-client.direct', { kind: 'decide', unit: 'pick-a-client', path: 'direct' }],
-      ['pick-a-client.wrong', { kind: 'wrong', unit: 'pick-a-client', item: 0 }],
     ]);
     expect(file.fences.filter((f) => f.proof === undefined)).toHaveLength(1);
   });

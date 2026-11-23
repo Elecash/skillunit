@@ -1,8 +1,10 @@
 /**
  * `skillunit review`. At a terminal it asks about each unit to review. For agents and scripts:
  * `--list` prints the same content and changes nothing (`--json` for a machine), `--accept <id>…`
- * and `--accept-all` accept units, `--prune` drops orphan entries. With no flag and no terminal
- * it lists, and exits 1 when something needs review. It never commits.
+ * and `--accept-all` accept units, `--prune` drops orphan entries. Every review that writes the
+ * lock drops them too: an entry for a unit or a `Source` that is gone (a unit a test now proves
+ * drops its `Source`) describes nothing, and sync would warn about it for good. With no flag and
+ * no terminal it lists, and exits 1 when something needs review. It never commits.
  */
 import type { ReportOptions } from '../report/types.js';
 import { LockEdit } from './accept.js';
@@ -41,7 +43,7 @@ export async function runReview(options: ReviewOptions, args: ReviewArgs, io: Re
       if (error) errors.push(error);
       if (error?.startsWith('there is no unit')) unknown = true;
     }
-    if (args.prune) edit.prune(review.orphans);
+    edit.prune(review.orphans);
     const message = edit.write();
     if (args.json) {
       print(JSON.stringify({ schema: REVIEW_SCHEMA, lock: options.lock, written: edit.changed, accepted: edit.accepted, pruned: edit.pruned, errors }, null, 2));
@@ -57,12 +59,17 @@ export async function runReview(options: ReviewOptions, args: ReviewArgs, io: Re
     return review.summary.toReview ? 1 : 0;
   }
 
+  const edit = new LockEdit(options.lock, review.skill, options.sourceRoot);
   if (!review.summary.toReview) {
     print(listing(review, report));
+    if (review.orphans.length) {
+      edit.prune(review.orphans);
+      print(edit.write());
+    }
     return 0;
   }
-  const edit = new LockEdit(options.lock, review.skill, options.sourceRoot);
   const left = await prompt(review, edit, io, report);
+  edit.prune(review.orphans);
   print(`\n${edit.write()}`);
   return left.length ? 1 : 0;
 }

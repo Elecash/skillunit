@@ -1,7 +1,7 @@
 /**
  * JUnit XML, for CI systems that show test results from it. One suite per layer: lint has one
- * case per file, sync one per unit with a `Source` (and one per finding about the lock), proof one
- * per unit (and one per finding about no unit), and test one suite per spec with one case per test. Borderline verdicts carry a `borderline` property.
+ * case per file, proof one per unit (and one per finding about no unit), and test one suite per
+ * spec with one case per test. Borderline verdicts carry a `borderline` property.
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
@@ -41,24 +41,6 @@ export function junit(report: CheckReport, options: ReportOptions): string {
         return c;
       }),
     });
-  }
-
-  if (report.sync) {
-    const { sync } = report;
-    const cases: Case[] = sync.units.map((u) => {
-      const c: Case = { name: u.id, classname: `sync.${shown(join(sync.skill, u.file), options)}` };
-      const problem = sync.problems.find((p) => p.unit === u.id && p.severity === 'error');
-      if (problem) c.failure = line(sync.skill, problem);
-      return c;
-    });
-    // Findings about the lock: a missing lock fails; an orphan entry is a warning.
-    for (const p of sync.problems.filter((p) => p.file !== sync.units.find((u) => u.id === p.unit)?.file)) {
-      const c: Case = { name: p.unit ?? p.file, classname: `sync.${shown(join(sync.skill, p.file), options)}` };
-      if (p.severity === 'error') c.failure = line(sync.skill, p);
-      else c.out = `warning: ${line(sync.skill, p)}`;
-      cases.push(c);
-    }
-    suites.push({ name: 'sync', cases });
   }
 
   if (report.proof?.configured) {
