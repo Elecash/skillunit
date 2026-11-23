@@ -152,6 +152,7 @@ describe('runAll', () => {
     expect(report.ok).toBe(true);
     expect(report.specs[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8] });
     expect(report.specs[0]!.model).toBe('stub-1');
+    expect(report.provider).toBe('stub');
     expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 

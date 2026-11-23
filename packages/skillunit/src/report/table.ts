@@ -111,7 +111,8 @@ export function table(report: CheckReport, options: ReportOptions): string {
   // ---------------------------------------------------------------- test
   if (test) {
     const model = test.specs.find((s) => s.model)?.model;
-    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : (model ?? '');
+    const asked = [test.provider, model].filter(Boolean).join(' · ');
+    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : asked;
     const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
     out.push('', `${c.bold('Test')}  ${c.dim(`${label}${since}`)}`);
     const names = test.specs.map((s) => shown(s.spec, options));

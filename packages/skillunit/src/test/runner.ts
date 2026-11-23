@@ -32,6 +32,8 @@ export interface SpecReport {
 export interface Report {
   ok: boolean;
   skill: string;
+  /** The provider asked: the `id` of the decision model. */
+  provider?: string;
   dryRun: boolean;
   /** What the verdicts were judged with. */
   thresholds: Thresholds;
@@ -77,7 +79,7 @@ export async function runAll(config: Config, model: DecisionModel, options: RunO
     summary.usage.output_tokens += s.usage.output_tokens;
   }
   const ok = specs.every((s) => !s.error && s.verdicts.every((v) => v.pass));
-  return { ok, skill: config.skill, dryRun, thresholds: { ...config.thresholds }, specs, summary };
+  return { ok, skill: config.skill, provider: model.id, dryRun, thresholds: { ...config.thresholds }, specs, summary };
 }
 
 /** Expands folders into the `.yaml` / `.yml` files they contain, sorted by name. */

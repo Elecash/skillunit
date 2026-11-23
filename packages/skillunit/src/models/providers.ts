@@ -23,6 +23,14 @@ export const PROVIDERS = {
       return typesafe(options.name ? { name: options.name } : {});
     },
   },
+  openai: {
+    defaultModel: 'gpt-6-luna',
+    env: ['OPENAI_API_KEY'],
+    async create(options) {
+      const { openai } = await import('./openai.js');
+      return openai(options.name ? { name: options.name } : {});
+    },
+  },
 } satisfies Record<string, Provider>;
 
 export type ProviderName = keyof typeof PROVIDERS;

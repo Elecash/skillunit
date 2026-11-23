@@ -76,12 +76,16 @@ describe('the decision model provider', () => {
       'skillunit: TYPESAFE_API_KEY is not set. Add it to the environment, or to a .env file next to skillunit.yaml or at the root of the repository, or use --dry-run.\n',
     );
     expect(inProject('test', '--dry-run').status).toBe(0);
+    const openai = inProject('test', '--provider', 'openai');
+    expect(openai.status).toBe(2);
+    expect(openai.stderr).toMatch(/^skillunit: OPENAI_API_KEY is not set\./);
+    expect(inProject('test', '--provider', 'openai', '--dry-run').status).toBe(0);
   });
 
   it('takes --provider on test and check only, and only a provider that ships', () => {
     const unknown = inProject('test', '--provider', 'mistral');
     expect(unknown.status).toBe(2);
-    expect(unknown.stderr).toBe('skillunit: --provider takes typesafe; any other provider goes in a model module\n');
+    expect(unknown.stderr).toBe('skillunit: --provider takes typesafe, openai; any other provider goes in a model module\n');
     expect(inProject('lint', '--provider', 'typesafe').stderr).toContain('lint does not take --provider');
   });
 

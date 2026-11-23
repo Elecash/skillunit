@@ -59,6 +59,9 @@
     "targets": {
       "build": {
         "inputs": ["production", "^production", "shipped"]
+      },
+      "contract": {
+        "cache": false
       }
     }
   },
@@ -66,6 +69,7 @@
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && node ../../tools/tsc.mjs -p tsconfig.build.json",
     "typecheck": "node ../../tools/tsc.mjs --noEmit",
     "test": "vitest run",
+    "contract": "vitest run --config vitest.contract.config.ts",
     "dev": "tsx src/cli.ts",
     "prepack": "node scripts/copy-shared-files.mjs",
     "prepublishOnly": "npm run build"
