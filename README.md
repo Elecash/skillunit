@@ -14,7 +14,7 @@ It checks a skill in three layers:
 
 What it costs to run:
 
-- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in about 0.2 seconds, however many tests it holds: 54 tests in 8 specs take about 1.5 seconds.
+- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in about 0.2 seconds, however many tests it holds: 57 tests in 8 specs take about 1.5 seconds.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 
@@ -31,17 +31,16 @@ npx skillunit init skills/my-skill
 npx skillunit lint
 ```
 
-Proof reads the JUnit report of the project's tests. Point `proof.reports` in `skillunit.yaml` at it, with `require: false` to start one unit at a time, run the tests, then proof. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) shows the reporter for Vitest, Jest and pytest.
+Proof reads the JUnit report of the project's tests. Point `proof.reports` in `skillunit.yaml` at it, run the tests, then `proof --write`, which writes `skillunit.lock` with the units the tests prove. Commit the lock. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) shows the reporter for Vitest, Jest and pytest.
 
 ```yaml
 proof:
   reports: ./reports/junit.xml
-  require: false
 ```
 
 ```sh
 npx vitest run --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
-npx skillunit proof
+npx skillunit proof --write
 ```
 
 SkillUnit ships a skill that teaches an agent to write a skill in units, to write its examples and specs, and to act on a report. Install it with [skills.sh](https://skills.sh):
@@ -89,8 +88,6 @@ await tf.get("https://api.example.com/users", { retry: 3 });
 Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Proof: none, it is about what a server does with a repeated request, which the tests of tinyfetch cannot see
 ````
 
 **A decision** is a choice between paths, each with the condition that selects it.
@@ -155,7 +152,7 @@ An example of the skill still passes `retryDelay`:
 
 ### Proof
 
-Proof reads the JUnit report of the project's test run; SkillUnit never runs the tests. A test proves a unit when its title carries `[skill:<unit id>]`. A unit no test can prove says why, with `Proof: none` and a reason, as the rule above does. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes the tags, the settings and how to wire Vitest, Jest and pytest.
+Proof reads the JUnit report of the project's test run; SkillUnit never runs the tests. A test proves a unit when its title carries `[skill:<unit id>]`, and `skillunit.lock` lists the units the tests prove, so a unit whose test is deleted or skipped fails too. A unit no test can prove, such as the rule above, which is about what a server does with a repeated request, stays unproved and is counted. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes the tags, the settings and how to wire Vitest, Jest and pytest.
 
 **The code changes, and a fact is now false.** tinyfetch's skill says a retry waits 300 ms, in the fact `retry-defaults`, and a test asserts it:
 

@@ -7,22 +7,18 @@ test that asserts what a unit says carries the unit's id in its title, and when 
 copies into the skill, so the example is code that ran.
 
 SkillUnit never runs the tests. It reads what a test run left behind: its JUnit XML report, the
-examples the tests wrote, and the regions of the test files.
+examples the tests wrote, and the regions of the test files. `skillunit.lock` remembers which
+units were proved, so a unit whose test is deleted or skipped fails instead of going quiet.
 
 ## The three states of a unit
 
 - **Proved**: a test whose title carries `[skill:<unit id>]` passed, and no test tagged for the
   unit failed.
-- **`Proof: none`**: the unit says no test can prove it, with the reason after `none`. Advice
-  ("raise the timeout of an upload") and claims about what the library cannot see (what a server
-  does with a repeated POST) are the usual cases.
-
-  ```md
-  Proof: none, advice on which timeout to choose
-  ```
-
-- **Pending**: neither. With `proof.require` on, the default, a pending unit is an error. With it
-  off, pending units are counted, so a skill can adopt proof one unit at a time.
+- **Failed**: a test tagged for the unit failed; or [the lock](#the-lock) lists the unit and no
+  tagged test passed, because its test was deleted, skipped or lost its tag.
+- **Unproved**: the lock does not list it, and no test is tagged for it. Advice ("raise the
+  timeout of an upload") and claims about what the library cannot see (what a server does with a
+  repeated POST) stay unproved. The report counts them, and the skill says nothing about proof.
 
 ## The tag
 
@@ -101,6 +97,43 @@ CommonJS cannot import it and writes the file itself, as tests in other language
 and its info string, and touches nothing else in the file. `skillunit proof` alone compares in
 memory and fails on a block that differs, so it needs no git and works before a commit.
 
+## The lock
+
+A tag says which units are proved today. It cannot say which were proved yesterday: when a test
+goes, its tag goes with it. `skillunit.lock`, next to `skillunit.yaml`, lists the ids of the
+proved units, and is committed with the skill.
+
+```json
+{
+  "version": 2,
+  "proved": [
+    "check-with-is-http-error",
+    "retry-defaults"
+  ]
+}
+```
+
+`skillunit proof --write` updates it after rewriting the blocks:
+
+- it adds every unit a test proves that the lock does not list yet;
+- it drops the ids no unit of the skill has any more, because the unit was deleted or renamed;
+- it never drops a unit that is still in the skill. A proof that is lost shows up as a line
+  someone removed on purpose, in the diff of the change that lost it.
+
+It says what it did, as `Updated skillunit.lock: added 2 units (a, b), dropped 1 (c).`, and
+writes nothing when nothing changed. After tagging a test, run the tests and
+`skillunit proof --write`, and commit the lock with the test.
+
+**To stop proving a unit**, take the tag off its test, or delete the test, then run
+`skillunit proof --forget <id>`. It takes several ids separated by commas, or the option more than
+once. It removes all of them or none: an id the lock does not list is an error, and nothing is
+written. It does not go with `--write`, which would add back a unit a test still proves. A
+forgotten unit that a test still proves fails the check that follows. Removing the line from
+`skillunit.lock` by hand does the same.
+
+The report has to come from the whole test run. A unit the lock lists and that a partial run did
+not reach fails as if its test were gone.
+
 ## Settings
 
 ```yaml
@@ -109,7 +142,6 @@ proof:
   examples: ./tmp/skill-proof          # where tests write examples (the default)
   sources: ["src/**/*.test.ts"]        # test files with regions; leave it out if there are none
   format: "npx --no-install prettier --write {file}"   # run on a skill file after writing it
-  require: true                        # a pending unit is an error (the default)
 ```
 
 Paths and globs start from the folder of `skillunit.yaml`, and the globs leave out
@@ -127,22 +159,29 @@ project's settings.
 
 - no report matches `proof.reports`;
 - a test tagged for a unit failed;
+- the lock lists a unit that no tagged test proves: every tagged test was skipped, or no test is
+  tagged for it. The message says which, and the two ways out: bring the test back, or
+  `skillunit proof --forget <id>` when the unit is no longer meant to be proved;
+- a test proves a unit that the lock does not list, or there is no lock and a test proves a unit.
+  The message says to run `skillunit proof --write`;
+- the lock lists an id that no unit of the skill has;
+- the lock cannot be read: broken JSON, merge conflict markers, or a version
+  this SkillUnit does not know;
 - every test tagged for a unit was skipped, or no test is tagged for it, and the unit has a
-  flagged block or `require` is on;
+  flagged block;
 - a tag names no unit of the skill;
 - a flagged block names another unit than its own;
 - a flagged block has no file and no region, or has both;
-- a unit says `Proof: none` and a test is tagged for it, or it has a flagged block;
 - a flagged block differs from what its file or region gives. The message shows the first line
-  that differs, and says to run `skillunit proof --write`;
-- `require` is on and a unit is pending.
+  that differs, and says to run `skillunit proof --write`.
 
-It warns about an example file or a region that no block uses, and about an example file older
-than the test run in the reports, which a test did not write this time.
+It warns about a unit the lock does not list whose tagged tests were all skipped, about an
+example file or a region that no block uses, and about an example file older than the test run
+in the reports, which a test did not write this time.
 
-Every reporter shows the units proved, with `Proof: none`, pending and failed, and the blocks
-that come from tests. `skillunit check` runs the layer after lint, `--dry-run` included: it needs
-no key.
+Every reporter shows the units proved, failed and unproved, the blocks that come from tests, and
+what `--write` or `--forget` did to the lock. `skillunit check` runs the layer after lint,
+`--dry-run` included: it needs no key.
 
 ## Wiring a test run
 

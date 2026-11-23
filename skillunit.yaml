@@ -8,9 +8,8 @@ examples:
   md: { command: "node tools/check-example.mjs md {file}" }
   yaml: { command: "node tools/check-example.mjs yaml {file}" }
   sh: { command: "sh -n {file}" }
-# Units proved by the package's tests: `npx nx test skillunit` writes the report. `require` is off,
-# so a unit that no test proves yet is counted, not an error.
+# Units proved by the package's tests: `npx nx test skillunit` writes the report, and
+# skillunit.lock lists the units they prove.
 proof:
   reports: ./packages/skillunit/reports/junit.xml
   sources: ["packages/skillunit/src/**/*.test.ts"]
-  require: false

@@ -2,7 +2,7 @@
 
 How to write one unit: its kind, its labels, and the footer the tools read.
 
-A unit is a level-3 heading, `### <kind>: <id>`, followed by labels. Each label is a paragraph: `Label:` and its text, which may wrap onto the next lines. The body (the labels the agent reads) comes first, then the footer (`Applies`, `Check`, `Proof`), which the tools read. Blank lines carry no meaning, so a formatter that adds or removes them changes nothing.
+A unit is a level-3 heading, `### <kind>: <id>`, followed by labels. Each label is a paragraph: `Label:` and its text, which may wrap onto the next lines. The body (the labels the agent reads) comes first, then the footer (`Applies`, `Check`), which the tools read. Blank lines carry no meaning, so a formatter that adds or removes them changes nothing.
 
 | Kind | Body | Required |
 | --- | --- | --- |
@@ -10,7 +10,7 @@ A unit is a level-3 heading, `### <kind>: <id>`, followed by labels. Each label 
 | `decision` | When, Decide (one `- **path** — condition` item per path), Even when | When, Decide, Applies |
 | `fact` | When, Value, Unknown | When, Value, Applies |
 
-Every kind takes the footer: `Applies` (the things the unit is about, comma-separated), `Check` (a regex no example may match) and `Proof` (`none` and a reason, when no test can prove the unit; see [testing/proof.md](../testing/proof.md)).
+Every kind takes the footer: `Applies` (the things the unit is about, comma-separated) and `Check` (a regex no example may match). Which units the project's tests prove is in the tests' titles and in `skillunit.lock`, not in the unit; see [testing/proof.md](../testing/proof.md).
 
 ````md
 ### rule: retry-idempotent-only
@@ -28,8 +28,6 @@ await tf.get("https://api.example.com/users", { retry: 3 });
 Applies: retries, post
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Proof: none, it is about what a server does with a repeated request
 ````
 
 Lint runs each `Check` over every fenced block in the languages it names and over every inline code span of the skill.
@@ -51,8 +49,6 @@ Decide: which kind of unit to write.
 Even when: a rule seems to need two `Do` lines; that is two rules, or a decision.
 
 Applies: units, kinds
-
-Proof: none, advice on choosing the kind of a unit
 
 ### rule: one-label-per-paragraph
 
@@ -84,7 +80,7 @@ Applies: units, labels, formatting
 
 When: the agent writes or edits a unit.
 
-Do: keep the labels in one order: `When`; `Do`, `Decide` or `Value`; `Unknown`; `Even when`; `Right`; then `Applies`, `Check`, `Proof`.
+Do: keep the labels in one order: `When`; `Do`, `Decide` or `Value`; `Unknown`; `Even when`; `Right`; then `Applies`, `Check`.
 
 Applies: units, labels
 

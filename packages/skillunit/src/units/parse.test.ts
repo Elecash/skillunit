@@ -526,9 +526,7 @@ describe('malformed input', () => {
     expect(messages('### rule: r\n\nDo: y\n\nThis also matters.\n')).toEqual([
       '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)',
     ]);
-    expect(messages('### rule: r\nWhy: old label\n')[0]).toMatch(/^2: this paragraph is not a label/);
-    expect(messages('### rule: r\n\nWrong: old label\n')[0]).toMatch(/^3: this paragraph is not a label/);
-    expect(messages('### rule: r\n\nSource: src/a.ts\n')[0]).toMatch(/^3: this paragraph is not a label/);
+    expect(messages('### rule: r\nWhy: a reason\n')[0]).toMatch(/^2: this paragraph is not a label/);
     expect(messages('### rule: r\n\n  indented\n')).toEqual(['3: indented text outside a list item']);
     expect(messages('### rule: r\nDo: a\n\nDo: b\n')).toEqual(['4: `Do` appears twice in this unit']);
   });

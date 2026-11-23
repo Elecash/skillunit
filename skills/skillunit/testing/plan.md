@@ -31,8 +31,6 @@ tests:
 
 Applies: specs, planning
 
-Proof: none, advice on planning specs
-
 ### rule: section-for-long-files
 
 When: the file under test is long, above about 3,000 characters.
@@ -43,8 +41,6 @@ Even when: the file is short; then one spec with no `section` covers it whole.
 
 Applies: specs, planning
 
-Proof: none, advice on planning specs
-
 ### rule: with-only-what-the-agent-reads
 
 When: a rule reaches the agent from more than one file, and a mistake costs a lot.
@@ -52,8 +48,6 @@ When: a rule reaches the agent from more than one file, and a mistake costs a lo
 Do: add a spec whose `with` lists the files the agent reads for the task its tests describe, and keep the spec without `with` too.
 
 Applies: specs, planning
-
-Proof: none, advice on planning specs
 
 ### rule: list-the-decisions-first
 
@@ -64,5 +58,3 @@ Do: list the decisions the file forces, the places where an agent that read it a
 Even when: the file looks small; a sentence that changes nothing an agent does gets no test.
 
 Applies: specs, planning
-
-Proof: none, advice on planning specs

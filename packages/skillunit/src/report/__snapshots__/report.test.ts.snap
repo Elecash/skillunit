@@ -388,7 +388,6 @@ exports[`reporters > the proof layer > json: proved, failed and unproved units, 
       "added": [],
       "dropped": [],
       "forgot": [],
-      "replaced": false,
       "written": false
     },
     "units": [

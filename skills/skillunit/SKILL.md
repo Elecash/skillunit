@@ -27,7 +27,7 @@ The settings live in `skillunit.yaml`, next to the skill or at the root of the p
 | Decide which specs a skill needs | [testing/plan.md](testing/plan.md) |
 | Write a test: scenario, question, options, the spec format | [testing/tests.md](testing/tests.md) |
 | Run the checks, read a report, act on a failure | [testing/results.md](testing/results.md) |
-| Prove a unit with a test of the code: the `[skill:<id>]` tag, an example a test produces, `Proof: none` | [testing/proof.md](testing/proof.md) |
+| Prove a unit with a test of the code: the `[skill:<id>]` tag, an example a test produces, `skillunit.lock` | [testing/proof.md](testing/proof.md) |
 
 ## Rules
 
@@ -44,8 +44,6 @@ npx skillunit init skills/my-skill
 ```
 
 Applies: setup
-
-Proof: none, advice on how to start
 
 ### rule: key-outside-the-repo
 
@@ -96,5 +94,3 @@ Decide: which layer to run.
 Even when: only one file changed; `check` is what CI runs, so it is the last command before handing over.
 
 Applies: commands
-
-Proof: none, advice on which command to run

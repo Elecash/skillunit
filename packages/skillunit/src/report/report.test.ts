@@ -240,7 +240,7 @@ describe('reporters', () => {
       skill,
       reports: ['../../reports/junit.xml'],
       write: false,
-      lock: { file: '../../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], replaced: false, written: false },
+      lock: { file: '../../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], written: false },
       units: [
         { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'proved', listed: true, tests: [{ report: '../../reports/junit.xml', line: 4, title: 'retries > only GET [skill:retry-idempotent-only]', status: 'passed' }], fences: [{ id: 'retry-idempotent-only', line: 31, from: 'region', differs: true, written: false }] },
         { id: 'retry-delay', file: 'features/retries.md', line: 40, state: 'failed', listed: true, tests: [{ report: '../../reports/junit.xml', line: 7, title: 'retries > delay [skill:retry-delay]', status: 'failed' }], fences: [] },
@@ -287,7 +287,6 @@ describe('reporters', () => {
       it('names each change', () => {
         const table = (lock: Partial<ProofResult['lock']>) => render(written(lock), 'table', options).split('\n').find((l) => l.includes('Updated'))?.trim();
         expect(table({ forgot: ['a', 'b'] })).toBe('Updated skillunit.lock: forgot 2 units (a, b).');
-        expect(table({ replaced: true, added: ['a'] })).toBe('Updated skillunit.lock: replaced the lock of sync, added 1 unit (a).');
         expect(table({})).toBe('Updated skillunit.lock: sorted the ids.');
         expect(table({ written: false, added: ['a'] })).toBeUndefined();
       });

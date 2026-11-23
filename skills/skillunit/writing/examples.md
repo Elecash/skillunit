@@ -73,8 +73,6 @@ const order = await tf.post<Order>("https://api.example.com/orders", draft);
 
 Applies: examples, setup
 
-Proof: none, advice on writing examples
-
 ### rule: signatures-in-tables
 
 When: the agent shows a signature or the shape of an object rather than code to copy.
@@ -108,5 +106,3 @@ Do: mark it `no-check` after the language (`ts no-check`), and only that block.
 Even when: many blocks fail after a change to the library; fix them, since that failure is what lint is for.
 
 Applies: examples
-
-Proof: none, advice on writing examples

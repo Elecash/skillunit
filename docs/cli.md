@@ -26,7 +26,8 @@ Run `skillunit init skills/my-skill` from the project root. It writes `skillunit
 | `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
 | `--model <name>` | test, check | the model name of the `typesafe` adapter |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
-| `--write` | proof | copy each example a test produced into its block, then check |
+| `--write` | proof | copy each example a test produced into its block, add the units the tests prove to `skillunit.lock`, then check |
+| `--forget <ids>` | proof | take these units off `skillunit.lock`, then check; ids separated by commas, or the option more than once |
 
 A command rejects an option it does not take.
 
@@ -41,19 +42,24 @@ the main branch after the branch point do not count.
 ## Proof
 
 `skillunit proof` reads the JUnit XML report of a test run, the examples the tests wrote and the
-regions of the test files, as `proof` in `skillunit.yaml` says, and reports the units the tests
-prove, the units with `Proof: none` and the pending ones. It fails on a tagged test that failed,
-on a block flagged `proof=<id>` that differs from what its test produced, and on the other
-cases [Proof](proof.md#what-it-reports) lists. `--write` copies every example into its block
-first. It never runs the tests: run them before it. Without a `proof` key it exits 2, and
-`check` skips the layer and says so.
+regions of the test files, as `proof` in `skillunit.yaml` says, and compares them with
+`skillunit.lock`. It reports the units proved, failed and unproved. It fails on a tagged test
+that failed, on a unit the lock lists and no test proves, on a proved unit the lock does not
+list, on a block flagged `proof=<id>` that differs from what its test produced, and on the other
+cases [Proof](proof.md#what-it-reports) lists. It never runs the tests: run them before it.
+Without a `proof` key it exits 2, and `check` skips the layer and says so.
+
+`--write` copies every example into its block and adds the units the tests prove to the lock.
+`--forget a,b` takes units off the lock, all of them or none, for units no longer meant to be
+proved. Both then run the check. Commit the lock with the change.
 
 ## Exit codes
 
 - `0`: every check passed. Lint warnings and borderline verdicts do not fail a run.
 - `1`: a check failed.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
-  for a run that needs one, a `tsc` that rejects the tsconfig, or `proof` with no `proof` key.
+  for a run that needs one, a `tsc` that rejects the tsconfig, `proof` with no `proof` key, or
+  `--forget` with `--write`.
 
 Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
 an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so

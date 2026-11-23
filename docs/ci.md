@@ -28,6 +28,9 @@ jobs:
   empty the examples folder before they run. A failing test fails its own step first; `check`
   then names the unit it proves. [Proof](proof.md#wiring-a-test-run) has the reporter for
   Vitest, Jest and pytest.
+- Commit `skillunit.lock` with the change that tags or untags a test: CI never writes it. A test
+  that proves a unit the lock does not list fails the check, and so does a unit the lock lists
+  that no test proves. Run every test in this step: a listed unit whose test a partial run left out fails.
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
 - The dry run needs no key. It runs lint and proof in full, and checks that every spec
   loads and fits, so a renamed heading or a broken spec fails it before the model is asked.
@@ -50,7 +53,7 @@ request carries the text under test once. Measured in November 2026:
 | Skill | Specs | Tests | Input tokens | Output tokens |
 | --- | --- | --- | --- | --- |
 | [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 | about 830 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 54 | about 28,800 | about 2,700 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 57 | about 29,600 | about 2,800 |
 
 At TypeSafe's price for Jev 1.14 on 2026-11-21, $0.042 per million input tokens with output
 tokens free ([its models page](https://docs.typesafe.ai/models)), a run of tinyfetch costs

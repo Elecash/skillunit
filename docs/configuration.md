@@ -26,7 +26,6 @@ proof:
   examples: ./tmp/skill-proof                # where tests write examples (the default)
   sources: ["src/**/*.test.ts"]              # test files with `#region skill:<id>` examples
   format: "npx --no-install prettier --write {file}"   # run on a skill file after writing it
-  require: true              # a unit no test proves and with no `Proof: none` is an error
 ```
 
 - `skill`: the folder with `SKILL.md`. `--skill` overrides it.
@@ -54,16 +53,15 @@ proof:
   `index`, `length`, `fence` and `proof`. `length` is the warning about a file above about 300 lines,
   the first to turn off on a skill someone else wrote; `fence` is the warning about a word after
   a fence's language that SkillUnit does not know; `proof` is about the marks of the proof layer
-  in the skill, a `proof=<id>` that names another unit or a `Proof:` that is not `none`. The
-  summary says which rules are off.
+  in the skill, such as a `proof=<id>` that names another unit. The summary says which rules are
+  off.
 - `proof`: the proof layer, which reads what the project's test run left. `reports` is required:
   the JUnit XML report, as a glob or a list. `examples` is the folder where tests write examples
   (default `./tmp/skill-proof`). `sources` are globs of the test files with
   `#region skill:<id>` examples. `format` is a command with `{file}`, run on each skill file
-  `skillunit proof --write` changes; the check compares the blocks as it leaves them. `require`
-  (default `true`) makes a unit that no test proves and that has no `Proof: none` an error; set
-  it to `false` to adopt proof one unit at a time. Globs start from the folder of this file and
-  leave out `node_modules`. [Proof](proof.md) has the details.
+  `skillunit proof --write` changes; the check compares the blocks as it leaves them. Globs
+  start from the folder of this file and leave out `node_modules`. [Proof](proof.md) has the
+  details.
 
 Any other key is an error.
 
@@ -74,12 +72,36 @@ skill folder holds only what an agent reads, which is what someone who installs 
 
 ```
 skillunit.yaml       skill: ./skills/skillunit, specs: ./specs, proof: { reports: ./packages/skillunit/reports/junit.xml }
+skillunit.lock       the units the package's tests prove
 specs/               the spec files
 skills/skillunit/    SKILL.md and the files it links to
 packages/skillunit/  the code the units describe, and the tests that prove them
 ```
 
 From the root, every command runs with no `--config`.
+
+## skillunit.lock
+
+The units the project's tests prove, written by `skillunit proof --write` and committed with the
+skill. It sits next to `skillunit.yaml`.
+
+```json
+{
+  "version": 2,
+  "proved": [
+    "check-with-is-http-error",
+    "retry-defaults"
+  ]
+}
+```
+
+The ids are sorted, one to a line, so a diff shows one unit per line. `--write` adds the units a
+test proves and drops ids no unit has, and never drops a unit that is still in the skill;
+`skillunit proof --forget <id>` takes a unit off. [Proof](proof.md#the-lock) has the details.
+
+A merge conflict in the lock is resolved by keeping both sides, then running
+`skillunit proof --write`, which sorts the ids and puts back a comma missing between the sides.
+It also reads a lock with the conflict markers still in it.
 
 ## The API key
 

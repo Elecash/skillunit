@@ -44,8 +44,6 @@ Even when: the two tasks share a few rules; the shared rule lives in the more sp
 
 Applies: files
 
-Proof: none, advice on laying out a skill
-
 ### rule: index-every-file
 
 When: the agent adds a file to a skill.
@@ -77,5 +75,3 @@ Do: write the instruction as a unit, and the exception inside its unit, under `E
 Even when: the exception is one short clause; the reader follows the most specific rule it finds, so an exception stated before the rule loses to it.
 
 Applies: files, units, exceptions
-
-Proof: none, advice on laying out a skill

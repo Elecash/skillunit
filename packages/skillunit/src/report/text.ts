@@ -76,7 +76,6 @@ export function lockChange(lock: LockReport, file: string): string | null {
   const parts = lock.forgot.length
     ? [`forgot ${plural(lock.forgot.length, 'unit')} ${ids(lock.forgot)}`]
     : [
-        lock.replaced ? 'replaced the lock of sync' : '',
         lock.added.length ? `added ${plural(lock.added.length, 'unit')} ${ids(lock.added)}` : '',
         lock.dropped.length ? `dropped ${lock.dropped.length} ${ids(lock.dropped)}` : '',
       ].filter(Boolean);

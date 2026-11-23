@@ -103,17 +103,17 @@ describe('skillunit.lock', () => {
     expect(lockOf(app)).not.toContain('body-as-object');
   });
 
-  it('the lock of 0.1.3: one error, and --write replaces it', () => {
-    const app = App.copy('lock-sync');
-    app.write('skillunit.lock', '{\n  "version": 1,\n  "units": {\n    "retry-defaults": { "src/retry.ts": "41d0c3e2b7a955c0" }\n  }\n}\n');
+  it('a merge conflict: one error, and --write keeps the units of both sides', () => {
+    const app = App.copy('lock-conflict');
+    const ids = lockOf(app);
+    const side = (list: string[]) => list.map((id, i) => `    ${JSON.stringify(id)}${i < list.length - 1 ? ',' : ''}`);
+    app.write('skillunit.lock', ['{', '  "version": 2,', '  "proved": [', '<<<<<<< HEAD', ...side(ids.slice(0, 5)), '=======', ...side(ids.slice(5)), '>>>>>>> topic', '  ]', '}', ''].join('\n'));
     app.test();
-    const check = app.run('proof');
-    expect(errors(check)).toEqual([
-      '../skillunit.lock: this `skillunit.lock` is the lock of `skillunit sync`, which this version no longer has; `skillunit proof --write` replaces it with the units the tests prove',
+    expect(errors(app.run('proof'))).toEqual([
+      '../skillunit.lock: `skillunit.lock` cannot be read: it has merge conflict markers. Run `skillunit proof --write`, which keeps the units of both sides',
     ]);
     const write = app.run('proof', '--write');
     expect(write.code).toBe(0);
-    expect(write.report.proof.lock).toMatchObject({ replaced: true, written: true });
-    expect(lockOf(app)).toHaveLength(9);
+    expect(lockOf(app)).toEqual(ids);
   });
 });

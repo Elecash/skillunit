@@ -18,7 +18,7 @@ jobs:
       # The tests write the JUnit reports the proof layer of `check` reads
       # (packages/skillunit/reports, apps/tinyfetch/reports).
       - run: npx nx run-many -t typecheck build test
-      # Needs no API key: lint, sync, proof, and the specs load, their headings exist and requests fit.
+      # Needs no API key: lint, proof, and the specs load, their headings exist and requests fit.
       - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
       - working-directory: apps/tinyfetch
         run: node ../../packages/skillunit/dist/cli.js check --dry-run --reporter github

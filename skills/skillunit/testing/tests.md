@@ -36,8 +36,6 @@ scenario: Production is down after a deploy, and the user has a fix ready.
 
 Applies: tests, scenario
 
-Proof: none, advice on writing a test
-
 ### rule: ask-about-an-action
 
 When: the agent writes the question of a test.
@@ -52,8 +50,6 @@ question: What should the agent do first?
 
 Applies: tests, question
 
-Proof: none, advice on writing a test
-
 ### rule: prefer-choice-tests
 
 When: the agent chooses between a choice test and a yes/no test.
@@ -61,8 +57,6 @@ When: the agent chooses between a choice test and a yes/no test.
 Do: write a choice test, and keep yes/no for a decision with exactly two outcomes that common sense would get wrong.
 
 Applies: tests, options
-
-Proof: none, advice on writing a test
 
 ### rule: test-where-the-rule-allows
 
@@ -84,8 +78,6 @@ Right:
 
 Applies: tests, coverage
 
-Proof: none, advice on writing a test
-
 ### rule: test-where-the-skill-is-silent
 
 When: the skill leaves out a task close to the ones it covers.
@@ -93,8 +85,6 @@ When: the skill leaves out a task close to the ones it covers.
 Do: write one test about that task with options an agent might stretch the skill to, and expect `none`.
 
 Applies: tests, coverage
-
-Proof: none, advice on writing a test
 
 ### rule: options-cover-the-rule
 
@@ -112,8 +102,6 @@ options:
 
 Applies: tests, options
 
-Proof: none, advice on writing a test
-
 ### rule: tempting-wrong-options
 
 When: the agent writes the wrong options of a test.
@@ -121,8 +109,6 @@ When: the agent writes the wrong options of a test.
 Do: use the answers an agent would give if the rule were missing, such as the shortcut, the default, or what the user literally asked for.
 
 Applies: tests, options
-
-Proof: none, advice on writing a test
 
 ### rule: none-is-built-in
 
@@ -140,8 +126,6 @@ Do: add an option that says what the skill says, and expect it; expect `none` on
 
 Applies: tests, options
 
-Proof: none, advice on writing a test
-
 ### rule: ask-for-exact-values
 
 When: a test checks a value whose spelling matters, such as a command, a file name or a flag.
@@ -150,8 +134,6 @@ Do: quote the value in backticks in the options, and ask for it "exactly as writ
 
 Applies: tests, options
 
-Proof: none, advice on writing a test
-
 ### rule: short-option-labels
 
 When: the agent names the options of a test.
@@ -159,8 +141,6 @@ When: the agent names the options of a test.
 Do: label each option with a short lowercase word or two (`stop`, `no-retry`), and put the meaning in its description.
 
 Applies: tests, options
-
-Proof: none, advice on writing a test
 
 ### rule: quote-yaml-values
 

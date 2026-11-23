@@ -6,10 +6,7 @@ import type { LintResult } from '../lint/types.js';
 import type { ProofResult, ProofSkipped } from '../proof/layer.js';
 import type { Report as TestReport } from '../test/runner.js';
 
-/**
- * Bumped only when a field changes meaning or disappears. 1 was the `run --json` report; 2 had
- * sync compare git commits; 3 had it compare `skillunit.lock`; 4 has no sync.
- */
+/** Bumped only when a field changes meaning or disappears. */
 export const REPORT_SCHEMA = 4;
 
 export type Command = 'lint' | 'proof' | 'test' | 'check';

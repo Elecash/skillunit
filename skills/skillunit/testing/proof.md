@@ -4,13 +4,15 @@ How to tie a unit to a test of the code it describes, so the test fails when the
 
 The project's own tests do the proving; SkillUnit only reads what their run left. A test proves the unit `<id>` when its title contains `[skill:<id>]`. A test can also produce a unit's example: `npx skillunit proof --write` copies it into the block flagged `proof=<id>` after the block's language.
 
+`skillunit.lock`, next to `skillunit.yaml`, lists the ids of the proved units. `npx skillunit proof --write` adds the units the tests prove, and never drops a unit that is still in the skill, so a unit whose test is deleted or skipped fails the check.
+
 | State of a unit | What makes it | What `npx skillunit proof` does |
 | --- | --- | --- |
-| proved | a tagged test passed, and no tagged test failed | nothing |
-| `Proof: none` | the footer label `Proof: none, <reason>` | nothing |
-| pending | neither | an error with `proof.require` on, the default; a count with it off |
+| proved | a tagged test passed, and no tagged test failed | an error when the lock does not list it |
+| failed | a tagged test failed; or the lock lists the unit and no tagged test passed | an error |
+| unproved | the lock does not list it, and no test is tagged for it | nothing; it is counted |
 
-The settings are under `proof` in `skillunit.yaml`: `reports`, the JUnit XML report of the test run; `sources`, the test files with regions; `examples`, the folder where tests write examples (`./tmp/skill-proof`); `format`, the project's formatter; `require`. The tests run first, with a JUnit reporter, then `npx skillunit proof` or `npx skillunit check`.
+The settings are under `proof` in `skillunit.yaml`: `reports`, the JUnit XML report of the test run; `sources`, the test files with regions; `examples`, the folder where tests write examples (`./tmp/skill-proof`); `format`, the project's formatter. The tests run first, with a JUnit reporter, then `npx skillunit proof` or `npx skillunit check`.
 
 ## Rules
 
@@ -18,9 +20,9 @@ The settings are under `proof` in `skillunit.yaml`: `reports`, the JUnit XML rep
 
 When: a unit states what the code does: a default, which inputs it takes, what it returns or throws.
 
-Do: put `[skill:<unit id>]` in the title of a test that asserts exactly what the unit states, and write that test when none does.
+Do: put `[skill:<unit id>]` in the title of a test that asserts exactly what the unit states, and write that test when none does; then run the tests and `npx skillunit proof --write`, and commit `skillunit.lock` with the test.
 
-Even when: a test on the same topic already exists; tag it only if it asserts what the unit says, value for value.
+Even when: a test on the same topic already exists; tag it only if it asserts what the unit says, value for value. A unit no test can prove, such as advice, gets no tag and stays unproved.
 
 Right:
 
@@ -29,8 +31,6 @@ it("does not retry by default, and waits 300 ms [skill:retry-defaults]", async (
 ```
 
 Applies: proof, tags
-
-Proof: none, advice on writing tests
 
 ### decision: region-or-file
 
@@ -43,8 +43,6 @@ Decide: where the test leaves the example.
 - **file** — the example is a value, such as a JSON definition or a config: write it from the test with `skillExample(id, value)` from `skillunit/proof`, or in another language as `<proof.examples>/<id>.<extension>`, and flag the block `proof=<id>`.
 
 Applies: proof, examples
-
-Proof: none, advice on writing tests
 
 ### rule: write-blocks-from-tests
 
@@ -62,34 +60,28 @@ npx skillunit proof --write
 
 Applies: proof, examples
 
-Proof: none, advice on acting on a report
-
-### rule: proof-none-when-no-test-can
-
-When: a unit is advice to the agent, or a claim about something the project's tests cannot see, such as what a server does with a repeated request.
-
-Do: end the unit with `Proof: none,` and the reason.
-
-Even when: a test is close to the topic; tagging a test that does not assert what the unit says hides a unit that nothing proves.
-
-Right:
-
-```md
-Proof: none, advice on which timeout to choose
-```
-
-Applies: proof, units
-
-Proof: none, advice on writing units
-
 ### rule: fix-the-unit-when-its-test-fails
 
 When: a test tagged for a unit fails after a change to the code.
 
 Do: read the change; when the code is right, correct what the unit says and what the test asserts together, then run the tests and `npx skillunit proof` again.
 
-Even when: the report would pass sooner by skipping the test or removing its tag; with `proof.require` on, a unit whose tests were all skipped or untagged fails too, and with it off the unit is left unproved.
+Even when: the report would pass sooner by skipping the test or removing its tag; the lock lists the unit, so a unit whose tests were all skipped or untagged fails too.
 
 Applies: proof, tests
 
-Proof: none, advice on acting on a report
+### rule: forget-only-what-is-no-longer-proved
+
+When: `npx skillunit proof` reports that `skillunit.lock` lists a unit that no test proves.
+
+Do: bring back the test that proved it; run `npx skillunit proof --forget <unit id>` only when the unit is no longer meant to be proved, such as a statement about the code rewritten as advice, and commit `skillunit.lock` with that change.
+
+Even when: `--forget` would make the check pass at once; a proof that is lost by mistake is what the lock is there to catch.
+
+Right:
+
+```sh
+npx skillunit proof --forget retry-defaults
+```
+
+Applies: proof, lock

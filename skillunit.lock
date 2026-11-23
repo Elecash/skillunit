@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "proved": [
+    "blank-line-after-a-list",
+    "check-regex-in-a-code-span",
+    "dry-run-without-key",
+    "id-names-the-instruction",
+    "index-every-file",
+    "key-outside-the-repo",
+    "labels-in-order",
+    "language-on-every-example",
+    "none-is-built-in",
+    "one-label-per-paragraph",
+    "rules-section-last"
+  ]
+}

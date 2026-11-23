@@ -51,8 +51,8 @@ describe('model', () => {
 });
 
 describe('keys', () => {
-  it('rejects a key it does not know, sourceRoot included, and names the ones it does', () => {
-    expect(() => load('sourceRoot: ../code\n')).toThrow(/unknown key `sourceRoot` \(allowed: skill, specs, context, model, thresholds, examples, lint, proof\)/);
+  it('rejects a key it does not know, and names the ones it does', () => {
+    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, specs, context, model, thresholds, examples, lint, proof\)/);
   });
 });
 

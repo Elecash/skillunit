@@ -119,8 +119,6 @@ export interface LockReport {
   dropped: string[];
   /** Ids `forget` took off. */
   forgot: string[];
-  /** `write` replaced the lock of `skillunit sync` (version 1). */
-  replaced: boolean;
   /** The file was written. */
   written: boolean;
 }
@@ -154,7 +152,7 @@ export function proof(options: ProofOptions): ProofResult {
   const lockFile = fromSkill(lockAbs);
   let lockText = existsSync(lockAbs) ? readFileSync(lockAbs, 'utf8') : null;
   let lock: Lock = parseLock(lockText);
-  const lockReport: LockReport = { file: lockFile, exists: lockText !== null, listed: 0, added: [], dropped: [], forgot: [], replaced: false, written: false };
+  const lockReport: LockReport = { file: lockFile, exists: lockText !== null, listed: 0, added: [], dropped: [], forgot: [], written: false };
   if (options.forget?.length) {
     const wanted = [...new Set(options.forget)].sort();
     if (lock.kind === 'missing') {
@@ -238,7 +236,6 @@ export function proof(options: ProofOptions): ProofResult {
       writeFileSync(lockAbs, text);
       lockReport.added = [...new Set(provedIds.filter((id) => !before.includes(id)))].sort();
       lockReport.dropped = [...new Set(before.filter((id) => !units.has(id)))].sort();
-      lockReport.replaced = lock.kind === 'sync';
       lockReport.written = true;
       lock = parseLock(text);
     }
@@ -247,8 +244,7 @@ export function proof(options: ProofOptions): ProofResult {
   let listed: Set<string> | null = null;
   if (lock.kind === 'ok') listed = new Set(lock.ids.map((i) => i.id));
   else if (lock.kind === 'missing') listed = new Set();
-  else if (lock.kind === 'conflict') add(lockFile, lock.line, `\`${LOCK_FILE}\` has merge conflict markers; run \`skillunit proof --write\`, which keeps the units of both sides`);
-  else if (lock.kind === 'sync') add(lockFile, 1, `this \`${LOCK_FILE}\` is the lock of \`skillunit sync\`, which this version no longer has; \`skillunit proof --write\` replaces it with the units the tests prove`);
+  else if (lock.kind === 'conflict') add(lockFile, lock.line, `\`${LOCK_FILE}\` cannot be read: ${lock.problem}. Run \`skillunit proof --write\`, which keeps the units of both sides`);
   else add(lockFile, lock.line, `\`${LOCK_FILE}\` cannot be read: ${lock.message}`);
   lockReport.exists = existsSync(lockAbs);
   lockReport.listed = listed?.size ?? 0;

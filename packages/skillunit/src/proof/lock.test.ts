@@ -16,17 +16,15 @@ describe('reading the lock', () => {
     expect(ids('{ "version": 2, "proved": [] }')).toEqual([]);
   });
 
-  it('reads version 1 as the lock of sync', () => {
-    expect(parseLock('{ "version": 1, "units": { "a": { "src/a.ts": "0123456789abcdef" } } }')).toEqual({ kind: 'sync' });
-  });
-
   it('says why it cannot read a lock', () => {
     const broken = (text: string) => {
       const lock = parseLock(text);
       return lock.kind === 'broken' ? `${lock.line} ${lock.message}` : lock.kind;
     };
     expect(broken('{\n  "version": 3,\n  "proved": []\n}')).toBe('2 it has version 3, and this SkillUnit reads version 2; upgrade skillunit to read it');
-    expect(broken('{ "version": 2, "proved": [')).toMatch(/^1 it is not valid JSON \(/);
+    expect(broken('{ "version": 1, "proved": [] }')).toBe('1 it has version 1, and this SkillUnit reads version 2');
+    expect(broken('{ "version": 2, "proved": [')).toBe('conflict');
+    expect(broken('{ "proved": [')).toMatch(/^1 it is not valid JSON \(/);
     expect(broken('[]')).toBe('1 it must be an object with `version` and `proved`');
     expect(broken('{ "version": "2", "proved": [] }')).toBe('1 `version` must be a whole number');
     expect(broken('{\n  "version": 2,\n  "proved": "a"\n}')).toBe('3 `proved` must be a list of unit ids');
@@ -37,12 +35,18 @@ describe('reading the lock', () => {
 
   it('reads the ids of both sides of a merge conflict', () => {
     const text = ['{', '  "version": 2,', '  "proved": [', '    "a",', '<<<<<<< HEAD', '    "c"', '=======', '    "b",', '    "d"', '>>>>>>> topic', '  ]', '}', ''].join('\n');
-    expect(parseLock(text)).toMatchObject({ kind: 'conflict', line: 5 });
+    expect(parseLock(text)).toMatchObject({ kind: 'conflict', line: 5, problem: 'it has merge conflict markers' });
     expect(ids(text)).toEqual(['4 a', '6 c', '8 b', '9 d']);
   });
 
-  it('does not resolve a conflict with the lock of sync', () => {
-    const text = ['<<<<<<< HEAD', '{ "version": 1, "units": {} }', '=======', '{ "version": 2, "proved": ["a"] }', '>>>>>>> topic'].join('\n');
+  it('reads the ids of both sides kept by hand, a comma missing between them', () => {
+    const text = ['{', '  "version": 2,', '  "proved": [', '    "a",', '    "c"', '    "b",', '    "d"', '  ]', '}', ''].join('\n');
+    expect(parseLock(text)).toMatchObject({ kind: 'conflict', line: 1, problem: expect.stringMatching(/^it is not valid JSON \(/) });
+    expect(ids(text)).toEqual(['4 a', '5 c', '6 b', '7 d']);
+  });
+
+  it('does not resolve a conflict with a side of another version', () => {
+    const text = ['<<<<<<< HEAD', '{ "version": 3, "proved": [] }', '=======', '{ "version": 2, "proved": ["a"] }', '>>>>>>> topic'].join('\n');
     expect(parseLock(text)).toMatchObject({ kind: 'broken', line: 1 });
   });
 });

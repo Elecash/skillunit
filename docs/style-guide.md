@@ -95,17 +95,15 @@ await tf.get("https://api.example.com/users", { retry: 3 });
 Applies: retries, post
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Proof: none, it is about what a server does with a repeated request
 ````
 
 Three kinds. Labels always in this order; omit the optional ones you do not need.
 
 | Kind | Body | Footer | Use it for |
 |---|---|---|---|
-| `rule` | When, Do, Even when, Right | Applies, Check, Proof | a constraint on what the agent writes |
-| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when | Applies, Check, Proof | choosing between paths |
-| `fact` | When, Value, Unknown | Applies, Check, Proof | a value the agent must state exactly |
+| `rule` | When, Do, Even when, Right | Applies, Check | a constraint on what the agent writes |
+| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when | Applies, Check | choosing between paths |
+| `fact` | When, Value, Unknown | Applies, Check | a value the agent must state exactly |
 
 Required: `When` and `Applies`, plus `Do` (rule), `Decide` (decision) or `Value` (fact).
 
@@ -139,10 +137,9 @@ Footer:
   regex is written in a code span. The linter runs it over every fenced block in those
   languages and over every inline code span of the skill. The flags `g` and `y` are not
   allowed. Any kind of unit may have a `Check`.
-- **Proof**: `none`, then the reason, when no test can prove the unit: advice, or a claim about
-  something the library's tests cannot see (`Proof: none, advice on which timeout to choose`).
-  A unit a test proves has no `Proof` label; its test carries `[skill:<id>]` in its title. See
-  [Proof](proof.md).
+
+A unit says nothing about whether a test proves it. A test that proves it carries `[skill:<id>]`
+in its title, and `skillunit.lock` lists the proved units; see [Proof](proof.md).
 
 ### Naming
 
@@ -304,6 +301,4 @@ await tf.get("https://api.example.com/users", { retry: 3 });
 Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Proof: none, it is about what a server does with a repeated request, which the tests of tinyfetch cannot see
 ````

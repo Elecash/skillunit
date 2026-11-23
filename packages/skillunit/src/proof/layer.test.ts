@@ -115,7 +115,7 @@ describe('a skill whose tests prove it', () => {
     expect(r.summary).toEqual({ units: 3, proved: 2, failed: 0, unproved: 1, tagged: 2, fences: 1, differ: 0, written: 0 });
     expect(r.units.map((u) => `${u.id} ${u.state} ${u.listed}`)).toEqual(['check-status proved true', 'retry-delay proved true', 'one-client unproved false']);
     expect(r.reports).toEqual(['../reports/junit.xml']);
-    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], replaced: false, written: false });
+    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], written: false });
   });
 });
 
@@ -233,14 +233,10 @@ describe('what fails the layer', () => {
   });
 
   it('a lock it cannot read is its only finding about the lock', () => {
-    const sync = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 1,\n  "units": {}\n}\n' }));
-    expect(errors(sync)).toEqual([
-      '../skillunit.lock:1 - error: this `skillunit.lock` is the lock of `skillunit sync`, which this version no longer has; `skillunit proof --write` replaces it with the units the tests prove',
-    ]);
     const newer = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 3,\n  "proved": []\n}\n' }));
     expect(errors(newer)).toEqual(['../skillunit.lock:2 - error: `skillunit.lock` cannot be read: it has version 3, and this SkillUnit reads version 2; upgrade skillunit to read it']);
     const conflict = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 2,\n  "proved": [\n<<<<<<< HEAD\n    "check-status"\n=======\n    "retry-delay"\n>>>>>>> topic\n  ]\n}\n' }));
-    expect(errors(conflict)).toEqual(['../skillunit.lock:4 - error: `skillunit.lock` has merge conflict markers; run `skillunit proof --write`, which keeps the units of both sides']);
+    expect(errors(conflict)).toEqual(['../skillunit.lock:4 - error: `skillunit.lock` cannot be read: it has merge conflict markers. Run `skillunit proof --write`, which keeps the units of both sides']);
   });
 
   it('a block that differs from its region: the first line that differs, and what to run', () => {
@@ -319,7 +315,7 @@ Applies: picks
   it('adds the proved units to the lock, drops ids no unit has, and keeps a listed unit that is not proved', () => {
     const root = project({ ...GOOD, 'skillunit.lock': formatLock(['gone', 'one-client']) });
     const r = run(root, {}, { write: true });
-    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 3, added: ['check-status', 'retry-delay'], dropped: ['gone'], forgot: [], replaced: false, written: true });
+    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 3, added: ['check-status', 'retry-delay'], dropped: ['gone'], forgot: [], written: true });
     expect(lockOf(root)).toBe(formatLock(['check-status', 'one-client', 'retry-delay']));
     expect(errors(r)).toEqual([
       'SKILL.md:27 one-client error: `skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:one-client]`. Bring the test back, or run `skillunit proof --forget one-client` if the unit is no longer meant to be proved',
@@ -327,7 +323,7 @@ Applies: picks
     expect(run(root, {}, { write: true }).lock.written).toBe(false);
   });
 
-  it('creates the lock, sorts it, replaces the lock of sync and resolves a merge conflict', () => {
+  it('creates the lock, sorts it and resolves a merge conflict', () => {
     const { 'skillunit.lock': _, ...rest } = GOOD;
     const created = project(rest);
     expect(run(created, {}, { write: true }).lock).toMatchObject({ exists: true, added: ['check-status', 'retry-delay'], written: true });
@@ -336,11 +332,6 @@ Applies: picks
     const unsorted = project({ ...GOOD, 'skillunit.lock': '{"version":2,"proved":["retry-delay","check-status","retry-delay"]}' });
     expect(run(unsorted, {}, { write: true }).lock).toMatchObject({ added: [], dropped: [], written: true });
     expect(lockOf(unsorted)).toBe(formatLock(['check-status', 'retry-delay']));
-
-    const sync = project({ ...GOOD, 'skillunit.lock': '{ "version": 1, "units": {} }' });
-    const replaced = run(sync, {}, { write: true });
-    expect(replaced.problems).toEqual([]);
-    expect(replaced.lock).toMatchObject({ replaced: true, added: ['check-status', 'retry-delay'] });
 
     const conflict = project({ ...GOOD, 'skillunit.lock': '{\n  "version": 2,\n  "proved": [\n<<<<<<< HEAD\n    "check-status",\n    "one-client"\n=======\n    "retry-delay"\n>>>>>>> topic\n  ]\n}\n' });
     expect(run(conflict, {}, { write: true }).lock).toMatchObject({ added: [], written: true });
@@ -352,9 +343,9 @@ Applies: picks
     const root = project({ ...rest, 'skillunit.lock': formatLock(['one-client']) });
     expect(run(root, {}, { write: true }).lock.written).toBe(false);
     expect(lockOf(root)).toBe(formatLock(['one-client']));
-    const broken = project({ ...GOOD, 'skillunit.lock': '{ "version": 2, "proved": [' });
+    const broken = project({ ...GOOD, 'skillunit.lock': '{ "proved": [' });
     run(broken, {}, { write: true });
-    expect(lockOf(broken)).toBe('{ "version": 2, "proved": [');
+    expect(lockOf(broken)).toBe('{ "proved": [');
   });
 
   it('keeps CRLF line ends', () => {
