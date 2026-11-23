@@ -8,7 +8,7 @@ export type UnitKind = 'rule' | 'decision' | 'fact';
 
 /** Body labels in the one order every kind follows. */
 export const BODY_LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right', 'Wrong'] as const;
-export const FOOTER_LABELS = ['Applies', 'Check', 'Source'] as const;
+export const FOOTER_LABELS = ['Applies', 'Check', 'Source', 'Proof'] as const;
 export const LABELS = [...BODY_LABELS, ...FOOTER_LABELS] as const;
 
 export type LabelName = (typeof LABELS)[number];
@@ -19,7 +19,7 @@ export interface LabelLine {
   line: number;
   /** The label's text: its paragraph after `Label:`, wrapped lines joined with a space. */
   value: string;
-  /** Set by the name: `Applies`, `Check` and `Source` are footer, the rest body. */
+  /** Set by the name: `Applies`, `Check`, `Source` and `Proof` are footer, the rest body. */
   part: 'body' | 'footer';
   /** The label sits in the same paragraph as the label before it, with no blank line between. */
   joined: boolean;
@@ -55,6 +55,11 @@ export interface Fence {
   lang: string;
   /** The other words of the info string, such as `no-check`. */
   flags: string[];
+  /**
+   * The value of the first `proof=<id>` flag, quotes taken off: a test produced this block. ''
+   * for a bare `proof=`. Lint checks that it names the fence's own unit.
+   */
+  proof?: string;
   /** The code between the fences, with the fence's own indentation removed. */
   code: string;
   owner: FenceOwner;
@@ -110,6 +115,17 @@ export interface Check {
   column: number;
 }
 
+/** The `Proof:` label of a unit. v1 takes only `none`, with an optional reason after it. */
+export interface ProofLabel {
+  line: number;
+  /** The label's text, as written. */
+  raw: string;
+  /** The text is `none`, or `none` and a reason. Lint reports any other text. */
+  none: boolean;
+  /** What follows `none`, punctuation before it taken off; '' when there is none. */
+  reason: string;
+}
+
 export interface SourceRef {
   path: string;
   /** The part after `#`. v1 of sync ignores it. */
@@ -145,6 +161,10 @@ export interface Unit {
   applies: string[];
   check: Check[];
   source: SourceRef[];
+  /** The `Proof:` label, if any. */
+  proof?: ProofLabel;
+  /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
+  proofs: Fence[];
 
   /** The unit as written, heading to `endLine`. Sync compares it across commits. */
   text: string;

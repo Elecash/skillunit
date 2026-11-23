@@ -210,6 +210,25 @@ describe.each(COMPILERS)('an example that declares a name of the Setup, with %s'
     expect(r.problems[0]!.message).toMatch(/^the Setup does not type-check/);
   });
 
+  it('type-checks a fence flagged proof=, in a Right or a Decide path, like any other example', () => {
+    const unit = [
+      '# Rules',
+      '## Rules',
+      '### decision: pick',
+      'When: a choice.',
+      `Decide:\n\n- **one** — first.\n\n  ${F}ts proof=pick.one\n  ${TYPE_ERROR}\n  ${F}`,
+      'Applies: lib',
+      '### rule: r',
+      'When: a.',
+      'Do: b.',
+      `Right:\n\n${F}ts proof=r\n${TYPE_ERROR}\n${F}`,
+      'Applies: lib',
+    ].join('\n\n') + '\n';
+    const r = run(project(typescript, unit));
+    expect(r.summary.typeChecked).toBe(2);
+    expect(r.problems.map((p) => `${p.line} ${p.unit} ${p.code}`)).toEqual([`${lineOf(unit, '  const n')} pick TS2322`, `${lineOf(unit, 'const n', lineOf(unit, 'proof=r'))} r TS2322`]);
+  });
+
   it('gives Wrong code the same treatment', () => {
     const unit = [
       '# Rules',

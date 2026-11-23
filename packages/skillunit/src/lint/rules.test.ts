@@ -110,7 +110,7 @@ describe('structure', () => {
 
   it('reports labels out of order, footer before body included', () => {
     expect(structureOf(`## Rules\n\n### rule: r\n\nWhen: x\n\nRight:\n\n${F}ts\na\n${F}\n\nDo: y\n\nApplies: a\n`)).toEqual([
-      '13 r error: `Do` goes before `Right`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source',
+      '13 r error: `Do` goes before `Right`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof',
     ]);
     expect(structureOf('## Rules\n\n### rule: r\n\nApplies: a\n\nWhen: x\n\nDo: y\n')[0]).toMatch(/^7 r error: `When` goes before `Applies`/);
   });

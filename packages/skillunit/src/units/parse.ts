@@ -24,6 +24,7 @@ import {
   type ParsedFile,
   type ParsedSkill,
   type ParseError,
+  type ProofLabel,
   type SourceRef,
   type Unit,
   type UnitKind,
@@ -262,6 +263,7 @@ class FileParser {
       applies: [],
       check: [],
       source: [],
+      proofs: [],
       text: '',
     };
     this.label = null;
@@ -334,6 +336,9 @@ class FileParser {
       case 'Source':
         u.source = splitList(l.value).map(parseSource);
         break;
+      case 'Proof':
+        u.proof = parseProof(l.value, l.line);
+        break;
       case 'Check': {
         const check = parseCheck(l.value, l.line);
         if (typeof check === 'string') {
@@ -388,6 +393,8 @@ class FileParser {
       code: raw.code,
       owner: { kind: 'reference' },
     };
+    const proof = proofFlag(flags);
+    if (proof !== undefined) fence.proof = proof;
 
     if (this.pendingSetup !== null) {
       this.pendingSetup = null;
@@ -396,6 +403,7 @@ class FileParser {
       else this.result.setup[fence.lang] ??= fence;
     } else if (this.unit) {
       fence.owner = this.unitFenceOwner(raw, fence);
+      if (fence.proof !== undefined) this.unit.proofs.push(fence);
       // A fence ends the paragraph before it; a line after it starts a new one.
       this.para = null;
       this.blank = true;
@@ -657,6 +665,23 @@ function parseSource(value: string): SourceRef {
   if (hash < 0) return { path: value };
   const symbol = value.slice(hash + 1).trim();
   return symbol ? { path: value.slice(0, hash).trim(), symbol } : { path: value.slice(0, hash).trim() };
+}
+
+/** The value of the first `proof=` flag of a fence, with quotes around it taken off. */
+export function proofFlag(flags: string[]): string | undefined {
+  const flag = flags.find((f) => f.startsWith('proof='));
+  if (flag === undefined) return undefined;
+  const value = flag.slice('proof='.length);
+  return /^(["'])(.*)\1$/.exec(value)?.[2] ?? value;
+}
+
+/** `none`, then an optional reason after a comma, a dash or a space: `none, a recommendation`. */
+const PROOF_NONE = /^none(?![\w-])[\s,;:.—–-]*(.*)$/s;
+
+export function parseProof(value: string, line: number): ProofLabel {
+  const raw = value.trim();
+  const none = PROOF_NONE.exec(raw);
+  return { line, raw, none: !!none, reason: none?.[1]!.trim() ?? '' };
 }
 
 const CHECK_FORMAT = '`Check` reads ``forbid `/regex/` in <languages>``';

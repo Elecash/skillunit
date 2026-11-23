@@ -9,6 +9,7 @@ import { runCommands } from './commands.js';
 import { collectWrongCode, isExample, isNoCheck, ownerUnit, setupFor, type WrongCode } from './examples.js';
 import { index } from './links.js';
 import { fenceFlags } from './fences.js';
+import { proofMarks } from './proof.js';
 import { setups } from './setup.js';
 import { sources } from './sources.js';
 import { structure } from './structure.js';
@@ -45,7 +46,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     undeclared: [],
   };
   const wrong = collectWrongCode(skill);
-  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill), ...fenceFlags(skill)];
+  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill, wrong), ...index(skill), ...fenceFlags(skill), ...proofMarks(skill)];
   if (options.sourceRoot) problems.push(...sources(skill, options.sourceRoot));
 
   problems.push(...typeCheck(skill, wrong, options.examples, summary));

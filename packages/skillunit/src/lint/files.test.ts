@@ -170,6 +170,14 @@ ${F}
     expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
+  it('runs the command on a fence flagged proof= like any other example', () => {
+    const unit = `# T\n\n## Rules\n\n### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}sh proof=r\nif then fi\n${F}\n\nApplies: a\n`;
+    const root = skillDir({ 'SKILL.md': unit });
+    const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
+    expect(result.checked).toBe(1);
+    expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['13 r command']);
+  });
+
   it('reports a failing Setup', () => {
     const root = skillDir({ 'SKILL.md': `# T\n\nSetup:\n\n${F}sh\nfi\n${F}\n` });
     const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
@@ -198,7 +206,7 @@ describe('lint as a whole', () => {
     const result = lint(root);
     expect(result.ok).toBe(false);
     expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain(
-      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source)',
+      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof)',
     );
   });
 

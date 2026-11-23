@@ -6,7 +6,7 @@ export type Severity = 'error' | 'warning';
  * The lint rules, by the name each problem is reported under. Any of them can be turned off with
  * `lint: { off: [...] }` in `skillunit.yaml`.
  */
-export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'wrong-code', 'command', 'index', 'length', 'source', 'fence'] as const;
+export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'wrong-code', 'command', 'index', 'length', 'source', 'fence', 'proof'] as const;
 
 /** The rule that found a problem, for filtering and for reporters. `sync` comes from `skillunit sync`. */
 export type LintRule = (typeof LINT_RULES)[number] | 'sync';

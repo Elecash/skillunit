@@ -623,7 +623,7 @@ describe('malformed input', () => {
 
   it('reports a paragraph that is not a label, and labels that repeat', () => {
     expect(messages('### rule: r\n\nDo: y\n\nThis also matters.\n')).toEqual([
-      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source)',
+      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof)',
     ]);
     expect(messages('### rule: r\nWhy: old label\n')[0]).toMatch(/^2: this paragraph is not a label/);
     expect(messages('### rule: r\n\n  indented\n')).toEqual(['3: indented text outside a list item']);
@@ -701,5 +701,104 @@ describe('language names', () => {
       ['js', ['no-check']],
     ]);
     expect(Object.keys(file.setup)).toEqual(['ts']);
+  });
+});
+
+describe('proof', () => {
+  /** A rule with a proved Right fence, a decision with a proved fence in each path, and a flag-less fence. */
+  const PROVED = `# T
+
+${F}ts proof=outside
+const a = 1;
+${F}
+
+## Rules
+
+### rule: check-status
+
+When: a request failed.
+
+Do: test the error with \`isHttpError\`.
+
+Right:
+
+${F}ts proof=check-status
+isHttpError(error);
+${F}
+
+Applies: errors
+
+### decision: pick-a-client
+
+When: more than one request.
+
+Decide:
+
+- **shared** — same base URL.
+
+  ${F}ts title="a.ts" proof=pick-a-client.shared
+  const api = tf.create({});
+  ${F}
+
+- **direct** — one request.
+
+  ${F}ts proof='pick-a-client.direct'
+  tf.get('/a');
+  ${F}
+
+  ${F}ts
+  tf.get('/b');
+  ${F}
+
+Wrong:
+
+- Doing: one client per request.
+
+  Because: it repeats the base URL.
+
+  ${F}ts proof=pick-a-client.wrong
+  tf.create({}).get('/a');
+  ${F}
+
+Applies: clients
+
+Proof: none, a recommendation
+`;
+  const file = parse(PROVED);
+
+  it('keeps the id of a proof= flag on the fence, and the flag among its flags', () => {
+    expect(file.errors).toEqual([]);
+    const right = file.fences.find((f) => f.owner.kind === 'right')!;
+    expect(right).toMatchObject({ lang: 'ts', flags: ['proof=check-status'], proof: 'check-status' });
+    expect(file.fences[0]).toMatchObject({ proof: 'outside', owner: { kind: 'reference' } });
+  });
+
+  it('collects the flagged fences of a unit, those in list items included, with quotes taken off', () => {
+    const [rule, decision] = file.units;
+    expect(rule!.proofs.map((f) => f.proof)).toEqual(['check-status']);
+    expect(decision!.proofs.map((f) => [f.proof, f.owner])).toEqual([
+      ['pick-a-client.shared', { kind: 'decide', unit: 'pick-a-client', path: 'shared' }],
+      ['pick-a-client.direct', { kind: 'decide', unit: 'pick-a-client', path: 'direct' }],
+      ['pick-a-client.wrong', { kind: 'wrong', unit: 'pick-a-client', item: 0 }],
+    ]);
+    expect(file.fences.filter((f) => f.proof === undefined)).toHaveLength(1);
+  });
+
+  it('reads Proof as a footer label: none and its reason', () => {
+    const decision = file.units[1]!;
+    expect(decision.labels.at(-1)).toMatchObject({ name: 'Proof', part: 'footer' });
+    expect(decision.proof).toEqual({ line: lineOf(PROVED, 'Proof:'), raw: 'none, a recommendation', none: true, reason: 'a recommendation' });
+    expect(file.units[0]!.proof).toBeUndefined();
+  });
+
+  it('takes none alone, or with a reason after a comma, a dash or a space', () => {
+    const proofOf = (value: string) => parse(`### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nProof: ${value}\n`).units[0]!.proof;
+    expect(proofOf('none')).toMatchObject({ none: true, reason: '' });
+    expect(proofOf('none.')).toMatchObject({ none: true, reason: '' });
+    expect(proofOf('none — about the server')).toMatchObject({ none: true, reason: 'about the server' });
+    expect(proofOf('none because it is advice')).toMatchObject({ none: true, reason: 'because it is advice' });
+    expect(proofOf('nonetheless')).toMatchObject({ none: false });
+    expect(proofOf('none-yet')).toMatchObject({ none: false });
+    expect(proofOf('test')).toMatchObject({ none: false, raw: 'test' });
   });
 });
