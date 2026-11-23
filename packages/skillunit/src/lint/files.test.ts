@@ -46,7 +46,7 @@ describe('index', () => {
     ).toEqual(['SKILL.md:3 error: the link to `features/gone.md#a` does not resolve']);
   });
 
-  it('reports files no link leads to from SKILL.md, following links through other files', () => {
+  it('reports files no link leads to from SKILL.md, following links through other files [skill:index-every-file]', () => {
     expect(
       indexOf({
         'SKILL.md': '# T\n\n[a](a.md)\n',

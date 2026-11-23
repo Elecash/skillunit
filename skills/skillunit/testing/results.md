@@ -36,6 +36,8 @@ Applies: commands, test
 
 Source: src/test/runner.ts
 
+Proof: none, advice on running tests
+
 ### rule: prove-on-a-copy
 
 When: the agent wants to show that a test depends on its rule.
@@ -59,6 +61,8 @@ Applies: test, proof
 
 Source: src/test/runner.ts
 
+Proof: none, advice on reading results
+
 ### rule: still-green-without-the-rule
 
 When: a test still passes on a copy with its rule deleted.
@@ -75,6 +79,8 @@ Applies: test, proof
 
 Source: src/test/reader.ts
 
+Proof: none, advice on reading results
+
 ### fact: no-mutations
 
 When: the user asks for mutation testing of the specs.
@@ -86,6 +92,8 @@ Unknown: there is no mutation setting or tool; say so instead of adding one to t
 Applies: test, proof
 
 Source: src/test/spec.ts
+
+Proof: none, it says a feature does not exist
 
 ### rule: report-dont-bend
 
@@ -105,6 +113,8 @@ Applies: test, failures
 
 Source: src/test/reader.ts
 
+Proof: none, advice on reading results
+
 ### rule: fix-when-asked
 
 When: a test fails because the skill is unclear, and the user asked the agent to improve the skill.
@@ -121,6 +131,8 @@ Applies: test, failures
 
 Source: src/test/reader.ts
 
+Proof: none, advice on reading results
+
 ### rule: strengthen-borderline-tests
 
 When: the report marks a verdict borderline.
@@ -136,6 +148,8 @@ Wrong:
 Applies: test, borderline
 
 Source: src/report/table.ts
+
+Proof: none, advice on reading results
 
 ### rule: review-what-sync-reports
 
@@ -159,3 +173,5 @@ Wrong:
 Applies: sync, review
 
 Source: src/review/review.ts
+
+Proof: none, advice on working with sync

@@ -52,6 +52,8 @@ Applies: files
 
 Source: src/lint/links.ts
 
+Proof: none, advice on laying out a skill
+
 ### rule: index-every-file
 
 When: the agent adds a file to a skill.
@@ -107,3 +109,5 @@ Wrong:
 Applies: files, units, exceptions
 
 Source: src/units/parse.ts
+
+Proof: none, advice on laying out a skill

@@ -521,7 +521,7 @@ Applies: a
 });
 
 describe('Check', () => {
-  it('accepts only a regex in a code span, and says to add the backticks', () => {
+  it('accepts only a regex in a code span, and says to add the backticks [skill:check-regex-in-a-code-span]', () => {
     expect(messages('### rule: r\nCheck: forbid /post.*retry/ in ts\n')).toEqual([
       '2: put the regex of a `Check` in backticks, as in ``forbid `/regex/` in ts``: outside a code span, Markdown reads `*` and `_` as emphasis and a formatter rewrites them',
     ]);
@@ -548,7 +548,7 @@ describe('Check', () => {
 });
 
 describe('labels and lists', () => {
-  it('reports a label right under a list item, and still reads it as a label', () => {
+  it('reports a label right under a list item, and still reads it as a label [skill:blank-line-after-a-list]', () => {
     const file = parse('### decision: d\nDecide:\n- **a** — x\nEven when: y\n');
     expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual([
       '4: leave a blank line between the list and `Even when:`; without it, Markdown reads the label as part of the last list item',

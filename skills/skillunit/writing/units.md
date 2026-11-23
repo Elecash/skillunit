@@ -66,6 +66,8 @@ Applies: units, kinds
 
 Source: src/lint/structure.ts
 
+Proof: none, advice on choosing the kind of a unit
+
 ### rule: one-label-per-paragraph
 
 When: the agent writes the labels of a unit.
@@ -117,7 +119,7 @@ Source: src/units/parse.ts
 
 When: the agent writes or edits a unit.
 
-Do: keep the labels in one order: `When`; `Do`, `Decide` or `Value`; `Unknown`; `Even when`; `Right`; `Wrong`; then `Applies`, `Check`, `Source`.
+Do: keep the labels in one order: `When`; `Do`, `Decide` or `Value`; `Unknown`; `Even when`; `Right`; `Wrong`; then `Applies`, `Check`, `Source`, `Proof`.
 
 Wrong:
 

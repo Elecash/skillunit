@@ -108,14 +108,14 @@ describe('structure', () => {
     expect(structureOf('## Rules\n\n### fact: f\n\nWhen: x\n\nValue: 3\n\nApplies: a\n\nCheck: forbid `/x/` in ts\n')).toEqual([]);
   });
 
-  it('reports labels out of order, footer before body included', () => {
+  it('reports labels out of order, footer before body included [skill:labels-in-order]', () => {
     expect(structureOf(`## Rules\n\n### rule: r\n\nWhen: x\n\nRight:\n\n${F}ts\na\n${F}\n\nDo: y\n\nApplies: a\n`)).toEqual([
       '13 r error: `Do` goes before `Right`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Wrong, Applies, Check, Source, Proof',
     ]);
     expect(structureOf('## Rules\n\n### rule: r\n\nApplies: a\n\nWhen: x\n\nDo: y\n')[0]).toMatch(/^7 r error: `When` goes before `Applies`/);
   });
 
-  it('warns about labels that share a paragraph, Because included', () => {
+  it('warns about labels that share a paragraph, Because included [skill:one-label-per-paragraph]', () => {
     expect(structureOf('## Rules\n\n### rule: r\nWhen: x\nDo: y\n\nWrong:\n\n- Doing: a\n  Because: b\n\nApplies: a\n')).toEqual([
       '5 r warning: put `Do:` in a paragraph of its own, with a blank line before it',
       '10 r warning: put `Because:` in a paragraph of its own, with a blank line before it',
@@ -145,7 +145,7 @@ describe('structure', () => {
     ]);
   });
 
-  it('reports ids that are not kebab-case, and ids used twice across files', () => {
+  it('reports ids that are not kebab-case, and ids used twice across files [skill:id-names-the-instruction]', () => {
     expect(structureOf('## Rules\n\n### rule: Retry_Once\n\nWhen: x\n\nDo: y\n\nApplies: a\n')).toEqual([
       '3 Retry_Once error: `Retry_Once` is not kebab-case: use lowercase words joined by hyphens',
     ]);
@@ -165,7 +165,7 @@ describe('structure', () => {
     ]);
   });
 
-  it('reports a ## Rules that is not last, a second one, and anything in it that is not a unit', () => {
+  it('reports a ## Rules that is not last, a second one, and anything in it that is not a unit [skill:rules-section-last]', () => {
     const text = `# T\n\n## Rules\n\nSome text.\n\n### fact: f\n\nWhen: x\n\nValue: y\n\nApplies: a\n\n#### Notes\n\n## More\n\n## Rules\n`;
     expect(structureOf(text).sort()).toEqual([
       '15 - error: `## Rules` holds only units; `#### Notes` is not one',
@@ -237,7 +237,7 @@ ${check}
     ]);
   });
 
-  it('self-test: reports a Check that matches none of its own Wrong code', () => {
+  it('self-test: reports a Check that matches none of its own Wrong code [skill:check-matches-its-wrong-code]', () => {
     expect(checksOf({ 'a.md': rule('Check: forbid `/put\\([^)]*retry/` in ts') })).toEqual([
       "a.md:27 retry-idempotent-only error: this `Check` matches none of the unit's `Wrong` code, so it guards nothing; fix the regex",
     ]);
@@ -300,7 +300,7 @@ describe('broken items', () => {
 });
 
 describe('examples with no language', () => {
-  it('reports a fence with no language under Right, Wrong or Decide, and allows one in reference text', () => {
+  it('reports a fence with no language under Right, Wrong or Decide, and allows one in reference text [skill:language-on-every-example]', () => {
     const text = `# T\n\n${F}\noutput\n${F}\n\n## Rules\n\n### rule: r\n\nWhen: x\n\nDo: y\n\nRight:\n\n${F}\ntf.get('/a');\n${F}\n\nWrong:\n\n- Doing: z\n\n  Because: w\n\n  ${F}\n  tf.post('/a');\n  ${F}\n\nApplies: a\n`;
     expect(structureOf(text)).toEqual([
       '17 r error: this example has no language after its opening fence (`ts`, `sh`…), so nothing checks it',

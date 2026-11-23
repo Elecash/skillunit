@@ -109,6 +109,8 @@ Applies: examples, setup
 
 Source: src/lint/tsc.ts
 
+Proof: none, advice on writing examples
+
 ### rule: signatures-in-tables
 
 When: the agent shows a signature or the shape of an object rather than code to copy.
@@ -166,3 +168,5 @@ Wrong:
 Applies: examples
 
 Source: src/lint/lint.ts
+
+Proof: none, advice on writing examples

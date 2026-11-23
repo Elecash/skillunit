@@ -2,7 +2,9 @@
  * Reads the regions of test files: the lines between a line containing `#region skill:<id>` and
  * the next line containing `#endregion` are the example of the fence flagged `proof=<id>`. The
  * markers are comments in the file's language (`// #region skill:x`, `# #region skill:x`,
- * `<!-- #region skill:x -->`); only the text on their lines matters.
+ * `<!-- #region skill:x -->`); only the text on their lines matters. A line where `skill:` is
+ * followed by something that is not an id, such as `<id>` in a comment that explains the
+ * markers, is not a marker.
  */
 
 export interface Region {
@@ -33,7 +35,8 @@ export interface Regions {
 }
 
 const REGION = /#region\b/;
-const SKILL_REGION = /#region\s+skill:([A-Za-z0-9_.-]*)/;
+const SKILL_REGION = /#region\s+skill:(\S*)/;
+const REGION_ID = /^[A-Za-z0-9_.-]+$/;
 const END = /#endregion\b/;
 
 /** The regions of several files. An id found twice is reported at its second place. */
@@ -79,11 +82,15 @@ export function findRegions(text: string, file: string): { regions: Region[]; pr
     }
     const start = SKILL_REGION.exec(line);
     if (!start) continue;
-    if (!start[1]) {
+    // `<!-- #region skill:x-->` ends the id at the comment's end.
+    const id = start[1]!.replace(/-->$/, '');
+    if (!id) {
       problems.push({ file, line: i + 1, message: '`#region skill:` needs the id of the example: `#region skill:<unit id>`' });
       continue;
     }
-    open = { id: start[1], line: i + 1 };
+    // A placeholder such as `skill:<id>` in a comment that explains the markers is prose.
+    if (!REGION_ID.test(id)) continue;
+    open = { id, line: i + 1 };
   }
   if (open) problems.push({ file, line: open.line, message: `the region \`skill:${open.id}\` is never closed; end it with a line containing \`#endregion\`` });
 

@@ -14,6 +14,8 @@ function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail'
     lintWarnings: problems.filter((p) => p.severity === 'warning').map(show).sort(),
     sync: (report.sync?.problems ?? []).filter((p: any) => p.severity === 'error').map((p: any) => p.unit ?? 'lock').sort(),
     syncWarnings: (report.sync?.problems ?? []).filter((p: any) => p.severity === 'warning').map((p: any) => p.unit).sort(),
+    proof: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'error').map((p: any) => p.unit ?? p.file).sort(),
+    proofWarnings: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'warning').map((p: any) => p.unit ?? p.file).sort(),
     failing: report.test?.dryRun ? [] : verdicts.filter((v) => !v.pass).map((v) => v.id).sort(),
     specErrors: (report.test?.specs ?? []).filter((s: any) => s.error).map((s: any) => `${s.spec}: ${s.error}`),
   };
@@ -27,6 +29,7 @@ describe('tinyfetch scenarios', () => {
     it.skipIf(skip)(`${scenario.name}: ${scenario.change}`, async () => {
       const app = App.copy(scenario.name.replace(/\W+/g, '-'));
       await scenario.apply(app);
+      app.test();
       const real = scenario.model !== undefined && key !== undefined;
       const run = app.run('check', ...(real ? [] : ['--dry-run']));
       const seen = observe(run.report);
@@ -39,6 +42,8 @@ describe('tinyfetch scenarios', () => {
         lintWarnings: seen.lintWarnings,
         sync: seen.sync,
         syncWarnings: seen.syncWarnings,
+        proof: seen.proof,
+        proofWarnings: seen.proofWarnings,
         // A test in `mayFail` may fail or pass; any other failure, or a pass in `failing`, is a finding.
         failing: seen.failing.filter((id) => !allowed.has(id) || (want.failing ?? []).includes(id)),
       }).toEqual({
@@ -46,9 +51,11 @@ describe('tinyfetch scenarios', () => {
         lintWarnings: [...(want.lintWarnings ?? [])].sort(),
         sync: [...(want.sync ?? [])].sort(),
         syncWarnings: [...(want.syncWarnings ?? [])].sort(),
+        proof: [...(want.proof ?? [])].sort(),
+        proofWarnings: [...(want.proofWarnings ?? [])].sort(),
         failing: real ? [...(want.failing ?? [])].sort() : [],
       });
-      const clean = !want.lint?.length && !want.sync?.length && !want.failing?.length;
+      const clean = !want.lint?.length && !want.sync?.length && !want.proof?.length && !want.failing?.length;
       expect(run.code).toBe(clean ? 0 : 1);
     });
   }

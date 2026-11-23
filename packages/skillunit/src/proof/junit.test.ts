@@ -123,5 +123,6 @@ describe('tags', () => {
     expect(skillTags('a [skill:x] b [skill:y.z][skill:x]')).toEqual(['x', 'y.z']);
     expect(skillTags('[skill:]')).toEqual(['']);
     expect(skillTags('[skill: x] [Skill:x] skill:x')).toEqual([]);
+    expect(skillTags('finds every [skill:<id>] of a title')).toEqual([]);
   });
 });

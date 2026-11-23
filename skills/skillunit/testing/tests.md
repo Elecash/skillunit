@@ -44,6 +44,8 @@ Applies: tests, scenario
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: ask-about-an-action
 
 When: the agent writes the question of a test.
@@ -66,6 +68,8 @@ Applies: tests, question
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: prefer-choice-tests
 
 When: the agent chooses between a choice test and a yes/no test.
@@ -85,6 +89,8 @@ Wrong:
 Applies: tests, options
 
 Source: src/test/reader.ts
+
+Proof: none, advice on writing a test
 
 ### rule: test-where-the-rule-allows
 
@@ -114,6 +120,8 @@ Applies: tests, coverage
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: test-where-the-skill-is-silent
 
 When: the skill leaves out a task close to the ones it covers.
@@ -129,6 +137,8 @@ Wrong:
 Applies: tests, coverage
 
 Source: src/test/reader.ts
+
+Proof: none, advice on writing a test
 
 ### rule: options-cover-the-rule
 
@@ -154,6 +164,8 @@ Applies: tests, options
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: tempting-wrong-options
 
 When: the agent writes the wrong options of a test.
@@ -169,6 +181,8 @@ Wrong:
 Applies: tests, options
 
 Source: src/test/reader.ts
+
+Proof: none, advice on writing a test
 
 ### rule: none-is-built-in
 
@@ -202,6 +216,8 @@ Applies: tests, options
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: ask-for-exact-values
 
 When: a test checks a value whose spelling matters, such as a command, a file name or a flag.
@@ -218,6 +234,8 @@ Applies: tests, options
 
 Source: src/test/reader.ts
 
+Proof: none, advice on writing a test
+
 ### rule: short-option-labels
 
 When: the agent names the options of a test.
@@ -233,6 +251,8 @@ Wrong:
 Applies: tests, options
 
 Source: src/test/spec.ts
+
+Proof: none, advice on writing a test
 
 ### rule: quote-yaml-values
 

@@ -10,10 +10,10 @@ import { tf, TimeoutError } from "tinyfetch";
 
 ## Options
 
-| Option    | Type        | Default | Meaning                                                      |
-| --------- | ----------- | ------- | ------------------------------------------------------------ |
-| `timeout` | number (ms) | 10000   | abort the request after this long; `0` turns the timeout off |
-| `signal`  | AbortSignal | none    | cancel the request, and any retry still to come              |
+| Option    | Type        | Meaning                                                      |
+| --------- | ----------- | ------------------------------------------------------------ |
+| `timeout` | number (ms) | abort the request after this long; `0` turns the timeout off |
+| `signal`  | AbortSignal | cancel the request, and any retry still to come              |
 
 ```ts
 try {
@@ -74,3 +74,5 @@ Applies: timeouts, uploads
 Check: forbid `/timeout:\s*0\b/` in ts
 
 Source: src/timeout.ts
+
+Proof: none, advice on which timeout to choose

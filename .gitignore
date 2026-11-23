@@ -12,3 +12,6 @@ packages/skillunit/skills
 packages/skillunit/docs
 lab/
 /PLAN.md
+# What a test run leaves for `skillunit proof`.
+reports/
+tmp/skill-proof/

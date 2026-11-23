@@ -9,7 +9,7 @@
     "name": "tinyfetch",
     "targets": {
       "skill": {
-        "dependsOn": ["skillunit:build"],
+        "dependsOn": ["skillunit:build", "test"],
         "cache": false
       }
     }

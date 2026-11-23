@@ -57,3 +57,5 @@ Wrong:
 Applies: clients
 
 Source: src/client.ts#create
+
+Proof: none, a choice about the caller's code

@@ -37,6 +37,7 @@ tests:
     expect: yes
 
   - id: retry-delay-default
+    unit: retry-defaults
     scenario: The agent sets `retry` and leaves `retryDelay` out.
     question: How long does tinyfetch wait before the first new attempt?
     options:

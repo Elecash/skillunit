@@ -35,7 +35,7 @@ const no: TestCase = { ...yes, expect: 'no' };
 const th = DEFAULT_THRESHOLDS;
 
 describe('buildRequest', () => {
-  it('adds none to every choice question, asks each phrasing on its own, and frames once', () => {
+  it('adds none to every choice question, asks each phrasing on its own, and frames once [skill:none-is-built-in]', () => {
     const request = buildRequest('skill text', [{ ...choice, scenarios: ['One.', 'Two.'] }, yes], 'A tiny HTTP client.');
     expect(request.questions.map((q) => q.id)).toEqual(['pick#1', 'pick#2', 'allowed']);
     expect(request.questions[0]).toEqual({
@@ -168,7 +168,7 @@ describe('runAll', () => {
     expect(report.specs[0]!.error).toMatch(/^too large: the skill text plus the longest question is about \d+ tokens; stub takes 50\./);
   });
 
-  it('sends nothing on a dry run, but still checks the limits', async () => {
+  it('sends nothing on a dry run, but still checks the limits [skill:dry-run-without-key]', async () => {
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model, calls } = stub(() => new Error('must not be called'));
     const report = await runAll(config, model, { dryRun: true });
@@ -297,7 +297,7 @@ describe('test --changed', () => {
     tests: units.map((unit, i) => ({ id: `t${i}`, scenarios: ['s'], question: 'q', expect: 'yes', ...(unit ? { unit } : {}) })),
   });
 
-  it('runs whole specs of changed skill files, and the tests of units sync reports as stale or new', () => {
+  it('runs whole specs of changed skill files, and the tests of units sync reports as stale or new [skill:link-tests-to-units]', () => {
     const units = syncResult([
       { id: 'a', state: 'stale' },
       { id: 'b', state: 'in-sync' },

@@ -39,6 +39,8 @@ Applies: specs, planning
 
 Source: src/test/spec.ts
 
+Proof: none, advice on planning specs
+
 ### rule: section-for-long-files
 
 When: the file under test is long, above about 3,000 characters.
@@ -57,6 +59,8 @@ Applies: specs, planning
 
 Source: src/test/skill-text.ts
 
+Proof: none, advice on planning specs
+
 ### rule: with-only-what-the-agent-reads
 
 When: a rule reaches the agent from more than one file, and a mistake costs a lot.
@@ -72,6 +76,8 @@ Wrong:
 Applies: specs, planning
 
 Source: src/test/skill-text.ts
+
+Proof: none, advice on planning specs
 
 ### rule: list-the-decisions-first
 
@@ -90,6 +96,8 @@ Wrong:
 Applies: specs, planning
 
 Source: src/test/spec.ts
+
+Proof: none, advice on planning specs
 
 ### rule: link-tests-to-units
 

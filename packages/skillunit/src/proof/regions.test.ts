@@ -54,6 +54,13 @@ describe('regions', () => {
     expect(regionsOf(lines(`// ${OPEN('')}`, 'a();', `// ${CLOSE}`)).problems.map(show)).toEqual([`a.test.ts:1 \`${OPEN('')}\` needs the id of the example: \`${OPEN('<unit id>')}\``]);
   });
 
+  it('reads a placeholder such as skill:<id> as prose, and an id against the end of an HTML comment as an id', () => {
+    const text = lines(`// A test writes its example between ${OPEN('<id>')} and ${CLOSE}.`, `<!-- ${OPEN('a')}-->`, 'a();', `<!-- ${CLOSE} -->`);
+    const { regions, problems } = regionsOf(text);
+    expect(problems).toEqual([]);
+    expect(regions.map((r) => [r.id, r.code])).toEqual([['a', 'a();']]);
+  });
+
   it('reports an id used twice, in one file or in two', () => {
     const one = lines(`// ${OPEN('a')}`, 'a();', `// ${CLOSE}`);
     expect(regionsOf(lines(one, one)).problems.map(show)).toEqual(['a.test.ts:4 the region `skill:a` is also at line 1; each example comes from one region']);

@@ -34,7 +34,8 @@ export class ReportError extends Error {
   }
 }
 
-const TAG = /\[skill:([^\]\s]*)\]/g;
+/** `[skill:<id>]`, the id in the characters ids use, so a placeholder such as `[skill:<id>]` is prose. */
+const TAG = /\[skill:([A-Za-z0-9_.-]*)\]/g;
 
 /**
  * The unit ids a test title names, in order, each once. A tag with nothing after `skill:` gives

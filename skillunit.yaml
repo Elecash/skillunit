@@ -1,5 +1,5 @@
 # SkillUnit checking its own skill. From the repository root:
-#   npm run skill:dry     lint, sync, and the specs load and fit; sends nothing
+#   npm run skill:dry     lint, sync, proof, and the specs load and fit; sends nothing
 #   npm run skill         the same, and the tests asked to TypeSafe (needs TYPESAFE_API_KEY)
 #   npx skillunit review  after a change to the package's code, to read and accept the units
 skill: ./skills/skillunit
@@ -11,3 +11,9 @@ examples:
   md: { command: "node tools/check-example.mjs md {file}" }
   yaml: { command: "node tools/check-example.mjs yaml {file}" }
   sh: { command: "sh -n {file}" }
+# Units proved by the package's tests: `npx nx test skillunit` writes the report. `require` is off,
+# so a unit that no test proves yet is counted, not an error.
+proof:
+  reports: ./packages/skillunit/reports/junit.xml
+  sources: ["packages/skillunit/src/**/*.test.ts"]
+  require: false

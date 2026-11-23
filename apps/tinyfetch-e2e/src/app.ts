@@ -1,7 +1,8 @@
 /**
  * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is,
- * with its committed `skillunit.lock`, a scenario changes it and commits, and `run` calls the
- * built SkillUnit CLI on the copy.
+ * with its committed `skillunit.lock`, a scenario changes it and commits, `test` runs the app's
+ * tests as CI does (they write the JUnit report the proof layer reads), and `run` calls the built
+ * SkillUnit CLI on the copy.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -14,7 +15,10 @@ const here = dirname(fileURLToPath(import.meta.url));
 const workspace = resolve(here, '../../..');
 const appSource = join(workspace, 'apps', 'tinyfetch');
 export const CLI = join(workspace, 'packages', 'skillunit', 'dist', 'cli.js');
-const typescript = dirname(createRequire(import.meta.url).resolve('typescript/package.json'));
+const require = createRequire(import.meta.url);
+const typescript = dirname(require.resolve('typescript/package.json'));
+const vitest = join(workspace, 'node_modules', 'vitest');
+const prettier = dirname(require.resolve('prettier/package.json', { paths: [join(workspace, 'packages', 'skillunit')] }));
 
 /** The API key, from the environment or the workspace's `.env`. Never printed. */
 export function apiKey(): string | undefined {
@@ -37,13 +41,17 @@ export class App {
 
   private constructor(name: string) {
     this.root = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
-    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'skillunit.lock', 'tsconfig.json', 'package.json']) {
+    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'skillunit.lock', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
       cpSync(join(appSource, part), join(this.root, part), { recursive: true });
     }
     // The type-check runs the project's own tsc, found in node_modules at or above the tsconfig.
-    mkdirSync(join(this.root, 'node_modules'));
+    mkdirSync(join(this.root, 'node_modules', '.bin'), { recursive: true });
     symlinkSync(typescript, join(this.root, 'node_modules', 'typescript'), 'dir');
-    writeFileSync(join(this.root, '.gitignore'), 'node_modules\n');
+    // The tests run with Vitest, and `proof.format` runs Prettier through `npx --no-install`.
+    symlinkSync(vitest, join(this.root, 'node_modules', 'vitest'), 'dir');
+    symlinkSync(prettier, join(this.root, 'node_modules', 'prettier'), 'dir');
+    symlinkSync(join(prettier, 'bin', 'prettier.cjs'), join(this.root, 'node_modules', '.bin', 'prettier'));
+    writeFileSync(join(this.root, '.gitignore'), 'node_modules\nreports\ntmp\n');
     this.git('init', '-q');
     this.git('symbolic-ref', 'HEAD', 'refs/heads/main');
     this.commit('base');
@@ -98,8 +106,15 @@ export class App {
     this.git('commit', '-q', '--allow-empty', '-m', message);
   }
 
+  /** Runs the app's tests, which write `reports/junit.xml`. Returns whether they all passed. */
+  test(): boolean {
+    const result = spawnSync(process.execPath, [join(vitest, 'vitest.mjs'), 'run'], { cwd: this.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', CI: '1' } });
+    if (!existsSync(join(this.root, 'reports', 'junit.xml'))) throw new Error(`the tests wrote no report (exit ${result.status}): ${result.stdout}${result.stderr}`.trim());
+    return result.status === 0;
+  }
+
   /** Runs `skillunit <command> --reporter json` on the copy. With `--changed`, `--base` is the base commit. */
-  run(command: 'check' | 'lint' | 'sync' | 'test', ...args: string[]): Run {
+  run(command: 'check' | 'lint' | 'sync' | 'proof' | 'test', ...args: string[]): Run {
     const base = args.includes('--changed') ? ['--base', this.base] : [];
     const key = apiKey();
     const result = spawnSync(process.execPath, [CLI, command, '--reporter', 'json', ...base, ...args], {

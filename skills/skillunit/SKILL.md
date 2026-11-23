@@ -54,6 +54,8 @@ Applies: setup
 
 Source: src/init.ts
 
+Proof: none, advice on how to start
+
 ### rule: key-outside-the-repo
 
 When: the test layer needs the decision model's API key.
@@ -127,3 +129,5 @@ Wrong:
 Applies: commands
 
 Source: src/cli.ts
+
+Proof: none, advice on which command to run

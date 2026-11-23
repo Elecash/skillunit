@@ -16,9 +16,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The tests write the JUnit reports the proof layer of `check` reads
+      # (packages/skillunit/reports, apps/tinyfetch/reports).
       - run: npx nx run-many -t typecheck build test
-      # Needs no API key: lint, sync, and the specs load, their headings exist and requests fit.
+      # Needs no API key: lint, sync, proof, and the specs load, their headings exist and requests fit.
       - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
+      - working-directory: apps/tinyfetch
+        run: node ../../packages/skillunit/dist/cli.js check --dry-run --reporter github
       # The acceptance scenarios that need no model. Those that do are skipped without a key.
       - run: npx nx e2e tinyfetch-e2e
 
@@ -39,7 +43,8 @@ jobs:
       - if: env.TYPESAFE_API_KEY == ''
         run: echo "::warning title=Model tests did not run::TYPESAFE_API_KEY is not set for this repository, so the skill's specs and the scenarios that ask the model were skipped."
       - run: npm ci
-      - run: npx nx build skillunit
+      # The build, and the tests that write the reports `check` reads for its proof layer.
+      - run: npx nx run-many -t build test -p skillunit tinyfetch
       - if: env.TYPESAFE_API_KEY != ''
         run: node packages/skillunit/dist/cli.js check --reporter github
       - if: env.TYPESAFE_API_KEY != ''
