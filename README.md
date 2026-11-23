@@ -14,7 +14,7 @@ It checks a skill in three layers:
 
 What it costs to run:
 
-- **Each CI job takes under a minute.** In this repository, the job that type-checks, builds, runs the tests, the dry check and the e2e scenarios took 44 seconds, and the job that asks the decision model took 25.
+- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in about 0.2 seconds, however many tests it holds: 54 tests in 8 specs take about 1.5 seconds.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 

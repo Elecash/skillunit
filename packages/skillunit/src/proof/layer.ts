@@ -3,13 +3,17 @@
  * `proof=<id>` holds what its test produced. It reads the JUnit XML report of a test run, the
  * folder where tests wrote examples, and the regions of test files. It never runs the tests.
  *
- * A unit is proved when a test whose title carries `[skill:<id>]` passed and none failed; it says
- * `Proof: none` when no test can prove it; any other unit is pending. With `write`, every flagged
- * block is rewritten from its file or region first; without it, the comparison is made in
- * memory, so the check needs no git and works before a commit.
+ * A unit is proved when a test whose title carries `[skill:<id>]` passed and none failed. It
+ * failed when a tagged test failed, or when `skillunit.lock` lists it and no tagged test passed.
+ * Any other unit is unproved. The lock remembers which units were proved, since a deleted test
+ * takes its tag with it.
+ *
+ * With `write`, every flagged block is rewritten from its file or region, and the lock gets the
+ * units the tests prove; without it, the comparison is made in memory, so the check needs no git
+ * and works before a commit. `forget` takes ids off the lock before the check.
  */
 import { spawnSync } from 'node:child_process';
-import { globSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, globSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import type { ProofConfig } from '../config.js';
 import { output, quote } from '../lint/commands.js';
@@ -18,6 +22,7 @@ import type { Problem } from '../lint/types.js';
 import { parseFile, parseSkill, type Fence, type ParsedFile, type Unit } from '../units/index.js';
 import { readExamples, type ExampleFile } from './examples.js';
 import { readJUnit, ReportError, type TestCase, type TestStatus } from './junit.js';
+import { formatLock, LOCK_FILE, parseLock, type Lock } from './lock.js';
 import { collectRegions, type Region } from './regions.js';
 
 export interface ProofOptions {
@@ -26,16 +31,18 @@ export interface ProofOptions {
   config: ProofConfig;
   /** The settings file, for findings about the settings. */
   configFile?: string;
-  /** Rewrite every flagged block from what its test produced. */
+  /** Rewrite every flagged block from what its test produced, and add the proved units to the lock. */
   write?: boolean;
+  /** Ids to take off the lock before the check: all of them, or none when the lock lacks one. */
+  forget?: string[];
   /**
-   * Also report what lint reports about `proof=` and `Proof:`. `check` turns it off, since lint
-   * ran before; `skillunit proof` alone keeps it on.
+   * Also report what lint reports about `proof=`. `check` turns it off, since lint ran before;
+   * `skillunit proof` alone keeps it on.
    */
   marks?: boolean;
 }
 
-export type UnitProofState = 'proved' | 'none' | 'failed' | 'pending';
+export type UnitProofState = 'proved' | 'failed' | 'unproved';
 
 export interface ProofTest {
   /** The report, from the skill folder. */
@@ -63,6 +70,8 @@ export interface UnitProof {
   file: string;
   line: number;
   state: UnitProofState;
+  /** `skillunit.lock` lists the unit, after `write` or `forget` changed it. */
+  listed: boolean;
   tests: ProofTest[];
   fences: ProofFence[];
 }
@@ -75,18 +84,16 @@ export interface ProofResult {
   skill: string;
   /** The reports read, from the skill folder. */
   reports: string[];
-  require: boolean;
   write: boolean;
+  lock: LockReport;
   units: UnitProof[];
   problems: Problem[];
   summary: {
     units: number;
     proved: number;
-    /** Units with `Proof: none`. */
-    none: number;
-    pending: number;
-    /** Units with a tagged test that failed. */
+    /** Units with a tagged test that failed, or listed in the lock and not proved. */
     failed: number;
+    unproved: number;
     /** Tests in the reports that carry a `[skill:<id>]` tag. */
     tagged: number;
     /** Flagged blocks whose text comes from a test: an example file or a region. */
@@ -96,6 +103,26 @@ export interface ProofResult {
     /** Blocks `--write` rewrote. */
     written: number;
   };
+}
+
+/** `skillunit.lock`, and what this run did to it. */
+export interface LockReport {
+  /** The lock, from the skill folder. */
+  file: string;
+  /** The file exists, after this run. */
+  exists: boolean;
+  /** How many ids it lists, after this run. */
+  listed: number;
+  /** Ids `write` added. */
+  added: string[];
+  /** Ids `write` dropped: no unit of the skill has them. */
+  dropped: string[];
+  /** Ids `forget` took off. */
+  forgot: string[];
+  /** `write` replaced the lock of `skillunit sync` (version 1). */
+  replaced: boolean;
+  /** The file was written. */
+  written: boolean;
 }
 
 /** What `check` reports when the settings have no `proof` key. */
@@ -121,6 +148,32 @@ export function proof(options: ProofOptions): ProofResult {
   const settings = settingsPlace(options.configFile, skillDir);
 
   if (options.marks) problems.push(...proofMarks(skill));
+
+  // ---------------------------------------------------------------- the lock, and --forget
+  const lockAbs = join(cfg.cwd, LOCK_FILE);
+  const lockFile = fromSkill(lockAbs);
+  let lockText = existsSync(lockAbs) ? readFileSync(lockAbs, 'utf8') : null;
+  let lock: Lock = parseLock(lockText);
+  const lockReport: LockReport = { file: lockFile, exists: lockText !== null, listed: 0, added: [], dropped: [], forgot: [], replaced: false, written: false };
+  if (options.forget?.length) {
+    const wanted = [...new Set(options.forget)].sort();
+    if (lock.kind === 'missing') {
+      add(settings.file, settings.line(), `there is no \`${LOCK_FILE}\`, so \`--forget\` has nothing to take off`);
+    } else if (lock.kind === 'ok') {
+      const ids = new Set(lock.ids.map((i) => i.id));
+      const missing = wanted.filter((id) => !ids.has(id));
+      if (missing.length) {
+        add(lockFile, 1, `\`${LOCK_FILE}\` does not list ${missing.map((id) => `\`${id}\``).join(', ')}, so nothing was forgotten: \`--forget\` takes only ids the lock lists`);
+      } else {
+        lockText = formatLock([...ids].filter((id) => !wanted.includes(id)));
+        writeFileSync(lockAbs, lockText);
+        lock = parseLock(lockText);
+        lockReport.forgot = wanted;
+        lockReport.written = true;
+      }
+    }
+    // A lock that cannot be read gets its own finding below, and nothing is forgotten.
+  }
 
   // ---------------------------------------------------------------- what the tests left
   const reportPaths = expand(cfg.reports, cfg.cwd);
@@ -168,38 +221,67 @@ export function proof(options: ProofOptions): ProofResult {
     }
   }
 
+  // ---------------------------------------------------------------- what the tests prove
+  const outcomes = [...units.values()].map((unit) => {
+    const tests = tagged.get(unit.id) ?? [];
+    return { unit, tests, failed: tests.filter((t) => t.status === 'failed'), passed: tests.filter((t) => t.status === 'passed') };
+  });
+  const provedIds = outcomes.filter((o) => o.passed.length && !o.failed.length).map((o) => o.unit.id);
+
+  // ---------------------------------------------------------------- the lock, with --write
+  // Without a report, what the tests prove is unknown, so the lock is left as it is.
+  if (options.write && read && lock.kind !== 'broken') {
+    const before = lock.kind === 'ok' || lock.kind === 'conflict' ? lock.ids.map((i) => i.id) : [];
+    const kept = before.filter((id) => units.has(id));
+    const text = formatLock([...kept, ...provedIds]);
+    if (text !== lockText && (lock.kind !== 'missing' || provedIds.length)) {
+      writeFileSync(lockAbs, text);
+      lockReport.added = [...new Set(provedIds.filter((id) => !before.includes(id)))].sort();
+      lockReport.dropped = [...new Set(before.filter((id) => !units.has(id)))].sort();
+      lockReport.replaced = lock.kind === 'sync';
+      lockReport.written = true;
+      lock = parseLock(text);
+    }
+  }
+  /** The ids the lock lists; null when the lock cannot be read, which is then its only finding. */
+  let listed: Set<string> | null = null;
+  if (lock.kind === 'ok') listed = new Set(lock.ids.map((i) => i.id));
+  else if (lock.kind === 'missing') listed = new Set();
+  else if (lock.kind === 'conflict') add(lockFile, lock.line, `\`${LOCK_FILE}\` has merge conflict markers; run \`skillunit proof --write\`, which keeps the units of both sides`);
+  else if (lock.kind === 'sync') add(lockFile, 1, `this \`${LOCK_FILE}\` is the lock of \`skillunit sync\`, which this version no longer has; \`skillunit proof --write\` replaces it with the units the tests prove`);
+  else add(lockFile, lock.line, `\`${LOCK_FILE}\` cannot be read: ${lock.message}`);
+  lockReport.exists = existsSync(lockAbs);
+  lockReport.listed = listed?.size ?? 0;
+
   // ---------------------------------------------------------------- units
   const results: UnitProof[] = [];
   const usedFiles = new Set<string>();
   const usedRegions = new Set<string>();
   const edits = new Map<string, Edit[]>();
-  for (const unit of units.values()) {
-    const tests = tagged.get(unit.id) ?? [];
-    const failed = tests.filter((t) => t.status === 'failed');
-    const passed = tests.filter((t) => t.status === 'passed');
-    const none = unit.proof?.none === true;
-    const state: UnitProofState = none ? 'none' : failed.length ? 'failed' : passed.length ? 'proved' : 'pending';
+  for (const { unit, tests, failed, passed } of outcomes) {
+    const isListed = listed?.has(unit.id) ?? false;
+    const state: UnitProofState = failed.length ? 'failed' : passed.length ? 'proved' : isListed ? 'failed' : 'unproved';
     const fences = unit.proofs.filter((f) => f.proof && namesUnit(f.proof, unit.id));
-    const at = (message: string, line = unit.line) => add(unit.file, line, message, 'error', unit.id);
+    const at = (message: string, line = unit.line, severity: Problem['severity'] = 'error') => add(unit.file, line, message, severity, unit.id);
 
     // With no report read, only the report is reported: every unit would look unproved.
     if (!read) {
-      results.push({ id: unit.id, file: unit.file, line: unit.line, state: none ? 'none' : 'pending', tests: [], fences: [] });
+      results.push({ id: unit.id, file: unit.file, line: unit.line, state: 'unproved', listed: isListed, tests: [], fences: [] });
       continue;
     }
-    if (none && tests.length) {
-      at(`this unit says \`Proof: none\`, and ${tests.length === 1 ? 'a test is' : `${tests.length} tests are`} tagged \`[skill:${unit.id}]\` (${tests.map(quoteTitle).join(', ')}); keep one: the test, or \`Proof: none\``);
-    }
     for (const t of failed) at(`the test ${quoteTitle(t)} (${fromProject(resolve(skillDir, t.report))}:${t.line}) failed${t.message ? `: ${t.message}` : ''}. It proves this unit, so the unit may no longer say what the code does`);
-    if (!none && !failed.length && !passed.length) {
-      if (tests.length) {
-        if (fences.length || cfg.require) at(`every test tagged \`[skill:${unit.id}]\` was skipped (${tests.map(quoteTitle).join(', ')}), so nothing proves this unit`);
+    if (!failed.length && !passed.length) {
+      const skipped = `every test tagged \`[skill:${unit.id}]\` was skipped (${tests.map(quoteTitle).join(', ')})`;
+      if (isListed) {
+        at(`\`${LOCK_FILE}\` lists this unit as proved, and ${tests.length ? skipped : `no test in the reports is tagged \`[skill:${unit.id}]\``}. Bring the test back, or run \`skillunit proof --forget ${unit.id}\` if the unit is no longer meant to be proved`);
+      } else if (tests.length) {
+        if (fences.length) at(`${skipped}, so nothing proves this unit or produces its block`);
+        else at(`${skipped}, so the unit counts as unproved`, unit.line, 'warning');
       } else if (fences.length) {
         at(`no test is tagged \`[skill:${unit.id}]\`, but the block at line ${fences.map((f) => f.line).join(', ')} says a test produced it; tag the test that proves this unit`, fences[0]!.line);
-      } else if (cfg.require) {
-        at(`no test proves this unit: tag a test that asserts what it says with \`[skill:${unit.id}]\`, or write \`Proof: none, <why>\` when no test can`);
       }
     }
+    if (state === 'proved' && lock.kind === 'ok' && !isListed) at(`a test proves this unit and \`${LOCK_FILE}\` does not list it. Run \`skillunit proof --write\``);
 
     const proofFences: ProofFence[] = [];
     for (const fence of fences) {
@@ -227,7 +309,20 @@ export function proof(options: ProofOptions): ProofResult {
       list.push({ fence, unit: unit.id, text, origin: file ? fromProject(file.path) : regionPlace(region!), result: pf });
       edits.set(unit.file, list);
     }
-    results.push({ id: unit.id, file: unit.file, line: unit.line, state, tests: tests.map((t) => ({ report: t.report, line: t.line, title: title(t), status: t.status })), fences: proofFences });
+    results.push({ id: unit.id, file: unit.file, line: unit.line, state, listed: isListed, tests: tests.map((t) => ({ report: t.report, line: t.line, title: title(t), status: t.status })), fences: proofFences });
+  }
+
+  if (read && lock.kind === 'missing' && provedIds.length) {
+    const shown = provedIds.slice(0, 5).join(', ') + (provedIds.length > 5 ? ', …' : '');
+    add(settings.file, settings.line(), `there is no \`${LOCK_FILE}\`, and the tests prove ${provedIds.length === 1 ? 'a unit' : `${provedIds.length} units`} (${shown}). Run \`skillunit proof --write\` to create it`);
+  }
+  if (lock.kind === 'ok') {
+    const reported = new Set<string>();
+    for (const { id, line } of lock.ids) {
+      if (units.has(id) || reported.has(id)) continue;
+      reported.add(id);
+      add(lockFile, line, `\`${LOCK_FILE}\` lists \`${id}\`, and no unit of the skill has that id; \`skillunit proof --write\` drops it`);
+    }
   }
 
   for (const [id, file] of read ? folder.examples : []) {
@@ -252,16 +347,15 @@ export function proof(options: ProofOptions): ProofResult {
     ok: !problems.some((p) => p.severity === 'error'),
     skill: skillDir,
     reports: reportPaths.map(fromSkill),
-    require: cfg.require,
     write: options.write === true,
+    lock: lockReport,
     units: results,
     problems,
     summary: {
       units: results.length,
       proved: count('proved'),
-      none: count('none'),
-      pending: count('pending'),
       failed: count('failed'),
+      unproved: count('unproved'),
       tagged: cases.filter((c) => c.tags.length).length,
       fences: all.filter((f) => f.from).length,
       differ: all.filter((f) => f.differs).length,
@@ -412,7 +506,7 @@ export function expand(globs: string[], cwd: string): string[] {
 interface SettingsPlace {
   file: string;
   /** The line of `proof.<key>` in the settings, or of `proof:`, or 1. */
-  line: (key: string) => number;
+  line: (key?: string) => number;
 }
 
 function settingsPlace(configFile: string | undefined, skillDir: string): SettingsPlace {
@@ -427,7 +521,7 @@ function settingsPlace(configFile: string | undefined, skillDir: string): Settin
   const find = (re: RegExp) => lines.findIndex((l) => re.test(l)) + 1;
   return {
     file: relative(skillDir, configFile).split('\\').join('/'),
-    line: (key) => find(new RegExp(`^\\s+${key}\\s*:`)) || find(/^proof\s*:/) || 1,
+    line: (key) => (key ? find(new RegExp(`^\\s+${key}\\s*:`)) : 0) || find(/^proof\s*:/) || 1,
   };
 }
 

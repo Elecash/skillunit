@@ -7,7 +7,7 @@
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, decidingNumber, distribution, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
+import { brief, decidingNumber, distribution, lockChange, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 /** Findings shown for one example; the rest are counted. */
@@ -84,22 +84,24 @@ export function table(report: CheckReport, options: ReportOptions): string {
     const w = Math.max(24, ...files.map((f) => f.length)) + 2;
     const errorsIn = (file: string) => proof.problems.some((p) => p.file === file && p.severity === 'error');
     if (files.length) {
-      out.push(c.dim(`    ${pad('FILE', w)}${padStart('PROVED', 8)}${padStart('NONE', 6)}${padStart('PENDING', 9)}${padStart('FAILED', 8)}`));
+      out.push(c.dim(`    ${pad('FILE', w)}${padStart('PROVED', 8)}${padStart('FAILED', 8)}${padStart('UNPROVED', 10)}`));
       for (const file of files) {
         const mine = proof.units.filter((u) => u.file === file);
         const n = (state: string) => mine.filter((u) => u.state === state).length;
-        const state = errorsIn(file) || n('failed') ? 'fail' : n('pending') ? 'warn' : 'ok';
-        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('proved')), 8)}${padStart(String(n('none')), 6)}${padStart(String(n('pending')), 9)}${padStart(String(n('failed')), 8)}`);
+        const state = errorsIn(file) || n('failed') ? 'fail' : 'ok';
+        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('proved')), 8)}${padStart(String(n('failed')), 8)}${padStart(String(n('unproved')), 10)}`);
       }
     }
     const s = proof.summary;
     const notes = [
-      `${plural(s.units, 'unit')}: ${s.proved} proved, ${s.none} with Proof: none, ${s.pending} pending${s.failed ? `, ${s.failed} failed` : ''}`,
+      `proved ${s.proved} of ${plural(s.units, 'unit')}${s.failed ? `, ${s.failed} failed` : ''}`,
       `${plural(s.fences, 'block')} from tests${s.written ? `, ${s.written} written` : s.differ ? `, ${s.differ} out of date` : ''}`,
       `${plural(s.tagged, 'tagged test')}`,
-      proof.require ? '' : 'require off',
-    ].filter(Boolean);
+      `${plural(proof.lock.listed, 'unit')} in the lock`,
+    ];
     out.push(c.dim(`  ${notes.join(' · ')}`));
+    const change = lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options));
+    if (change) out.push(`  ${change}`);
     for (const p of proof.problems) {
       if (p.severity === 'error') failures.push(problemBlock(proof.skill, p));
       else warnings.push(`${where(proof.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);

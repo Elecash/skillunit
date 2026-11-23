@@ -41,7 +41,7 @@ export class App {
 
   private constructor(name: string) {
     this.root = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
-    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
+    for (const part of ['src', 'skill', 'specs', 'skillunit.yaml', 'skillunit.lock', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
       cpSync(join(appSource, part), join(this.root, part), { recursive: true });
     }
     // The type-check runs the project's own tsc, found in node_modules at or above the tsconfig.

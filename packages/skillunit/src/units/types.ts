@@ -8,7 +8,7 @@ export type UnitKind = 'rule' | 'decision' | 'fact';
 
 /** Body labels in the one order every kind follows. */
 export const BODY_LABELS = ['When', 'Do', 'Decide', 'Value', 'Unknown', 'Even when', 'Right'] as const;
-export const FOOTER_LABELS = ['Applies', 'Check', 'Proof'] as const;
+export const FOOTER_LABELS = ['Applies', 'Check'] as const;
 export const LABELS = [...BODY_LABELS, ...FOOTER_LABELS] as const;
 
 export type LabelName = (typeof LABELS)[number];
@@ -19,7 +19,7 @@ export interface LabelLine {
   line: number;
   /** The label's text: its paragraph after `Label:`, wrapped lines joined with a space. */
   value: string;
-  /** Set by the name: `Applies`, `Check` and `Proof` are footer, the rest body. */
+  /** Set by the name: `Applies` and `Check` are footer, the rest body. */
   part: 'body' | 'footer';
   /** The label sits in the same paragraph as the label before it, with no blank line between. */
   joined: boolean;
@@ -97,17 +97,6 @@ export interface Check {
   column: number;
 }
 
-/** The `Proof:` label of a unit. v1 takes only `none`, with an optional reason after it. */
-export interface ProofLabel {
-  line: number;
-  /** The label's text, as written. */
-  raw: string;
-  /** The text is `none`, or `none` and a reason. Lint reports any other text. */
-  none: boolean;
-  /** What follows `none`, punctuation before it taken off; '' when there is none. */
-  reason: string;
-}
-
 export interface Unit {
   id: string;
   kind: UnitKind;
@@ -135,8 +124,6 @@ export interface Unit {
 
   applies: string[];
   check: Check[];
-  /** The `Proof:` label, if any. */
-  proof?: ProofLabel;
   /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
   proofs: Fence[];
 

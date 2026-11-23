@@ -21,7 +21,6 @@
  *     examples: ./tmp/skill-proof   # where tests write examples (the default)
  *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
  *     format: "npx prettier --write {file}"   # run on a skill file after writing it
- *     require: true              # a unit no test proves and with no `Proof: none` is an error
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -69,8 +68,6 @@ export interface ProofConfig {
   sources: string[];
   /** A command with `{file}`, run on each skill file `--write` changes. */
   format?: string;
-  /** A unit that no test proves and that has no `Proof: none` is an error, not a count. */
-  require: boolean;
   /** Folder of the config file: globs and commands start there. */
   cwd: string;
 }
@@ -157,7 +154,7 @@ export function loadConfig(path?: string): Config {
   return config;
 }
 
-const PROOF_KEYS = ['reports', 'examples', 'sources', 'format', 'require'];
+const PROOF_KEYS = ['reports', 'examples', 'sources', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { reports: ./reports/junit.xml }`');
@@ -175,7 +172,7 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
     if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
     return list as string[];
   };
-  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), sources: globs('sources', false), require: true, cwd: root };
+  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), sources: globs('sources', false), cwd: root };
   if (raw.examples !== undefined) {
     if (typeof raw.examples !== 'string' || !raw.examples.trim()) throw fail('`proof.examples` must be a folder');
     out.examples = resolve(root, raw.examples);
@@ -183,10 +180,6 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
   if (raw.format !== undefined) {
     if (typeof raw.format !== 'string' || !raw.format.includes('{file}')) throw fail('`proof.format` must be a command with `{file}` where the skill file goes');
     out.format = raw.format;
-  }
-  if (raw.require !== undefined) {
-    if (typeof raw.require !== 'boolean') throw fail('`proof.require` must be true or false');
-    out.require = raw.require;
   }
   return out;
 }

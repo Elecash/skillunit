@@ -52,5 +52,3 @@ await tf.get("https://api.example.com/users", { retry: 3 });
 Applies: retries, post, patch
 
 Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-
-Proof: none, it is about what a server does with a repeated request, which the tests of tinyfetch cannot see

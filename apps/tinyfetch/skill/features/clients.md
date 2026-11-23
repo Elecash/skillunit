@@ -49,5 +49,3 @@ Decide: whether to create a client.
 Even when: the requests sit in different files: export the client from one module and import it.
 
 Applies: clients
-
-Proof: none, a choice about the caller's code

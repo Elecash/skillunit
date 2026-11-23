@@ -43,7 +43,10 @@ Options for test and check
   --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)
 
 Options for proof
-  --write             rewrite every block flagged proof=<id> from what its test produced, then check
+  --write             rewrite every block flagged proof=<id> from what its test produced, add the
+                      units the tests prove to skillunit.lock, then check
+  --forget <ids>      take these units off skillunit.lock, then check: ids separated by commas,
+                      or the option given more than once. For a unit no longer meant to be proved
 
 Exit codes
   0  every check passed (lint warnings and borderline verdicts allowed)
@@ -63,6 +66,7 @@ interface Args {
   dryRun: boolean;
   changed: boolean;
   write: boolean;
+  forget: string[];
   reporter: ReporterName;
   model?: string;
   thresholds: Partial<Thresholds>;
@@ -71,7 +75,7 @@ interface Args {
 /** Options each command takes, besides --config, --skill, --reporter and --json. */
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
-  proof: ['--write'],
+  proof: ['--write', '--forget'],
   test: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
   check: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
 };
@@ -87,7 +91,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { specs: [], dryRun: false, changed: false, write: false, reporter: 'table', thresholds: {} };
+  const args: Args = { specs: [], dryRun: false, changed: false, write: false, forget: [], reporter: 'table', thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -115,6 +119,11 @@ function parseArgs(command: Command, argv: string[]): Args {
     else if (flag === '--dry-run') args.dryRun = true;
     else if (flag === '--changed') args.changed = true;
     else if (flag === '--write') args.write = true;
+    else if (flag === '--forget') {
+      const ids = value().split(',');
+      if (ids.some((id) => !/^[A-Za-z0-9_.-]+$/.test(id))) usage('--forget takes unit ids separated by commas, with no spaces: --forget retry-defaults,timeouts');
+      args.forget.push(...ids);
+    }
     else if (flag === '--model') args.model = value();
     else if (flag === '--choice') args.thresholds.choice = fraction();
     else if (flag === '--yes') args.thresholds.yes = fraction();
@@ -123,6 +132,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     else positional.push(flag);
   }
   if (args.base !== undefined && !args.changed) usage('--base only works with --changed');
+  if (args.write && args.forget.length) usage('--forget and --write go in separate runs: --write would add back a unit a test still proves');
   if (command === 'test') args.specs = positional;
   else if (command === 'check' && positional.length) usage('check takes no paths; use --skill and the settings');
   else if (positional.length > 1) usage(`${command} takes one skill folder`);
@@ -169,7 +179,7 @@ async function runCommand(command: Command, args: Args) {
     }
     if (command === 'proof' || command === 'check') {
       proofResult = config.proof
-        ? proof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, marks: command === 'proof' })
+        ? proof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, forget: args.forget, marks: command === 'proof' })
         : { configured: false, ok: true };
     }
     if (testing) {

@@ -1,6 +1,7 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
 import { isAbsolute, join, relative } from 'node:path';
 import type { LintSummary, Problem } from '../lint/types.js';
+import type { LockReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -68,6 +69,20 @@ export function decidingNumber(v: Verdict, report: CheckReport): string {
   return `P(yes) ${v.confidence.toFixed(2)}${threshold}`;
 }
 
+/** What `--write` or `--forget` did to `skillunit.lock`, shown as `file`, or null when it was not written. */
+export function lockChange(lock: LockReport, file: string): string | null {
+  if (!lock.written) return null;
+  const ids = (list: string[]) => `(${list.join(', ')})`;
+  const parts = lock.forgot.length
+    ? [`forgot ${plural(lock.forgot.length, 'unit')} ${ids(lock.forgot)}`]
+    : [
+        lock.replaced ? 'replaced the lock of sync' : '',
+        lock.added.length ? `added ${plural(lock.added.length, 'unit')} ${ids(lock.added)}` : '',
+        lock.dropped.length ? `dropped ${lock.dropped.length} ${ids(lock.dropped)}` : '',
+      ].filter(Boolean);
+  return `Updated ${file}: ${parts.length ? parts.join(', ') : 'sorted the ids'}.`;
+}
+
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
@@ -82,8 +97,9 @@ export function statusLine(report: CheckReport): string {
     else {
       const errors = proof.problems.filter((p) => p.severity === 'error').length;
       const warnings = proof.problems.length - errors;
-      const written = proof.summary.written ? `, ${plural(proof.summary.written, 'block')} written` : '';
-      parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${written}`);
+      const written = [proof.summary.written ? plural(proof.summary.written, 'block') : '', proof.lock.written ? 'the lock' : ''].filter(Boolean);
+      const wrote = written.length ? `, wrote ${written.join(' and ')}` : '';
+      parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${wrote}`);
     }
   }
   if (test) {

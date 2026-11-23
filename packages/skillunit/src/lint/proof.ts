@@ -1,7 +1,6 @@
 /**
  * The marks of the proof layer that lint can check without a test run: a `proof=<id>` flag names
- * its own unit, once in the skill, and a unit with `Proof: none` has no flagged fence. Whether a
- * test proved the unit is `skillunit proof`'s business.
+ * its own unit, once in the skill. Whether a test proved the unit is `skillunit proof`'s business.
  */
 import type { Fence, ParsedSkill } from '../units/index.js';
 import type { Problem } from './types.js';
@@ -43,20 +42,6 @@ export function proofMarks(skill: ParsedSkill): Problem[] {
       } else {
         seen.set(fence.proof, fence);
       }
-    }
-  }
-
-  for (const unit of skill.units) {
-    const proof = unit.proof;
-    if (!proof) continue;
-    const at = (message: string): Problem => ({ file: unit.file, line: proof.line, unit: unit.id, severity: 'error', rule: 'proof', message });
-    if (!proof.none) {
-      out.push(at('`Proof` takes only `none`, with an optional reason: `Proof: none, a recommendation`. A unit a test proves needs no `Proof` label: the test\'s `[skill:<id>]` tag says it'));
-      continue;
-    }
-    if (unit.proofs.length > 0) {
-      const lines = unit.proofs.map((f) => f.line).join(', ');
-      out.push(at(`this unit says \`Proof: none\` but has a block with \`proof=\` (line ${lines}); keep one: the test that produces the block, or \`Proof: none\``));
     }
   }
   return out;

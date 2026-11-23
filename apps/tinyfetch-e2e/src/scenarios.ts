@@ -168,15 +168,15 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'unit added with no test',
-    change: 'add a fact that no test proves and that has no `Proof: none`',
+    change: 'add a fact that no test proves',
     apply(app) {
       const unit =
         '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n\nApplies: timeouts, errors\n';
       app.write('skill/features/timeouts.md', app.read('skill/features/timeouts.md') + unit);
       app.commit('Add a unit about TimeoutError');
     },
-    // With `require` on, a new unit that no test proves and with no `Proof: none` is an error.
-    expect: { proof: ['timeout-error-names-its-limit'] },
+    // An unproved unit is counted, not reported: the lock does not list it.
+    expect: {},
   },
   ...(['preserve', 'always', 'never'] as const).map(
     (proseWrap): Scenario => ({
@@ -207,8 +207,6 @@ export const scenarios: Scenario[] = [
         'structure skill/features/errors.md log-failed-requests',
         'structure skill/features/errors.md log-failed-requests',
       ],
-      // A new unit that no test proves, with `require` on.
-      proof: ['log-failed-requests'],
     },
   },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
@@ -288,7 +286,7 @@ export const scenarios: Scenario[] = [
       app.write(TEST, text.slice(0, start) + text.slice(end));
       app.commit('Drop a test');
     },
-    // The block has no source any more, and with `require` the unit is unproved.
+    // The block has no source any more, and the lock lists a unit no test proves.
     expect: { proof: ['body-as-object', 'body-as-object'] },
   },
   {
@@ -298,6 +296,7 @@ export const scenarios: Scenario[] = [
       app.edit(TEST, "  it('sends the body as JSON [skill:body-as-object]'", "  it.skip('sends the body as JSON [skill:body-as-object]'");
       app.commit('Skip a test');
     },
+    // The lock lists the unit, and its only test was skipped.
     expect: { proof: ['body-as-object'] },
   },
   {

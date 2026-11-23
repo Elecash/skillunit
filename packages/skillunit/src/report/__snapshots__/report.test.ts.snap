@@ -359,16 +359,16 @@ FAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 bord
 "
 `;
 
-exports[`reporters > the proof layer > github: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > github: proved, failed and unproved units, with every kind of finding 1`] = `
 "::error file=skills/demo/features/retries.md,line=32,title=SkillUnit proof%3A retry-idempotent-only::this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
 ::error file=skills/demo/features/retries.md,line=40,title=SkillUnit proof%3A retry-delay::the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
-::error file=skills/demo/SKILL.md,line=30,title=SkillUnit proof%3A await-every-request::no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can
+::error file=skills/demo/SKILL.md,line=30,title=SkillUnit proof%3A await-every-request::\`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
 ::warning file=tmp/skill-proof/gone.json,line=1,title=SkillUnit proof::no block has \`proof=gone\`, so nothing uses \`gone.json\`
 FAILED  proof 3 errors, 1 warning
 "
 `;
 
-exports[`reporters > the proof layer > json: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > json: proved, failed and unproved units, with every kind of finding 1`] = `
 "{
   "schema": 4,
   "command": "proof",
@@ -380,14 +380,24 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
     "reports": [
       "../../reports/junit.xml"
     ],
-    "require": true,
     "write": false,
+    "lock": {
+      "file": "../../skillunit.lock",
+      "exists": true,
+      "listed": 2,
+      "added": [],
+      "dropped": [],
+      "forgot": [],
+      "replaced": false,
+      "written": false
+    },
     "units": [
       {
         "id": "retry-idempotent-only",
         "file": "features/retries.md",
         "line": 20,
         "state": "proved",
+        "listed": true,
         "tests": [
           {
             "report": "../../reports/junit.xml",
@@ -411,6 +421,7 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
         "file": "features/retries.md",
         "line": 40,
         "state": "failed",
+        "listed": true,
         "tests": [
           {
             "report": "../../reports/junit.xml",
@@ -425,7 +436,8 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
         "id": "pick-a-client",
         "file": "SKILL.md",
         "line": 12,
-        "state": "none",
+        "state": "unproved",
+        "listed": false,
         "tests": [],
         "fences": []
       },
@@ -433,7 +445,8 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
         "id": "await-every-request",
         "file": "SKILL.md",
         "line": 30,
-        "state": "pending",
+        "state": "failed",
+        "listed": true,
         "tests": [],
         "fences": []
       }
@@ -461,7 +474,7 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
         "unit": "await-every-request",
         "severity": "error",
         "rule": "proof",
-        "message": "no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can"
+        "message": "\`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved"
       },
       {
         "file": "../../tmp/skill-proof/gone.json",
@@ -474,9 +487,8 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
     "summary": {
       "units": 4,
       "proved": 1,
-      "none": 1,
-      "pending": 1,
-      "failed": 1,
+      "failed": 2,
+      "unproved": 1,
       "tagged": 2,
       "fences": 1,
       "differ": 1,
@@ -487,7 +499,7 @@ exports[`reporters > the proof layer > json: proved, Proof: none, pending and fa
 "
 `;
 
-exports[`reporters > the proof layer > junit: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > junit: proved, failed and unproved units, with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="SkillUnit" tests="5" failures="3" errors="0">
   <testsuite name="proof" tests="5" failures="3" errors="0">
@@ -505,14 +517,14 @@ exports[`reporters > the proof layer > junit: proved, Proof: none, pending and f
     </testcase>
     <testcase name="pick-a-client" classname="proof.skills/demo/SKILL.md">
       <properties>
-        <property name="state" value="none"/>
+        <property name="state" value="unproved"/>
       </properties>
     </testcase>
     <testcase name="await-every-request" classname="proof.skills/demo/SKILL.md">
       <properties>
-        <property name="state" value="pending"/>
+        <property name="state" value="failed"/>
       </properties>
-      <failure message="skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, &lt;why&gt;\` when no test can">skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, &lt;why&gt;\` when no test can</failure>
+      <failure message="skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved">skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved</failure>
     </testcase>
     <testcase name="tmp/skill-proof/gone.json:1" classname="proof">
       <system-out>warning: tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`</system-out>
@@ -522,13 +534,13 @@ exports[`reporters > the proof layer > junit: proved, Proof: none, pending and f
 "
 `;
 
-exports[`reporters > the proof layer > table: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > table: proved, failed and unproved units, with every kind of finding 1`] = `
 "
 Proof  reports/junit.xml
-    FILE                        PROVED  NONE  PENDING  FAILED
-  ✗ features/retries.md              1     0        0       1
-  ✗ SKILL.md                         0     1        1       0
-  4 units: 1 proved, 1 with Proof: none, 1 pending, 1 failed · 1 block from tests, 1 out of date · 2 tagged tests
+    FILE                        PROVED  FAILED  UNPROVED
+  ✗ features/retries.md              1       1         0
+  ✗ SKILL.md                         0       1         1
+  proved 1 of 4 units, 2 failed · 1 block from tests, 1 out of date · 2 tagged tests · 2 units in the lock
 
 Failures
 
@@ -536,7 +548,7 @@ Failures
 
   2) skills/demo/features/retries.md:40  retry-delay  the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
 
-  3) skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can
+  3) skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
 
 Warnings
   tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`

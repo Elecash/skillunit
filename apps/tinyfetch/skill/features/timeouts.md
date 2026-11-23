@@ -64,5 +64,3 @@ await tf.post(
 Applies: timeouts, uploads
 
 Check: forbid `/timeout:\s*0\b/` in ts
-
-Proof: none, advice on which timeout to choose

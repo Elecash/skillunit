@@ -524,7 +524,7 @@ describe('malformed input', () => {
 
   it('reports a paragraph that is not a label, and labels that repeat', () => {
     expect(messages('### rule: r\n\nDo: y\n\nThis also matters.\n')).toEqual([
-      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof)',
+      '5: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)',
     ]);
     expect(messages('### rule: r\nWhy: old label\n')[0]).toMatch(/^2: this paragraph is not a label/);
     expect(messages('### rule: r\n\nWrong: old label\n')[0]).toMatch(/^3: this paragraph is not a label/);
@@ -647,8 +647,6 @@ Decide:
   ${F}
 
 Applies: clients
-
-Proof: none, a recommendation
 `;
   const file = parse(PROVED);
 
@@ -669,21 +667,8 @@ Proof: none, a recommendation
     expect(file.fences.filter((f) => f.proof === undefined)).toHaveLength(1);
   });
 
-  it('reads Proof as a footer label: none and its reason', () => {
-    const decision = file.units[1]!;
-    expect(decision.labels.at(-1)).toMatchObject({ name: 'Proof', part: 'footer' });
-    expect(decision.proof).toEqual({ line: lineOf(PROVED, 'Proof:'), raw: 'none, a recommendation', none: true, reason: 'a recommendation' });
-    expect(file.units[0]!.proof).toBeUndefined();
-  });
-
-  it('takes none alone, or with a reason after a comma, a dash or a space', () => {
-    const proofOf = (value: string) => parse(`### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nProof: ${value}\n`).units[0]!.proof;
-    expect(proofOf('none')).toMatchObject({ none: true, reason: '' });
-    expect(proofOf('none.')).toMatchObject({ none: true, reason: '' });
-    expect(proofOf('none — about the server')).toMatchObject({ none: true, reason: 'about the server' });
-    expect(proofOf('none because it is advice')).toMatchObject({ none: true, reason: 'because it is advice' });
-    expect(proofOf('nonetheless')).toMatchObject({ none: false });
-    expect(proofOf('none-yet')).toMatchObject({ none: false });
-    expect(proofOf('test')).toMatchObject({ none: false, raw: 'test' });
+  it('reads Proof as a paragraph that is not a label', () => {
+    const f = parse(`### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nProof: none, advice\n`);
+    expect(f.errors.map((e) => e.message)).toEqual([expect.stringMatching(/^this paragraph is not a label; a unit holds only labels \(When, .*, Applies, Check\)$/)]);
   });
 });

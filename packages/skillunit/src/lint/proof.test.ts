@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { lintSkill } from './lint.js';
 import { proofMarks } from './proof.js';
-import { structure } from './structure.js';
 import { F, lineOf, skillOf } from './testing.js';
 import type { Problem } from './types.js';
 
@@ -26,7 +25,7 @@ ${footer}`;
 const file = (...units: string[]) => `# T\n\n## Rules\n\n${units.join('\n')}`;
 
 describe('proof marks', () => {
-  it('accepts the unit id, the unit id and a name, and Proof: none on a unit with no flag', () => {
+  it('accepts the unit id, and the unit id and a name', () => {
     const decision = `### decision: pick
 
 When: a choice.
@@ -47,7 +46,7 @@ Decide:
 
 Applies: picks
 `;
-    expect(marksOf({ 'a.md': file(rule('r', 'ts proof=r'), decision, rule('advice', 'ts', '\nProof: none, a recommendation\n')) })).toEqual([]);
+    expect(marksOf({ 'a.md': file(rule('r', 'ts proof=r'), decision, rule('advice', 'ts')) })).toEqual([]);
   });
 
   it('reports a flag that names another unit, or a name that is not kebab-case', () => {
@@ -106,23 +105,11 @@ Applies: a
     ]);
   });
 
-  it('reports Proof: none on a unit with a flagged block, and any Proof but none', () => {
-    const text = file(rule('r', 'ts proof=r', '\nProof: none\n'), rule('s', 'ts', '\nProof: tested\n'));
-    expect(marksOf({ 'a.md': text })).toEqual([
-      `a.md:${lineOf(text, 'Proof: none')} r proof error: this unit says \`Proof: none\` but has a block with \`proof=\` (line ${lineOf(text, 'proof=r')}); keep one: the test that produces the block, or \`Proof: none\``,
-      `a.md:${lineOf(text, 'Proof: tested')} s proof error: \`Proof\` takes only \`none\`, with an optional reason: \`Proof: none, a recommendation\`. A unit a test proves needs no \`Proof\` label: the test's \`[skill:<id>]\` tag says it`,
+  it('reads a Proof line as a paragraph that is not a label', () => {
+    const text = file(rule('r', 'ts', '\nProof: none, advice\n'));
+    expect(lintSkill(skillOf({ 'a.md': text }), { off: ['index'] }).problems.map((p) => `${p.line} ${p.rule}: ${p.message}`)).toEqual([
+      `${lineOf(text, 'Proof:')} parse: this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)`,
     ]);
-  });
-
-  it('places Proof in the footer for the structure rules, on every kind', () => {
-    const fact = `### fact: f\n\nWhen: a.\n\nValue: 1.\n\nApplies: a\n\nCheck: forbid \`/x/\` in ts\n\nProof: none\n`;
-    expect(structure(skillOf({ 'a.md': file(fact, rule('r', 'ts', '\nProof: none\n')) }))).toEqual([]);
-    const early = `### fact: f\n\nWhen: a.\n\nProof: none\n\nValue: 1.\n\nApplies: a\n`;
-    expect(structure(skillOf({ 'a.md': file(early) })).map((p) => p.message)).toEqual([
-      '`Value` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof',
-      '`Applies` goes before `Proof`; the order is When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof',
-    ]);
-    expect(structure(skillOf({ 'a.md': file(rule('r', 'ts', '\nProof:\n')) })).map((p) => p.message)).toEqual(['`Proof` is empty']);
   });
 
   it('runs in lint, under the rule proof, which lint.off turns off', () => {

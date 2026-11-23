@@ -8,6 +8,7 @@ import { F } from '../lint/testing.js';
 import type { Problem } from '../lint/types.js';
 import { examplesFolder, skillExample } from './helper.js';
 import { proof, type ProofOptions } from './layer.js';
+import { formatLock } from './lock.js';
 
 // Region markers built from parts: this file holds no region of its own.
 const OPEN = (id: string) => `#${'region'} skill:${id}`;
@@ -41,7 +42,6 @@ const config = (root: string, more: Partial<ProofConfig> = {}): ProofConfig => (
   reports: ['reports/*.xml'],
   examples: join(root, 'tmp/skill-proof'),
   sources: ['tests/*.test.ts'],
-  require: true,
   cwd: root,
   ...more,
 });
@@ -53,7 +53,7 @@ const show = (p: Problem) => `${p.file}:${p.line} ${p.unit ?? '-'} ${p.severity}
 const errors = (r: ReturnType<typeof proof>) => r.problems.filter((p) => p.severity === 'error').map(show);
 const warnings = (r: ReturnType<typeof proof>) => r.problems.filter((p) => p.severity === 'warning').map(show);
 
-/** A skill: a rule with a proved block, a fact proved by a tag alone, and advice with `Proof: none`. */
+/** A skill: a rule with a proved block, a fact proved by a tag alone, and advice no test proves. */
 const SKILL = `# Demo
 
 ## Rules
@@ -87,8 +87,6 @@ When: calling one API many times.
 Do: reuse one client.
 
 Applies: clients
-
-Proof: none, a recommendation
 `;
 
 const TEST = `test('[skill:check-status]', () => {
@@ -103,16 +101,21 @@ const GOOD = {
   'skill/SKILL.md': SKILL,
   'tests/a.test.ts': TEST,
   'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed'], ['reads the delay [skill:retry-delay]', 'passed'], ['no tag', 'passed']),
+  'skillunit.lock': formatLock(['check-status', 'retry-delay']),
 };
 
+const lockOf = (root: string) => readFileSync(join(root, 'skillunit.lock'), 'utf8');
+const SKIPPED = junit(['checks the status [skill:check-status]', 'skipped'], ['reads the delay [skill:retry-delay]', 'skipped']);
+
 describe('a skill whose tests prove it', () => {
-  it('counts proved, Proof: none and pending, and the blocks from tests', () => {
+  it('counts proved, failed and unproved, the blocks from tests, and the lock', () => {
     const r = run(project(GOOD));
     expect(r.problems.map(show)).toEqual([]);
     expect(r.ok).toBe(true);
-    expect(r.summary).toEqual({ units: 3, proved: 2, none: 1, pending: 0, failed: 0, tagged: 2, fences: 1, differ: 0, written: 0 });
-    expect(r.units.map((u) => `${u.id} ${u.state}`)).toEqual(['check-status proved', 'retry-delay proved', 'one-client none']);
+    expect(r.summary).toEqual({ units: 3, proved: 2, failed: 0, unproved: 1, tagged: 2, fences: 1, differ: 0, written: 0 });
+    expect(r.units.map((u) => `${u.id} ${u.state} ${u.listed}`)).toEqual(['check-status proved true', 'retry-delay proved true', 'one-client unproved false']);
     expect(r.reports).toEqual(['../reports/junit.xml']);
+    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], replaced: false, written: false });
   });
 });
 
@@ -132,32 +135,46 @@ describe('what fails the layer', () => {
     ]);
   });
 
-  it('a tagged test failed: always, whether the unit has a block or not and whatever require says', () => {
-    const root = project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed'], ['reads the delay [skill:retry-delay]', 'failed']) });
+  it('a tagged test failed: always, whether the lock lists the unit or not', () => {
+    const report = junit(['checks the status [skill:check-status]', 'passed'], ['reads the delay [skill:retry-delay]', 'failed']);
     const expected = [
       'SKILL.md:19 retry-delay error: the test "tests/a.test.ts › reads the delay [skill:retry-delay]" (reports/junit.xml:4) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does',
     ];
-    expect(errors(run(root))).toEqual(expected);
-    expect(errors(run(root, { require: false }))).toEqual(expected);
-    expect(run(root).units[1]!.state).toBe('failed');
+    const listed = run(project({ ...GOOD, 'reports/junit.xml': report }));
+    expect(errors(listed)).toEqual(expected);
+    expect(listed.units[1]!.state).toBe('failed');
+    expect(errors(run(project({ ...GOOD, 'reports/junit.xml': report, 'skillunit.lock': formatLock(['check-status']) })))).toEqual(expected);
   });
 
-  it('every tagged test was skipped, and the unit has a block or require is on', () => {
-    const root = project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'skipped'], ['reads the delay [skill:retry-delay]', 'skipped']) });
-    expect(errors(run(root))).toEqual([
-      'SKILL.md:5 check-status error: every test tagged `[skill:check-status]` was skipped ("tests/a.test.ts › checks the status [skill:check-status]"), so nothing proves this unit',
-      'SKILL.md:19 retry-delay error: every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]"), so nothing proves this unit',
+  it('the lock lists a unit whose tagged tests were all skipped, or that no test is tagged for', () => {
+    const lost = (id: string, line: number, why: string) =>
+      `SKILL.md:${line} ${id} error: \`skillunit.lock\` lists this unit as proved, and ${why}. Bring the test back, or run \`skillunit proof --forget ${id}\` if the unit is no longer meant to be proved`;
+    const skipped = run(project({ ...GOOD, 'reports/junit.xml': SKIPPED }));
+    expect(errors(skipped)).toEqual([
+      lost('check-status', 5, 'every test tagged `[skill:check-status]` was skipped ("tests/a.test.ts › checks the status [skill:check-status]")'),
+      lost('retry-delay', 19, 'every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]")'),
     ]);
-    // With require off, only the unit with a block fails; the fact is pending.
-    expect(errors(run(root, { require: false })).map((e) => e.split(' ')[1])).toEqual(['check-status']);
-    expect(run(root, { require: false }).summary.pending).toBe(2);
+    expect(skipped.summary).toMatchObject({ proved: 0, failed: 2, unproved: 1 });
+    const gone = run(project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed']) }));
+    expect(errors(gone)).toEqual([lost('retry-delay', 19, 'no test in the reports is tagged `[skill:retry-delay]`')]);
   });
 
-  it('a block whose unit no test is tagged for, whatever require says', () => {
-    const root = project({ ...GOOD, 'reports/junit.xml': junit(['reads the delay [skill:retry-delay]', 'passed']) });
-    const message = 'SKILL.md:13 check-status error: no test is tagged `[skill:check-status]`, but the block at line 13 says a test produced it; tag the test that proves this unit';
-    expect(errors(run(root))).toEqual([message]);
-    expect(errors(run(root, { require: false }))).toEqual([message]);
+  it('every tagged test of an unlisted unit was skipped: an error with a block, a warning without', () => {
+    const r = run(project({ ...GOOD, 'reports/junit.xml': SKIPPED, 'skillunit.lock': formatLock([]) }));
+    expect(errors(r)).toEqual([
+      'SKILL.md:5 check-status error: every test tagged `[skill:check-status]` was skipped ("tests/a.test.ts › checks the status [skill:check-status]"), so nothing proves this unit or produces its block',
+    ]);
+    expect(warnings(r)).toEqual([
+      'SKILL.md:19 retry-delay warning: every test tagged `[skill:retry-delay]` was skipped ("tests/a.test.ts › reads the delay [skill:retry-delay]"), so the unit counts as unproved',
+    ]);
+    expect(r.summary).toMatchObject({ proved: 0, failed: 0, unproved: 3 });
+  });
+
+  it('a block whose unit no test is tagged for', () => {
+    const root = project({ ...GOOD, 'reports/junit.xml': junit(['reads the delay [skill:retry-delay]', 'passed']), 'skillunit.lock': formatLock(['retry-delay']) });
+    expect(errors(run(root))).toEqual([
+      'SKILL.md:13 check-status error: no test is tagged `[skill:check-status]`, but the block at line 13 says a test produced it; tag the test that proves this unit',
+    ]);
   });
 
   it('a tag that names no unit, or none at all', () => {
@@ -188,11 +205,42 @@ describe('what fails the layer', () => {
     ]);
   });
 
-  it('Proof: none on a unit a test is tagged for', () => {
-    const root = project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed'], ['reads the delay [skill:retry-delay]', 'passed'], ['one client [skill:one-client]', 'passed']) });
-    expect(errors(run(root))).toEqual([
-      'SKILL.md:27 one-client error: this unit says `Proof: none`, and a test is tagged `[skill:one-client]` ("tests/a.test.ts › one client [skill:one-client]"); keep one: the test, or `Proof: none`',
+  it('a unit a test proves and the lock does not list', () => {
+    expect(errors(run(project({ ...GOOD, 'skillunit.lock': formatLock(['check-status']) })))).toEqual([
+      'SKILL.md:19 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
     ]);
+  });
+
+  it('no lock: one error when a unit is proved, nothing when none is', () => {
+    const { 'skillunit.lock': _, ...rest } = GOOD;
+    const r = run(project(rest));
+    expect(errors(r)).toEqual([
+      '../skillunit.yaml:1 - error: there is no `skillunit.lock`, and the tests prove 2 units (check-status, retry-delay). Run `skillunit proof --write` to create it',
+    ]);
+    expect(r.lock).toMatchObject({ exists: false, listed: 0 });
+    const unproved = run(project({ ...rest, 'skill/SKILL.md': SKILL.replace('ts proof=check-status', 'ts'), 'reports/junit.xml': junit(['no tag', 'passed']) }));
+    expect(errors(unproved)).toEqual([]);
+  });
+
+  it('the lock lists an id that no unit has', () => {
+    expect(errors(run(project({ ...GOOD, 'skillunit.lock': formatLock(['check-status', 'gone', 'retry-delay']) })))).toEqual([
+      '../skillunit.lock:5 - error: `skillunit.lock` lists `gone`, and no unit of the skill has that id; `skillunit proof --write` drops it',
+    ]);
+  });
+
+  it('accepts an id listed twice and ids out of order', () => {
+    expect(run(project({ ...GOOD, 'skillunit.lock': '{"version":2,"proved":["retry-delay","check-status","retry-delay"]}' })).problems).toEqual([]);
+  });
+
+  it('a lock it cannot read is its only finding about the lock', () => {
+    const sync = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 1,\n  "units": {}\n}\n' }));
+    expect(errors(sync)).toEqual([
+      '../skillunit.lock:1 - error: this `skillunit.lock` is the lock of `skillunit sync`, which this version no longer has; `skillunit proof --write` replaces it with the units the tests prove',
+    ]);
+    const newer = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 3,\n  "proved": []\n}\n' }));
+    expect(errors(newer)).toEqual(['../skillunit.lock:2 - error: `skillunit.lock` cannot be read: it has version 3, and this SkillUnit reads version 2; upgrade skillunit to read it']);
+    const conflict = run(project({ ...GOOD, 'skillunit.lock': '{\n  "version": 2,\n  "proved": [\n<<<<<<< HEAD\n    "check-status"\n=======\n    "retry-delay"\n>>>>>>> topic\n  ]\n}\n' }));
+    expect(errors(conflict)).toEqual(['../skillunit.lock:4 - error: `skillunit.lock` has merge conflict markers; run `skillunit proof --write`, which keeps the units of both sides']);
   });
 
   it('a block that differs from its region: the first line that differs, and what to run', () => {
@@ -201,16 +249,6 @@ describe('what fails the layer', () => {
       'SKILL.md:14 check-status error: this block is not what `tests/a.test.ts:2` gives, from line 1 of the block: the test gives `if (isHttpError(error)) return undefined;`, the skill has `if (isHttpError(error)) return null;`. Run `skillunit proof --write`',
     ]);
     expect(run(root).summary.differ).toBe(1);
-  });
-
-  it('require on, and a unit no test proves and with no Proof: none', () => {
-    const root = project({ ...GOOD, 'reports/junit.xml': junit(['checks the status [skill:check-status]', 'passed']) });
-    expect(errors(run(root))).toEqual([
-      'SKILL.md:19 retry-delay error: no test proves this unit: tag a test that asserts what it says with `[skill:retry-delay]`, or write `Proof: none, <why>` when no test can',
-    ]);
-    const off = run(root, { require: false });
-    expect(off.problems).toEqual([]);
-    expect(off.summary).toMatchObject({ proved: 1, none: 1, pending: 1 });
   });
 
   it('a region whose text would close the block', () => {
@@ -269,18 +307,93 @@ Applies: picks
       'reports/junit.xml': junit(['picks [skill:pick]', 'passed']),
     });
     const before = run(root);
-    expect(errors(before)[0]).toContain('this block is not what `tmp/skill-proof/pick.shared.json` gives');
+    expect(errors(before).join('\n')).toContain('this block is not what `tmp/skill-proof/pick.shared.json` gives');
     const written = run(root, {}, { write: true });
     expect(written.problems).toEqual([]);
     expect(written.summary).toMatchObject({ written: 1, differ: 1 });
     expect(readFileSync(join(root, 'skill/SKILL.md'), 'utf8')).toBe(NESTED.replace('  {}\n', '  {\n    "baseUrl": "https://api.example.com"\n  }\n'));
+    expect(lockOf(root)).toBe(formatLock(['pick']));
     expect(run(root).problems).toEqual([]);
+  });
+
+  it('adds the proved units to the lock, drops ids no unit has, and keeps a listed unit that is not proved', () => {
+    const root = project({ ...GOOD, 'skillunit.lock': formatLock(['gone', 'one-client']) });
+    const r = run(root, {}, { write: true });
+    expect(r.lock).toEqual({ file: '../skillunit.lock', exists: true, listed: 3, added: ['check-status', 'retry-delay'], dropped: ['gone'], forgot: [], replaced: false, written: true });
+    expect(lockOf(root)).toBe(formatLock(['check-status', 'one-client', 'retry-delay']));
+    expect(errors(r)).toEqual([
+      'SKILL.md:27 one-client error: `skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:one-client]`. Bring the test back, or run `skillunit proof --forget one-client` if the unit is no longer meant to be proved',
+    ]);
+    expect(run(root, {}, { write: true }).lock.written).toBe(false);
+  });
+
+  it('creates the lock, sorts it, replaces the lock of sync and resolves a merge conflict', () => {
+    const { 'skillunit.lock': _, ...rest } = GOOD;
+    const created = project(rest);
+    expect(run(created, {}, { write: true }).lock).toMatchObject({ exists: true, added: ['check-status', 'retry-delay'], written: true });
+    expect(lockOf(created)).toBe(formatLock(['check-status', 'retry-delay']));
+
+    const unsorted = project({ ...GOOD, 'skillunit.lock': '{"version":2,"proved":["retry-delay","check-status","retry-delay"]}' });
+    expect(run(unsorted, {}, { write: true }).lock).toMatchObject({ added: [], dropped: [], written: true });
+    expect(lockOf(unsorted)).toBe(formatLock(['check-status', 'retry-delay']));
+
+    const sync = project({ ...GOOD, 'skillunit.lock': '{ "version": 1, "units": {} }' });
+    const replaced = run(sync, {}, { write: true });
+    expect(replaced.problems).toEqual([]);
+    expect(replaced.lock).toMatchObject({ replaced: true, added: ['check-status', 'retry-delay'] });
+
+    const conflict = project({ ...GOOD, 'skillunit.lock': '{\n  "version": 2,\n  "proved": [\n<<<<<<< HEAD\n    "check-status",\n    "one-client"\n=======\n    "retry-delay"\n>>>>>>> topic\n  ]\n}\n' });
+    expect(run(conflict, {}, { write: true }).lock).toMatchObject({ added: [], written: true });
+    expect(lockOf(conflict)).toBe(formatLock(['check-status', 'one-client', 'retry-delay']));
+  });
+
+  it('leaves the lock alone without a report, or when it cannot read it', () => {
+    const { 'reports/junit.xml': _, ...rest } = GOOD;
+    const root = project({ ...rest, 'skillunit.lock': formatLock(['one-client']) });
+    expect(run(root, {}, { write: true }).lock.written).toBe(false);
+    expect(lockOf(root)).toBe(formatLock(['one-client']));
+    const broken = project({ ...GOOD, 'skillunit.lock': '{ "version": 2, "proved": [' });
+    run(broken, {}, { write: true });
+    expect(lockOf(broken)).toBe('{ "version": 2, "proved": [');
   });
 
   it('keeps CRLF line ends', () => {
     const root = project({ 'skill/SKILL.md': NESTED.replace(/\n/g, '\r\n'), 'tmp/skill-proof/pick.shared.json': 'a\nb\n', 'reports/junit.xml': junit(['picks [skill:pick]', 'passed']) });
     run(root, {}, { write: true });
     expect(readFileSync(join(root, 'skill/SKILL.md'), 'utf8')).toContain('  ~~~~json title="client.json" proof=pick.shared\r\n  a\r\n  b\r\n  ~~~~\r\n');
+  });
+});
+
+describe('--forget', () => {
+  const LISTED = { ...GOOD, 'skillunit.lock': formatLock(['check-status', 'one-client', 'retry-delay']) };
+
+  it('takes ids off the lock, then checks', () => {
+    const root = project(LISTED);
+    const r = run(root, {}, { forget: ['one-client'] });
+    expect(r.problems).toEqual([]);
+    expect(r.lock).toMatchObject({ forgot: ['one-client'], listed: 2, written: true });
+    expect(lockOf(root)).toBe(formatLock(['check-status', 'retry-delay']));
+  });
+
+  it('forgets all the ids or none', () => {
+    const root = project(LISTED);
+    const r = run(root, {}, { forget: ['one-client', 'nope', 'never'] });
+    expect(errors(r)[0]).toBe('../skillunit.lock:1 - error: `skillunit.lock` does not list `never`, `nope`, so nothing was forgotten: `--forget` takes only ids the lock lists');
+    expect(r.lock.written).toBe(false);
+    expect(lockOf(root)).toBe(LISTED['skillunit.lock']);
+  });
+
+  it('a forgotten unit that a test still proves fails the check', () => {
+    const root = project(GOOD);
+    expect(errors(run(root, {}, { forget: ['retry-delay'] }))).toEqual([
+      'SKILL.md:19 retry-delay error: a test proves this unit and `skillunit.lock` does not list it. Run `skillunit proof --write`',
+    ]);
+    expect(lockOf(root)).toBe(formatLock(['check-status']));
+  });
+
+  it('needs a lock', () => {
+    const { 'skillunit.lock': _, ...rest } = GOOD;
+    expect(errors(run(project(rest), {}, { forget: ['one-client'] }))[0]).toBe('../skillunit.yaml:1 - error: there is no `skillunit.lock`, so `--forget` has nothing to take off');
   });
 });
 
@@ -295,6 +408,7 @@ writeFileSync(file, readFileSync(file, 'utf8').replace(/(\\w)=(\\d)/g, '$1 = $2'
     'skill/SKILL.md': SKILL.replace('if (isHttpError(error)) return null;', block),
     'tests/a.test.ts': `// ${OPEN('check-status')}\nconst a=1;\n// ${CLOSE}\n`,
     'reports/junit.xml': GOOD['reports/junit.xml'],
+    'skillunit.lock': GOOD['skillunit.lock'],
   });
 
   it('compares the blocks as the formatter leaves them', () => {
@@ -324,23 +438,23 @@ describe('the settings', () => {
     return { root, config: () => loadConfig(join(root, 'skillunit.yaml')) };
   };
 
-  it('reads proof with its defaults: require on, examples in ./tmp/skill-proof', () => {
+  it('reads proof with its defaults: examples in ./tmp/skill-proof', () => {
     const { root, config } = load('proof:\n  reports: ./reports/junit.xml\n');
-    expect(config().proof).toEqual({ reports: ['./reports/junit.xml'], examples: join(root, 'tmp/skill-proof'), sources: [], require: true, cwd: root });
+    expect(config().proof).toEqual({ reports: ['./reports/junit.xml'], examples: join(root, 'tmp/skill-proof'), sources: [], cwd: root });
   });
 
   it('reads every key, a list of reports included', () => {
-    const { root, config } = load("proof:\n  reports: [a.xml, 'b/*.xml']\n  examples: out\n  sources: src/**/*.test.ts\n  format: npx prettier --write {file}\n  require: false\n");
-    expect(config().proof).toEqual({ reports: ['a.xml', 'b/*.xml'], examples: join(root, 'out'), sources: ['src/**/*.test.ts'], format: 'npx prettier --write {file}', require: false, cwd: root });
+    const { root, config } = load("proof:\n  reports: [a.xml, 'b/*.xml']\n  examples: out\n  sources: src/**/*.test.ts\n  format: npx prettier --write {file}\n");
+    expect(config().proof).toEqual({ reports: ['a.xml', 'b/*.xml'], examples: join(root, 'out'), sources: ['src/**/*.test.ts'], format: 'npx prettier --write {file}', cwd: root });
   });
 
   it('rejects a wrong proof key', () => {
     expect(() => load('proof: yes\n').config()).toThrow(/`proof` must be a mapping/);
     expect(() => load('proof:\n  examples: out\n').config()).toThrow(/`proof.reports` is missing/);
-    expect(() => load('proof:\n  reports: a.xml\n  report: b.xml\n').config()).toThrow(/unknown key `proof.report` \(allowed: reports, examples, sources, format, require\)/);
+    expect(() => load('proof:\n  reports: a.xml\n  report: b.xml\n').config()).toThrow(/unknown key `proof.report` \(allowed: reports, examples, sources, format\)/);
     expect(() => load('proof:\n  reports: [a.xml, 3]\n').config()).toThrow(/`proof.reports` must be a glob or a list of globs/);
     expect(() => load('proof:\n  reports: a.xml\n  format: prettier --write\n').config()).toThrow(/`proof.format` must be a command with `\{file\}`/);
-    expect(() => load('proof:\n  reports: a.xml\n  require: "no"\n').config()).toThrow(/`proof.require` must be true or false/);
+    expect(() => load('proof:\n  reports: a.xml\n  require: true\n').config()).toThrow(/unknown key `proof.require`/);
   });
 });
 

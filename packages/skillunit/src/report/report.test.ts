@@ -239,26 +239,26 @@ describe('reporters', () => {
       ok: false,
       skill,
       reports: ['../../reports/junit.xml'],
-      require: true,
       write: false,
+      lock: { file: '../../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], replaced: false, written: false },
       units: [
-        { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'proved', tests: [{ report: '../../reports/junit.xml', line: 4, title: 'retries > only GET [skill:retry-idempotent-only]', status: 'passed' }], fences: [{ id: 'retry-idempotent-only', line: 31, from: 'region', differs: true, written: false }] },
-        { id: 'retry-delay', file: 'features/retries.md', line: 40, state: 'failed', tests: [{ report: '../../reports/junit.xml', line: 7, title: 'retries > delay [skill:retry-delay]', status: 'failed' }], fences: [] },
-        { id: 'pick-a-client', file: 'SKILL.md', line: 12, state: 'none', tests: [], fences: [] },
-        { id: 'await-every-request', file: 'SKILL.md', line: 30, state: 'pending', tests: [], fences: [] },
+        { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'proved', listed: true, tests: [{ report: '../../reports/junit.xml', line: 4, title: 'retries > only GET [skill:retry-idempotent-only]', status: 'passed' }], fences: [{ id: 'retry-idempotent-only', line: 31, from: 'region', differs: true, written: false }] },
+        { id: 'retry-delay', file: 'features/retries.md', line: 40, state: 'failed', listed: true, tests: [{ report: '../../reports/junit.xml', line: 7, title: 'retries > delay [skill:retry-delay]', status: 'failed' }], fences: [] },
+        { id: 'pick-a-client', file: 'SKILL.md', line: 12, state: 'unproved', listed: false, tests: [], fences: [] },
+        { id: 'await-every-request', file: 'SKILL.md', line: 30, state: 'failed', listed: true, tests: [], fences: [] },
       ],
       problems: [
         { file: 'features/retries.md', line: 32, unit: 'retry-idempotent-only', severity: 'error', rule: 'proof', message: 'this block is not what `src/retry.test.ts:12` gives, from line 1 of the block: the test gives `tf.get(url, { retry: 3 })`, the skill has `tf.get(url)`. Run `skillunit proof --write`' },
         { file: 'features/retries.md', line: 40, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does' },
-        { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', rule: 'proof', message: 'no test proves this unit: tag a test that asserts what it says with `[skill:await-every-request]`, or write `Proof: none, <why>` when no test can' },
+        { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', rule: 'proof', message: '`skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:await-every-request]`. Bring the test back, or run `skillunit proof --forget await-every-request` if the unit is no longer meant to be proved' },
         { file: '../../tmp/skill-proof/gone.json', line: 1, severity: 'warning', rule: 'proof', message: 'no block has `proof=gone`, so nothing uses `gone.json`' },
       ],
-      summary: { units: 4, proved: 1, none: 1, pending: 1, failed: 1, tagged: 2, fences: 1, differ: 1, written: 0 },
+      summary: { units: 4, proved: 1, failed: 2, unproved: 1, tagged: 2, fences: 1, differ: 1, written: 0 },
     };
     const withProof = buildReport('proof', { proof });
 
     for (const reporter of REPORTERS) {
-      it(`${reporter}: proved, Proof: none, pending and failed units, with every kind of finding`, () => {
+      it(`${reporter}: proved, failed and unproved units, with every kind of finding`, () => {
         expect(withProof.ok).toBe(false);
         expect(render(withProof, reporter, options)).toMatchSnapshot();
       });
@@ -267,7 +267,30 @@ describe('reporters', () => {
     it('table: the layer in the status line, after lint and before test', () => {
       const clean: ProofResult = { ...proof, ok: true, problems: [], summary: { ...proof.summary, written: 2 } };
       const report = buildReport('check', { lint: { ...lint, ok: true, problems: [] }, proof: clean, test: { ...test, ok: true, specs: [], summary: { ...test.summary, tests: 0, passed: 0, borderline: 0 } } });
-      expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, 2 blocks written · test 0/0 passed');
+      expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, wrote 2 blocks · test 0/0 passed');
+    });
+
+    describe('what --write and --forget did to the lock', () => {
+      const written = (lock: Partial<ProofResult['lock']>) =>
+        buildReport('proof', { proof: { ...proof, ok: true, problems: [], lock: { ...proof.lock, written: true, ...lock } } });
+
+      it('every reporter says it', () => {
+        const report = written({ added: ['a', 'b'], dropped: ['c'] });
+        const line = 'Updated skillunit.lock: added 2 units (a, b), dropped 1 (c).';
+        expect(render(report, 'table', options)).toContain(`  ${line}\n`);
+        expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  proof ok, wrote the lock');
+        expect(render(report, 'github', options)).toContain(`::notice title=SkillUnit proof::${line}\n`);
+        expect(render(report, 'junit', options)).toContain(`<system-out>${line}</system-out>`);
+        expect(JSON.parse(render(report, 'json', options)).proof.lock).toMatchObject({ added: ['a', 'b'], dropped: ['c'], written: true });
+      });
+
+      it('names each change', () => {
+        const table = (lock: Partial<ProofResult['lock']>) => render(written(lock), 'table', options).split('\n').find((l) => l.includes('Updated'))?.trim();
+        expect(table({ forgot: ['a', 'b'] })).toBe('Updated skillunit.lock: forgot 2 units (a, b).');
+        expect(table({ replaced: true, added: ['a'] })).toBe('Updated skillunit.lock: replaced the lock of sync, added 1 unit (a).');
+        expect(table({})).toBe('Updated skillunit.lock: sorted the ids.');
+        expect(table({ written: false, added: ['a'] })).toBeUndefined();
+      });
     });
 
     it('table: says when check ran with no proof key', () => {

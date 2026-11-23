@@ -206,7 +206,7 @@ describe('lint as a whole', () => {
     const result = lint(root);
     expect(result.ok).toBe(false);
     expect(render(buildReport('lint', { lint: result }), 'table', { cwd: root, color: false })).toContain(
-      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check, Proof)',
+      '1) SKILL.md:13  r  this paragraph is not a label; a unit holds only labels (When, Do, Decide, Value, Unknown, Even when, Right, Applies, Check)',
     );
   });
 

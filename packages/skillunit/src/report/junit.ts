@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { decidingNumber, distribution, shown } from './text.js';
+import { decidingNumber, distribution, lockChange, shown } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 interface Case {
@@ -61,6 +61,9 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       else c.out = `warning: ${line(proof.skill, p)}`;
       cases.push(c);
     }
+    const lockFile = shown(join(proof.skill, proof.lock.file), options);
+    const change = lockChange(proof.lock, lockFile);
+    if (change) cases.push({ name: lockFile, classname: 'proof', out: change });
     suites.push({ name: 'proof', cases });
   }
 

@@ -24,7 +24,6 @@ import {
   type ParsedFile,
   type ParsedSkill,
   type ParseError,
-  type ProofLabel,
   type Unit,
   type UnitKind,
 } from './types.js';
@@ -309,9 +308,6 @@ class FileParser {
       case 'Applies':
         u.applies = splitList(l.value);
         break;
-      case 'Proof':
-        u.proof = parseProof(l.value, l.line);
-        break;
       case 'Check': {
         const check = parseCheck(l.value, l.line);
         if (typeof check === 'string') {
@@ -577,15 +573,6 @@ export function proofFlag(flags: string[]): string | undefined {
   if (flag === undefined) return undefined;
   const value = flag.slice('proof='.length);
   return /^(["'])(.*)\1$/.exec(value)?.[2] ?? value;
-}
-
-/** `none`, then an optional reason after a comma, a dash or a space: `none, a recommendation`. */
-const PROOF_NONE = /^none(?![\w-])[\s,;:.—–-]*(.*)$/s;
-
-export function parseProof(value: string, line: number): ProofLabel {
-  const raw = value.trim();
-  const none = PROOF_NONE.exec(raw);
-  return { line, raw, none: !!none, reason: none?.[1]!.trim() ?? '' };
 }
 
 const CHECK_FORMAT = '`Check` reads ``forbid `/regex/` in <languages>``';
