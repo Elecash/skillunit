@@ -46,7 +46,22 @@ export function skillTags(title: string): string[] {
 
 /** Every `testcase` of a JUnit XML report, nested suites included, in document order. */
 export function parseJUnit(xml: string, file: string): TestCase[] {
+  return readJUnit(xml, file).cases;
+}
+
+export interface JUnitReport {
+  cases: TestCase[];
+  /**
+   * The earliest `timestamp` of a `testsuite`: when the run started. `zoned` is false when the
+   * runner wrote no time zone; the time is then read as UTC, which may be off by hours.
+   */
+  started?: { ms: number; zoned: boolean };
+}
+
+/** The cases of a report, and when its run started. */
+export function readJUnit(xml: string, file: string): JUnitReport {
   const cases: TestCase[] = [];
+  let started: JUnitReport['started'];
   const stack: string[] = [];
   let current: TestCase | null = null;
   /** The `failure`, `error` or `skipped` element being read, for its text. */
@@ -114,6 +129,10 @@ export function parseJUnit(xml: string, file: string): TestCase[] {
       continue;
     }
 
+    if (tag.name === 'testsuite' && tag.attrs.timestamp) {
+      const time = readTimestamp(tag.attrs.timestamp);
+      if (time && (!started || time.ms < started.ms)) started = time;
+    }
     if (tag.name === 'testcase') {
       if (current) fail(lt, 'a `testcase` inside another `testcase`');
       const name = tag.attrs.name ?? '';
@@ -135,7 +154,15 @@ export function parseJUnit(xml: string, file: string): TestCase[] {
     }
   }
   if (stack.length) fail(xml.length, `the report ends inside \`<${stack.at(-1)}>\`; was it cut short?`);
-  return cases;
+  return started ? { cases, started } : { cases };
+}
+
+/** An ISO 8601 time, with or without a zone. A time with no zone is read as UTC. */
+function readTimestamp(value: string): { ms: number; zoned: boolean } | undefined {
+  const m = /^(\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?)(Z|[+-]\d\d:?\d\d)?$/.exec(value.trim());
+  if (!m) return undefined;
+  const ms = Date.parse(m[2] ? value.trim() : `${m[1]}Z`);
+  return Number.isNaN(ms) ? undefined : { ms, zoned: Boolean(m[2]) };
 }
 
 const isResult = (name: string) => name === 'failure' || name === 'error' || name === 'skipped';

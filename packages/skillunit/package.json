@@ -31,6 +31,13 @@
   "bin": {
     "skillunit": "bin/skillunit.js"
   },
+  "exports": {
+    "./proof": {
+      "types": "./dist/proof/helper.d.ts",
+      "default": "./dist/proof/helper.js"
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "bin",
     "dist",

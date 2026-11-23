@@ -10,6 +10,7 @@ import { init } from './init.js';
 import { ConfigError, lint } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { loadModel, ModelError } from './models/index.js';
+import { proof, type ProofResult, type ProofSkipped } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { openEditor, runReview, type ReviewArgs } from './review/index.js';
 import { lockPath, sync, type SyncResult } from './sync/index.js';
@@ -19,9 +20,11 @@ import { runAll, type Report } from './test/runner.js';
 const HELP = `SkillUnit keeps an agent skill in sync with the code it describes
 
 Usage
-  skillunit check [options]           lint, sync and test: what CI runs
+  skillunit check [options]           lint, sync, proof and test: what CI runs
   skillunit lint [skill] [options]    the skill's format, examples, Check rules, links and Source paths
   skillunit sync [skill] [options]    units whose code changed since skillunit.lock recorded their review
+  skillunit proof [skill] [options]   units the project's tests prove, from their JUnit report, and
+                                      whether each block flagged proof=<id> holds what its test produced
   skillunit review [options]          show what changed for each unit sync reports, and accept it
   skillunit test [specs...] [options] ask a decision model the spec tests about the skill
   skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
@@ -43,6 +46,9 @@ Options for test and check
   --yes <0-1>         lowest P(yes) that passes an expected "yes" (default 0.7)
   --no <0-1>          highest P(yes) that passes an expected "no" (default 0.3)
   --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)
+
+Options for proof
+  --write             rewrite every block flagged proof=<id> from what its test produced, then check
 
 Options for review
   --list              print the units to review and what changed; change nothing. The default
@@ -69,6 +75,7 @@ interface Args {
   base?: string;
   dryRun: boolean;
   changed: boolean;
+  write: boolean;
   reporter: ReporterName;
   model?: string;
   thresholds: Partial<Thresholds>;
@@ -78,6 +85,7 @@ interface Args {
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
   sync: [],
+  proof: ['--write'],
   test: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
   check: ['--base', '--dry-run', '--changed', '--model', '--choice', '--yes', '--no', '--margin'],
 };
@@ -94,7 +102,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { specs: [], dryRun: false, changed: false, reporter: 'table', thresholds: {} };
+  const args: Args = { specs: [], dryRun: false, changed: false, write: false, reporter: 'table', thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -121,6 +129,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     } else if (flag === '--base') args.base = value();
     else if (flag === '--dry-run') args.dryRun = true;
     else if (flag === '--changed') args.changed = true;
+    else if (flag === '--write') args.write = true;
     else if (flag === '--model') args.model = value();
     else if (flag === '--choice') args.thresholds.choice = fraction();
     else if (flag === '--yes') args.thresholds.yes = fraction();
@@ -156,6 +165,9 @@ async function runCommand(command: Command, args: Args) {
   if (!existsSync(config.skill)) usage(`no skill folder at ${config.skill}`);
 
   const testing = command === 'test' || command === 'check';
+  if (command === 'proof' && !config.proof) {
+    usage(`no \`proof\` key in ${config.configFile ?? CONFIG_FILE}: set \`proof.reports\` to the JUnit XML report of your test run`);
+  }
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
@@ -166,12 +178,18 @@ async function runCommand(command: Command, args: Args) {
   try {
     let lintResult: LintResult | undefined;
     let syncResult: SyncResult | undefined;
+    let proofResult: ProofResult | ProofSkipped | undefined;
     let testResult: Report | undefined;
     if (command === 'lint' || command === 'check') {
       lintResult = lint(config.skill, { sourceRoot: config.sourceRoot, ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
     }
     if (command === 'sync' || command === 'check' || (command === 'test' && args.changed)) {
       syncResult = sync({ skill: config.skill, sourceRoot: config.sourceRoot, lock: lockPath(config) });
+    }
+    if (command === 'proof' || command === 'check') {
+      proofResult = config.proof
+        ? proof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, marks: command === 'proof' })
+        : { configured: false, ok: true };
     }
     if (testing) {
       const model = await loadModel(config.model);
@@ -184,6 +202,7 @@ async function runCommand(command: Command, args: Args) {
     const report = buildReport(command, {
       ...(lintResult ? { lint: lintResult } : {}),
       ...(syncResult && command !== 'test' ? { sync: syncResult } : {}),
+      ...(proofResult ? { proof: proofResult } : {}),
       ...(testResult ? { test: testResult } : {}),
     });
     print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault() }));

@@ -17,6 +17,7 @@ export function github(report: CheckReport, options: ReportOptions): string {
 
   if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
   if (report.sync) for (const p of report.sync.problems) problem('sync', report.sync.skill, p);
+  if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     for (const spec of report.test.specs) {
       const file = shown(spec.spec, options);

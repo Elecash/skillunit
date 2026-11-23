@@ -71,7 +71,7 @@ export function decidingNumber(v: Verdict, report: CheckReport): string {
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
-  const { lint, sync, test } = report;
+  const { lint, sync, proof, test } = report;
   if (lint) {
     const errors = lint.problems.filter((p) => p.severity === 'error').length;
     const warnings = lint.problems.length - errors;
@@ -82,6 +82,15 @@ export function statusLine(report: CheckReport): string {
     const orphans = sync.summary.orphans ? `, ${sync.summary.orphans} orphan ${sync.summary.orphans === 1 ? 'entry' : 'entries'}` : '';
     if (!sync.lock.found && sync.summary.withSource) parts.push(`sync no ${basename(sync.lock.path)}`);
     else parts.push(`sync ${review ? `${plural(review, 'unit')} to review` : 'ok'}${orphans}`);
+  }
+  if (proof) {
+    if (!proof.configured) parts.push('proof not configured');
+    else {
+      const errors = proof.problems.filter((p) => p.severity === 'error').length;
+      const warnings = proof.problems.length - errors;
+      const written = proof.summary.written ? `, ${plural(proof.summary.written, 'block')} written` : '';
+      parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${written}`);
+    }
   }
   if (test) {
     const s = test.summary;

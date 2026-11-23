@@ -494,3 +494,189 @@ Warnings
 FAILED  lint 1 error, 1 warning · sync 2 units to review, 1 orphan entry · test 2/4 passed (1 spec could not run, 2 borderline)
 "
 `;
+
+exports[`reporters > the proof layer > github: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+"::error file=skills/demo/features/retries.md,line=32,title=SkillUnit proof%3A retry-idempotent-only::this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
+::error file=skills/demo/features/retries.md,line=40,title=SkillUnit proof%3A retry-delay::the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
+::error file=skills/demo/SKILL.md,line=30,title=SkillUnit proof%3A await-every-request::no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can
+::warning file=tmp/skill-proof/gone.json,line=1,title=SkillUnit proof::no block has \`proof=gone\`, so nothing uses \`gone.json\`
+FAILED  proof 3 errors, 1 warning
+"
+`;
+
+exports[`reporters > the proof layer > json: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+"{
+  "schema": 3,
+  "command": "proof",
+  "ok": false,
+  "proof": {
+    "configured": true,
+    "ok": false,
+    "skill": "/repo/skills/demo",
+    "reports": [
+      "../../reports/junit.xml"
+    ],
+    "require": true,
+    "write": false,
+    "units": [
+      {
+        "id": "retry-idempotent-only",
+        "file": "features/retries.md",
+        "line": 20,
+        "state": "proved",
+        "tests": [
+          {
+            "report": "../../reports/junit.xml",
+            "line": 4,
+            "title": "retries > only GET [skill:retry-idempotent-only]",
+            "status": "passed"
+          }
+        ],
+        "fences": [
+          {
+            "id": "retry-idempotent-only",
+            "line": 31,
+            "from": "region",
+            "differs": true,
+            "written": false
+          }
+        ]
+      },
+      {
+        "id": "retry-delay",
+        "file": "features/retries.md",
+        "line": 40,
+        "state": "failed",
+        "tests": [
+          {
+            "report": "../../reports/junit.xml",
+            "line": 7,
+            "title": "retries > delay [skill:retry-delay]",
+            "status": "failed"
+          }
+        ],
+        "fences": []
+      },
+      {
+        "id": "pick-a-client",
+        "file": "SKILL.md",
+        "line": 12,
+        "state": "none",
+        "tests": [],
+        "fences": []
+      },
+      {
+        "id": "await-every-request",
+        "file": "SKILL.md",
+        "line": 30,
+        "state": "pending",
+        "tests": [],
+        "fences": []
+      }
+    ],
+    "problems": [
+      {
+        "file": "features/retries.md",
+        "line": 32,
+        "unit": "retry-idempotent-only",
+        "severity": "error",
+        "rule": "proof",
+        "message": "this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`"
+      },
+      {
+        "file": "features/retries.md",
+        "line": 40,
+        "unit": "retry-delay",
+        "severity": "error",
+        "rule": "proof",
+        "message": "the test \\"retries > delay [skill:retry-delay]\\" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does"
+      },
+      {
+        "file": "SKILL.md",
+        "line": 30,
+        "unit": "await-every-request",
+        "severity": "error",
+        "rule": "proof",
+        "message": "no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can"
+      },
+      {
+        "file": "../../tmp/skill-proof/gone.json",
+        "line": 1,
+        "severity": "warning",
+        "rule": "proof",
+        "message": "no block has \`proof=gone\`, so nothing uses \`gone.json\`"
+      }
+    ],
+    "summary": {
+      "units": 4,
+      "proved": 1,
+      "none": 1,
+      "pending": 1,
+      "failed": 1,
+      "tagged": 2,
+      "fences": 1,
+      "differ": 1,
+      "written": 0
+    }
+  }
+}
+"
+`;
+
+exports[`reporters > the proof layer > junit: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+"<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="SkillUnit" tests="5" failures="3" errors="0">
+  <testsuite name="proof" tests="5" failures="3" errors="0">
+    <testcase name="retry-idempotent-only" classname="proof.skills/demo/features/retries.md">
+      <properties>
+        <property name="state" value="proved"/>
+      </properties>
+      <failure message="skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`">skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`</failure>
+    </testcase>
+    <testcase name="retry-delay" classname="proof.skills/demo/features/retries.md">
+      <properties>
+        <property name="state" value="failed"/>
+      </properties>
+      <failure message="skills/demo/features/retries.md:40  retry-delay  the test &quot;retries &gt; delay [skill:retry-delay]&quot; (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does">skills/demo/features/retries.md:40  retry-delay  the test &quot;retries &gt; delay [skill:retry-delay]&quot; (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does</failure>
+    </testcase>
+    <testcase name="pick-a-client" classname="proof.skills/demo/SKILL.md">
+      <properties>
+        <property name="state" value="none"/>
+      </properties>
+    </testcase>
+    <testcase name="await-every-request" classname="proof.skills/demo/SKILL.md">
+      <properties>
+        <property name="state" value="pending"/>
+      </properties>
+      <failure message="skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, &lt;why&gt;\` when no test can">skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, &lt;why&gt;\` when no test can</failure>
+    </testcase>
+    <testcase name="tmp/skill-proof/gone.json:1" classname="proof">
+      <system-out>warning: tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`</system-out>
+    </testcase>
+  </testsuite>
+</testsuites>
+"
+`;
+
+exports[`reporters > the proof layer > table: proved, Proof: none, pending and failed units, with every kind of finding 1`] = `
+"
+Proof  reports/junit.xml
+    FILE                        PROVED  NONE  PENDING  FAILED
+  ✗ features/retries.md              1     0        0       1
+  ✗ SKILL.md                         0     1        1       0
+  4 units: 1 proved, 1 with Proof: none, 1 pending, 1 failed · 1 block from tests, 1 out of date · 2 tagged tests
+
+Failures
+
+  1) skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
+
+  2) skills/demo/features/retries.md:40  retry-delay  the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
+
+  3) skills/demo/SKILL.md:30  await-every-request  no test proves this unit: tag a test that asserts what it says with \`[skill:await-every-request]\`, or write \`Proof: none, <why>\` when no test can
+
+Warnings
+  tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`
+
+FAILED  proof 3 errors, 1 warning
+"
+`;

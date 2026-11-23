@@ -3,6 +3,7 @@
  * its own result. `--reporter json` prints it as it is.
  */
 import type { LintResult } from '../lint/types.js';
+import type { ProofResult, ProofSkipped } from '../proof/layer.js';
 import type { SyncResult } from '../sync/sync.js';
 import type { Report as TestReport } from '../test/runner.js';
 
@@ -12,7 +13,7 @@ import type { Report as TestReport } from '../test/runner.js';
  */
 export const REPORT_SCHEMA = 3;
 
-export type Command = 'lint' | 'sync' | 'test' | 'check';
+export type Command = 'lint' | 'sync' | 'proof' | 'test' | 'check';
 
 export interface CheckReport {
   schema: typeof REPORT_SCHEMA;
@@ -20,6 +21,8 @@ export interface CheckReport {
   ok: boolean;
   lint?: LintResult;
   sync?: SyncResult;
+  /** `{ configured: false }` when `check` ran and the settings have no `proof` key. */
+  proof?: ProofResult | ProofSkipped;
   test?: TestReport;
 }
 
@@ -33,6 +36,6 @@ export interface ReportOptions {
 }
 
 export function buildReport(command: Command, layers: Omit<CheckReport, 'schema' | 'command' | 'ok'>): CheckReport {
-  const ok = [layers.lint, layers.sync, layers.test].every((l) => l === undefined || l.ok);
+  const ok = [layers.lint, layers.sync, layers.proof, layers.test].every((l) => l === undefined || l.ok);
   return { schema: REPORT_SCHEMA, command, ok, ...layers };
 }

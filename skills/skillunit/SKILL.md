@@ -114,7 +114,7 @@ Decide: which layer to run.
 
 - **test** — what a unit says changed, or its specs did: `npx skillunit test`, or `npx skillunit test --changed` for only the specs those changes touch.
 
-- **check** — before handing the work over: `npx skillunit check`, the three layers in one run.
+- **check** — before handing the work over: `npx skillunit check`, every layer in one run.
 
 Even when: only one file changed; `check` is what CI runs, so it is the last command before handing over.
 

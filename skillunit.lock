@@ -8,7 +8,7 @@
     "check-regex-in-a-code-span": { "src/units/parse.ts#parseCheck": "61d28a9a3cccac28" },
     "complete-examples": { "src/lint/tsc.ts": "e1ae1b73900a9b53" },
     "dry-run-first": { "src/test/runner.ts": "e2602084a7ba5c88" },
-    "dry-run-without-key": { "src/cli.ts": "138aef5f0848c479" },
+    "dry-run-without-key": { "src/cli.ts": "3c0a0462e37847d2" },
     "expect-none-only-for-silence": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "fix-when-asked": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "id-names-the-instruction": { "src/lint/structure.ts": "356eddf32fcf5b98" },
@@ -43,11 +43,11 @@
     "signatures-in-tables": { "src/lint/tsc.ts": "e1ae1b73900a9b53" },
     "source-from-the-config-folder": { "src/lint/sources.ts": "53dd4f71e8f2b014" },
     "still-green-without-the-rule": { "src/test/reader.ts": "9f247f47a70ffd31" },
-    "strengthen-borderline-tests": { "src/report/table.ts": "bccf0fd30115f3f7" },
+    "strengthen-borderline-tests": { "src/report/table.ts": "e8cd52306aa6b4e6" },
     "tempting-wrong-options": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-rule-allows": { "src/test/reader.ts": "9f247f47a70ffd31" },
     "test-where-the-skill-is-silent": { "src/test/reader.ts": "9f247f47a70ffd31" },
-    "which-command": { "src/cli.ts": "138aef5f0848c479" },
+    "which-command": { "src/cli.ts": "3c0a0462e37847d2" },
     "with-only-what-the-agent-reads": { "src/test/skill-text.ts": "5c2fa352ca73585c" },
     "wrong-as-code": { "src/lint/lint.ts": "09becc6e689b0004" }
   }

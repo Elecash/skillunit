@@ -63,7 +63,7 @@ export function proofMarks(skill: ParsedSkill): Problem[] {
 }
 
 /** `id` is the unit's id, or the unit's id, a dot and a kebab-case name. */
-function namesUnit(id: string, unit: string): boolean {
+export function namesUnit(id: string, unit: string): boolean {
   if (id === unit) return true;
   return id.startsWith(`${unit}.`) && NAME.test(id.slice(unit.length + 1));
 }

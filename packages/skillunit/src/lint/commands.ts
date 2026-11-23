@@ -61,7 +61,7 @@ export function runCommands(skill: ParsedSkill, examples: ExamplesConfig): Comma
 }
 
 /** Quotes a path for `sh` and `cmd`. */
-function quote(path: string): string {
+export function quote(path: string): string {
   return process.platform === 'win32' ? `"${path}"` : `'${path.replaceAll("'", "'\\''")}'`;
 }
 
@@ -73,7 +73,7 @@ const LINE_CHARS = 200;
  * What a command printed, for a finding: its non-empty lines, at most `OUTPUT_LINES`, with the
  * temp file it was given named by the example's place in the skill, since that file is gone.
  */
-function output(text: string, temp: string[], place: string): string {
+export function output(text: string, temp: string[], place: string): string {
   let out = text;
   for (const path of temp) out = out.split(path).join(place);
   const lines = out

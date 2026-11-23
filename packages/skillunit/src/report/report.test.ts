@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS } from '../config.js';
 import type { LintResult } from '../lint/types.js';
+import type { ProofResult } from '../proof/layer.js';
 import type { SyncResult } from '../sync/sync.js';
 import type { Report } from '../test/runner.js';
 import { buildReport, render, REPORTERS, type CheckReport } from './index.js';
@@ -259,5 +260,52 @@ describe('reporters', () => {
       lint: { ...lint, problems: [{ file: 'a,b:c.md', line: 1, severity: 'error', rule: 'index', message: '100% broken\nsecond line' }] },
     });
     expect(render(odd, 'github', options).split('\n')[0]).toBe('::error file=skills/demo/a%2Cb%3Ac.md,line=1,title=SkillUnit lint::100%25 broken%0Asecond line');
+  });
+
+  describe('the proof layer', () => {
+    const proof: ProofResult = {
+      configured: true,
+      ok: false,
+      skill,
+      reports: ['../../reports/junit.xml'],
+      require: true,
+      write: false,
+      units: [
+        { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'proved', tests: [{ report: '../../reports/junit.xml', line: 4, title: 'retries > only GET [skill:retry-idempotent-only]', status: 'passed' }], fences: [{ id: 'retry-idempotent-only', line: 31, from: 'region', differs: true, written: false }] },
+        { id: 'retry-delay', file: 'features/retries.md', line: 40, state: 'failed', tests: [{ report: '../../reports/junit.xml', line: 7, title: 'retries > delay [skill:retry-delay]', status: 'failed' }], fences: [] },
+        { id: 'pick-a-client', file: 'SKILL.md', line: 12, state: 'none', tests: [], fences: [] },
+        { id: 'await-every-request', file: 'SKILL.md', line: 30, state: 'pending', tests: [], fences: [] },
+      ],
+      problems: [
+        { file: 'features/retries.md', line: 32, unit: 'retry-idempotent-only', severity: 'error', rule: 'proof', message: 'this block is not what `src/retry.test.ts:12` gives, from line 1 of the block: the test gives `tf.get(url, { retry: 3 })`, the skill has `tf.get(url)`. Run `skillunit proof --write`' },
+        { file: 'features/retries.md', line: 40, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does' },
+        { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', rule: 'proof', message: 'no test proves this unit: tag a test that asserts what it says with `[skill:await-every-request]`, or write `Proof: none, <why>` when no test can' },
+        { file: '../../tmp/skill-proof/gone.json', line: 1, severity: 'warning', rule: 'proof', message: 'no block has `proof=gone`, so nothing uses `gone.json`' },
+      ],
+      summary: { units: 4, proved: 1, none: 1, pending: 1, failed: 1, tagged: 2, fences: 1, differ: 1, written: 0 },
+    };
+    const withProof = buildReport('proof', { proof });
+
+    for (const reporter of REPORTERS) {
+      it(`${reporter}: proved, Proof: none, pending and failed units, with every kind of finding`, () => {
+        expect(withProof.ok).toBe(false);
+        expect(render(withProof, reporter, options)).toMatchSnapshot();
+      });
+    }
+
+    it('table: the layer in the status line, after sync and before test', () => {
+      const clean: ProofResult = { ...proof, ok: true, problems: [], summary: { ...proof.summary, written: 2 } };
+      const report = buildReport('check', { lint: { ...lint, ok: true, problems: [] }, proof: clean, test: { ...test, ok: true, specs: [], summary: { ...test.summary, tests: 0, passed: 0, borderline: 0 } } });
+      expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, 2 blocks written · test 0/0 passed');
+    });
+
+    it('table: says when check ran with no proof key', () => {
+      const report = buildReport('check', { lint: { ...lint, ok: true, problems: [] }, proof: { configured: false, ok: true } });
+      const text = render(report, 'table', options);
+      expect(text).toContain('Proof  not configured: no `proof` key in skillunit.yaml');
+      expect(text.trim().split('\n').at(-1)).toBe('OK  lint ok · proof not configured');
+      expect(render(report, 'github', options)).toBe('OK  lint ok · proof not configured\n');
+      expect(JSON.parse(render(report, 'json', options)).proof).toEqual({ configured: false, ok: true });
+    });
   });
 });

@@ -1,7 +1,7 @@
 /**
  * JUnit XML, for CI systems that show test results from it. One suite per layer: lint has one
- * case per file, sync one per unit with a `Source` (and one per finding about the lock), and test
- * one suite per spec with one case per test. Borderline verdicts carry a `borderline` property.
+ * case per file, sync one per unit with a `Source` (and one per finding about the lock), proof one
+ * per unit (and one per finding about no unit), and test one suite per spec with one case per test. Borderline verdicts carry a `borderline` property.
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
@@ -59,6 +59,27 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       cases.push(c);
     }
     suites.push({ name: 'sync', cases });
+  }
+
+  if (report.proof?.configured) {
+    const { proof } = report;
+    const cases: Case[] = proof.units.map((u) => {
+      const c: Case = { name: u.id, classname: `proof.${shown(join(proof.skill, u.file), options)}`, properties: { state: u.state } };
+      const mine = proof.problems.filter((p) => p.unit === u.id);
+      const errors = mine.filter((p) => p.severity === 'error');
+      const warnings = mine.filter((p) => p.severity === 'warning');
+      if (errors.length) c.failure = errors.map((p) => line(proof.skill, p)).join('\n');
+      if (warnings.length) c.out = warnings.map((p) => `warning: ${line(proof.skill, p)}`).join('\n');
+      return c;
+    });
+    // Findings about no unit: a report, a test file, an example file, the settings.
+    for (const p of proof.problems.filter((p) => !p.unit)) {
+      const c: Case = { name: `${shown(join(proof.skill, p.file), options)}:${p.line}`, classname: 'proof' };
+      if (p.severity === 'error') c.failure = line(proof.skill, p);
+      else c.out = `warning: ${line(proof.skill, p)}`;
+      cases.push(c);
+    }
+    suites.push({ name: 'proof', cases });
   }
 
   if (report.test) {
