@@ -9,7 +9,7 @@ SkillUnit ties the instructions of an agent skill to the tests of the code they 
 It checks a skill in three layers:
 
 - **Lint** type-checks the examples of the skill against the API, with the project's own TypeScript compiler, and checks them against the skill's own rules. It reports an example that no longer compiles, an example that breaks a rule and a broken link.
-- **Proof** reads the project's own test run. A test whose title carries `[skill:<id>]` proves that instruction, and when the test fails, proof names the instruction. A test can also produce an instruction's example, which SkillUnit copies into the skill, so the example is code that ran.
+- **Proof** builds the instructions that a test can check from the test itself. The test declares the instruction with `unit()`, its sentence is built from the code where the code has the value, and the skill is built from a source folder and those tests. When the code changes, the built skill changes, and `check` fails until the skill in the repository says the same.
 - **Test** asks a decision model closed questions about the skill. A test fails when the text does not settle the answer: a sentence contradicts a rule, or a rule is too vague to follow.
 
 `skillunit check` runs the three and prints each unit of the skill with what each layer found about it. On [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch), with `--dry-run`, which sends the tests nowhere and needs no key, cut to two of its six files:
@@ -19,23 +19,23 @@ Lint  skill
   ✓ 6 files, all clean
   12 units · 19 examples type-checked with TypeScript 5.6.3
 
-Units  proof reports/junit.xml · test dry run: nothing sent
+Units  proof ran `npx vitest run` in 0.4 s, exit 0 · test dry run: nothing sent
 
   skill/SKILL.md
     test   · specs/skill.yaml:13  which-file-for-retries  ready
     await-every-request  rule
-      proof  ✓ src/tinyfetch.test.ts › tinyfetch > resolves to the parsed body, so the caller awaits it
+      proof  ✓ from a test src/tinyfetch.test.ts:56
       test   · specs/skill.yaml:4  await-the-call  ready
 
   skill/features/retries.md
     retry-defaults  fact
-      proof  ✓ src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time
+      proof  ✓ from a test src/tinyfetch.test.ts:185
       test   · specs/retries.yaml:51  retry-delay-default  ready
     what-is-retried  fact
-      proof  ✓ src/tinyfetch.test.ts › tinyfetch > retries network errors and 5xx, not 4xx or a timeout
+      proof  ✓ from a test src/tinyfetch.test.ts:166
       test   –
     retry-idempotent-only  rule
-      proof  –
+      proof  – by hand
       test   · specs/retries.yaml:4  post-no-retry  ready
       test   · specs/retries.yaml:15  patch-no-retry  ready
       test   · specs/retries.yaml:26  retry-methods  ready
@@ -44,17 +44,17 @@ Units  proof reports/junit.xml · test dry run: nothing sent
   …
 
   12 units · 6 proof and test · 3 proof only · 3 test only · 0 not covered
-  proved 9 of 12 units · 4 blocks from tests · 9 tagged tests · 9 units in the lock
+  12 units · 9 from tests · 3 by hand · 3 values in prose
   16 tests
 
 OK  lint ok · proof ok · test dry run ok, 16 tests ready
 ```
 
-A `–` is a layer with nothing on that unit. A unit with neither proof nor a test reads `not covered`.
+A `–` is a layer with nothing on that unit, and `by hand` a unit written in the source rather than declared in a test. A unit with neither proof nor a test reads `not covered`.
 
 What it costs to run:
 
-- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in under a second, however many tests it holds: 58 tests in 8 specs take about 1.5 seconds on TypeSafe and 3 on OpenAI.
+- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill, plus the time of the project's tests, which proof runs. The decision model answers a spec, a file of tests, in under a second, however many tests it holds: 58 tests in 8 specs take about 1.5 seconds on TypeSafe and 3 on OpenAI.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 
@@ -71,17 +71,20 @@ npx skillunit init skills/my-skill
 npx skillunit lint
 ```
 
-Proof reads the JUnit report of the project's tests. Point `proof.reports` in `skillunit.yaml` at it, run the tests, then `proof --write`, which writes `skillunit.lock` with the units the tests prove. Commit the lock. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) shows the reporter for Vitest, Jest and pytest.
+Proof builds the skill from a source folder and the units your tests declare. Move the skill to a source folder, set `source` and `proof.run` in `skillunit.yaml`, wrap the tests that check what a unit says in `unit()` from `skillunit/vitest`, and put `{{unit:<id>}}` in the source where each one goes. Then build the skill, and commit both folders:
 
 ```yaml
+skill: ./skills/my-skill
+source: ./skills-src/my-skill
 proof:
-  reports: ./reports/junit.xml
+  run: "npx vitest run"
 ```
 
 ```sh
-npx vitest run --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
 npx skillunit proof --write
 ```
+
+[Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) has the `unit()` API, the slots, and the JSON a test in another language writes.
 
 SkillUnit ships a skill that teaches an agent to write a skill in units, to write its examples and specs, and to act on a report. Install it with [skills.sh](https://skills.sh):
 
@@ -187,40 +190,48 @@ An example of the skill still passes `retryDelay`:
 
 ### Proof
 
-Proof reads the JUnit report of the project's test run; SkillUnit never runs the tests. A test proves a unit when its title carries `[skill:<unit id>]`, and `skillunit.lock` lists the units the tests prove, so a unit whose test is deleted or skipped fails too. A unit no test can prove, such as the rule above, which is about what a server does with a repeated request, stays unproved and is counted. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes the tags, the settings and how to wire Vitest, Jest and pytest.
+A unit that a test can check is declared in that test, and the skill is built from a source folder and the tests. A unit no test can check, such as the rule above, which is about what a server does with a repeated request, is written in the source by hand. `skillunit proof` runs the tests through `proof.run`, builds the skill, and compares it with the skill folder. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes `unit()`, the slots and the settings.
 
-**The code changes, and a fact is now false.** tinyfetch's skill says a retry waits 300 ms, in the fact `retry-defaults`, and a test asserts it:
+**The code changes, and a fact would be false.** tinyfetch's test builds the `Value` of `default-timeout` from the constant:
 
 ```ts
-it('does not retry by default, and waits 300 ms, then twice as long each time [skill:retry-defaults]', async () => {
-  expect(DEFAULT_RETRY_DELAY).toBe(300);
-  // …
-});
+unit(
+  'default-timeout',
+  {
+    when: 'the user asks how long a request waits by default.',
+    value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${underscored(DEFAULT_TIMEOUT)}\`), for every method.`,
+    values: { seconds: DEFAULT_TIMEOUT / 1000, ms: underscored(DEFAULT_TIMEOUT) },
+  },
+  async () => {
+    // every method times out after DEFAULT_TIMEOUT
+  },
+);
 ```
 
-In `src/retry.ts`:
+In `src/timeout.ts`:
 
 ```diff
--export const DEFAULT_RETRY_DELAY = 300;
-+export const DEFAULT_RETRY_DELAY = 500;
+-export const DEFAULT_TIMEOUT = 10_000;
++export const DEFAULT_TIMEOUT = 5_000;
 ```
 
-The test fails, and proof shows it under the unit it proves:
+The tests pass, since they assert what the constant says. The built skill now says 5 seconds, the skill in the repository says 10, and proof names the line, the unit and the test it comes from:
 
 ```
-  skill/features/retries.md
-    retry-defaults  fact
-      proof  ✗ src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time
-               the test "src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time [skill:retry-defaults]" (reports/junit.xml:20) failed: expected 500 to be 300 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
+  skill/features/timeouts.md
+    default-timeout  fact
+      proof  ✓ from a test src/tinyfetch.test.ts:215
+      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`
+               from the test of `default-timeout`, src/tinyfetch.test.ts:215
 ```
 
-A test can also produce an example. A block flagged `proof=<id>` after its language holds the lines between `#region skill:<id>` and `#endregion` in a test, or a file the test wrote. `skillunit proof --write` copies them into the skill, and proof fails when the block and the test no longer agree.
+The options table, which shows the default through `{{value:default-timeout.ms}}`, fails too. `skillunit proof --write` rewrites both, and the change to the skill goes in the same pull request as the change to the code.
 
 ### Test
 
 A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with a high enough probability. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
 
-**A sentence contradicts a rule.** In `skill/features/retries.md`, in the prose above the rules:
+**A sentence contradicts a rule.** In `skill-src/features/retries.md`, the source of the skill, in the prose above the rules:
 
 ```diff
 -Which failures it repeats, and how long it waits, are in the rules below.
@@ -255,17 +266,16 @@ cd skillunit
 npm ci
 npx nx build skillunit
 cd apps/tinyfetch
-npx vitest run
 npx skillunit check --dry-run
 ```
 
-`vitest run` writes the report proof reads, in `reports/junit.xml`. The check ends with:
+The check runs the tests itself, through `proof.run`, and ends with:
 
 ```
 OK  lint ok · proof ok · test dry run ok, 16 tests ready
 ```
 
-Then break one thing at a time. Each experiment starts from a clean tree, and `git checkout .` undoes it. The first three need no key.
+Then break one thing at a time. Each experiment starts from a clean tree, and `git checkout .` undoes it. The first three need no key. The skill people write is in `skill-src`; `skill` is built from it.
 
 ### An option renamed in the code
 
@@ -277,7 +287,7 @@ In `src/types.ts`, rename the option `retryDelay` to `backoff`, then run `npx sk
 
 ### An example that breaks its own rule
 
-In `skill/features/retries.md`, change the `Right` example of `retry-idempotent-only` to `await tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });`, then run `npx skillunit lint`:
+In `skill-src/features/retries.md`, change the `Right` example of `retry-idempotent-only` to `await tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });`, then build the skill with `npx skillunit proof --write` and run `npx skillunit lint`:
 
 ```
 1) skill/features/retries.md:45  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:48)
@@ -285,29 +295,33 @@ In `skill/features/retries.md`, change the `Right` example of `retry-idempotent-
 
 ### A default changed
 
-In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`. The fact `default-timeout` says a request waits 10 seconds, and a test asserts it. Run `npx vitest run`, which fails that test, then `npx skillunit proof`. It ends with:
+In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`, and change nothing else. The fact `default-timeout` says a request waits 10 seconds, and its test builds that sentence from the constant. Run `npx skillunit proof`. The tests pass, and it ends with:
 
 ```
   skill/features/timeouts.md
+    proof  ✗ skill/features/timeouts.md:13  this line is not what the build gives: …
+             from the source, skill-src/features/timeouts.md:13
     default-timeout  fact
-      proof  ✗ src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing
-               the test "src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing [skill:default-timeout]" (reports/junit.xml:22) failed: expected 5000 to be 10000 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
+      proof  ✓ from a test src/tinyfetch.test.ts:215
+      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`
+               from the test of `default-timeout`, src/tinyfetch.test.ts:215
     never-disable-timeout  rule
-      proof  –
+      proof  – by hand
 
-  proved 8 of 12 units, 1 failed · 4 blocks from tests · 9 tagged tests · 9 units in the lock
+  12 units · 9 from tests · 3 by hand · 3 values in prose · 1 file out of date
 
 Failed
-  skill/features/timeouts.md › default-timeout › src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing
+  skill/features/timeouts.md › proof skill/features/timeouts.md:13
+  skill/features/timeouts.md › default-timeout › proof skill/features/timeouts.md:42
 
-FAILED  proof 1 error, 0 warnings
+FAILED  proof 2 errors, 0 warnings
 ```
 
-If 5 seconds is the new default, edit the `Value` of `default-timeout` and the test's assertion together, run the tests again, and proof passes.
+The first finding is the options table, whose `Default` column comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes.
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry`, and `patch-no-retry` passes close to its threshold. The output ends with:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill-src/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), build the skill with `npx skillunit proof --write`, then run `npx skillunit test`. It fails `post-no-retry`, and `patch-no-retry` passes close to its threshold. The output ends with:
 
 ```
 Failed

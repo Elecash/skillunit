@@ -42,6 +42,29 @@ export function alignLines(from: string[], to: string[]): number[] {
   return out;
 }
 
+/** A run of lines where two texts differ: the first line of it in each, `line` counted in `actual` from 1. */
+export interface Difference {
+  line: number;
+  /** The first line of the run in `expected`, or undefined when `actual` only has more lines there. */
+  expected: string | undefined;
+  /** The first line of the run in `actual`, or undefined when it lacks lines `expected` has. */
+  actual: string | undefined;
+}
+
+/** Each run of lines where `actual` is not `expected`, in order: the lines both share, in order, match. */
+export function differences(expected: string[], actual: string[]): Difference[] {
+  const pairs = lcs(expected, actual);
+  const out: Difference[] = [];
+  let a = 0;
+  let b = 0;
+  for (const [i, j] of [...pairs, [expected.length, actual.length] as [number, number]]) {
+    if (i > a || j > b) out.push({ line: Math.min(b, Math.max(actual.length - 1, 0)) + 1, expected: i > a ? expected[a] : undefined, actual: j > b ? actual[b] : undefined });
+    a = i + 1;
+    b = j + 1;
+  }
+  return out;
+}
+
 /** The pairs of indexes of a longest common subsequence of lines, in order. */
 function lcs(a: string[], b: string[]): [number, number][] {
   const n = a.length;

@@ -17,26 +17,26 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
       - run: npm ci
-      # The tests write the JUnit report the proof layer reads; leave this out without `proof`.
-      - run: npx vitest run --reporter=default --reporter=junit --outputFile.junit=reports/junit.xml
+      # Runs the tests through `proof.run`, builds the skill and compares it; sends nothing.
       - run: npx skillunit check --dry-run --reporter github
-      - run: npx skillunit check --reporter github
+      # The same, and the model tests; `--no-run` uses the units the step above left.
+      - run: npx skillunit check --no-run --reporter github
 ```
 
 - The default shallow clone is enough. Only `check --changed` reads git history: with it, add
   `with: { fetch-depth: 0 }` to the checkout step.
-- With `proof` in `skillunit.yaml`, run the tests with a JUnit reporter before `check`, and
-  empty the examples folder before they run. A failing test fails its own step first; `check`
-  then names the unit it proves. [Proof](proof.md#wiring-a-test-run) has the reporter for
-  Vitest, Jest and pytest.
-- Commit `skillunit.lock` with the change that tags or untags a test: CI never writes it. A test
-  that proves a unit the lock does not list fails the check, and so does a unit the lock lists
-  that no test proves. Run every test in this step: a listed unit whose test a partial run left out fails.
+- With `source` and `proof.run` in `skillunit.yaml`, `check` runs the project's tests itself and
+  goes on when they fail, so a failing test is reported on the unit it declares. A project that
+  runs its tests in a step of its own runs `check --no-run` after it, with `if: always()` on the
+  `check` step so a red test step does not skip it.
+- CI never writes the skill folder. A change that moves a value the skill states fails the check
+  until someone runs `skillunit proof --write` and commits the result.
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
 - Set the key of the provider in `skillunit.yaml` as a repository secret: `TYPESAFE_API_KEY` for
   `typesafe`, `OPENAI_API_KEY` for `openai`. Only that one is needed.
 - The dry run needs no key. It runs lint and proof in full, and checks that every spec
-  loads and fits, so a renamed heading or a broken spec fails it before the model is asked.
+  loads and fits, so a renamed heading, a renamed unit or a broken spec fails it before the model
+  is asked.
 
 ## Pull requests from forks
 

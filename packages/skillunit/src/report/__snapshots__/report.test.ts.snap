@@ -483,7 +483,7 @@ exports[`reporters > the proof layer > github: units from tests and by hand, wit
 "::error file=skills/demo/features/retries.md,line=22,title=SkillUnit proof%3A retry-idempotent-only::this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`%0Afrom the test of \`retry-idempotent-only\`, src/retry.test.ts:12
 ::error file=skills-src/demo/features/retries.md,line=30,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
 ::error file=skills-src/demo/SKILL.md,line=28,title=SkillUnit proof%3A await-every-request::no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
-::warning file=skillunit.yaml,line=3,title=SkillUnit proof::this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.
+::warning file=skillunit.yaml,line=3,title=SkillUnit proof::\`proof.format\` failed on the build of SKILL.md
 ::notice title=SkillUnit proof::4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date
 FAILED  proof 3 errors, 1 warning
 "
@@ -636,7 +636,7 @@ exports[`reporters > the proof layer > json: units from tests and by hand, with 
         "line": 3,
         "severity": "warning",
         "rule": "proof",
-        "message": "this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`."
+        "message": "\`proof.format\` failed on the build of SKILL.md"
       }
     ],
     "summary": {
@@ -693,7 +693,7 @@ from the test of \`retry-idempotent-only\`, src/retry.test.ts:12</failure>
       <failure message="skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run">skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run</failure>
     </testcase>
     <testcase name="skillunit.yaml:3" classname="proof">
-      <system-out>warning: skillunit.yaml:3  -  this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.</system-out>
+      <system-out>warning: skillunit.yaml:3  -  \`proof.format\` failed on the build of SKILL.md</system-out>
     </testcase>
   </testsuite>
 </testsuites>
@@ -721,7 +721,7 @@ Units  proof ran \`npx vitest run\` in 4.2 s, exit 1
   4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date
 
 Elsewhere
-  proof  ~ skillunit.yaml:3  this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.
+  proof  ~ skillunit.yaml:3  \`proof.format\` failed on the build of SKILL.md
 
 Failed
   skills/demo/SKILL.md › await-every-request › proof skills-src/demo/SKILL.md:28

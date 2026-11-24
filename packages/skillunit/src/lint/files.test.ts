@@ -9,6 +9,7 @@ import { index } from './links.js';
 import { lint } from './lint.js';
 import { F } from './testing.js';
 import type { Problem } from './types.js';
+import { unit } from '../vitest.js';
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
@@ -46,7 +47,8 @@ describe('index', () => {
     ).toEqual(['SKILL.md:3 error: the link to `features/gone.md#a` does not resolve']);
   });
 
-  it('reports files no link leads to from SKILL.md, following links through other files [skill:index-every-file]', () => {
+  unit('index-every-file', { when: 'the agent adds a file to a skill.', do: 'add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.' }, (u) => {
+    u.example('md', '| Retry a request that failed | [features/retries.md](features/retries.md) |');
     expect(
       indexOf({
         'SKILL.md': '# T\n\n[a](a.md)\n',

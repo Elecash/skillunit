@@ -77,8 +77,6 @@ export interface ProofConfig {
   cwd: string;
 }
 
-/** Where the docs explain the move from the proof of 0.2. */
-export const FROM_02_DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/index.md#coming-from-02';
 
 /** Where tests leave units when `proof.units` is not set, from the config file's folder. */
 export const DEFAULT_PROOF_UNITS = './tmp/skill-units';
@@ -169,17 +167,9 @@ export function loadConfig(path?: string): Config {
       throw fail('`source` and `skill` are two folders, neither inside the other: `skill` is built from `source`');
     }
   }
-  if (raw.proof !== undefined && config.source === undefined) {
-    const old = raw.proof && typeof raw.proof === 'object' && ('reports' in raw.proof || 'examples' in raw.proof);
-    throw fail(old ? movedFrom02('`proof.reports`') : '`proof` says how the skill is built from `source`; set `source` too');
-  }
+  if (raw.proof !== undefined && config.source === undefined) throw fail('`proof` says how the skill is built from `source`; set `source` too');
   if (config.source !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
   return config;
-}
-
-/** The message for a setting of the proof of 0.2, which units declared in tests replaced. */
-function movedFrom02(what: string): string {
-  return `${what} is a setting of SkillUnit 0.2, whose proof read JUnit reports, tags and \`skillunit.lock\`. Now a test declares its unit with \`unit()\` and the skill is built from \`source\`: ${FROM_02_DOCS}`;
 }
 
 const PROOF_KEYS = ['run', 'units', 'sources', 'format'];
@@ -188,7 +178,6 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
   const raw = value as Record<string, unknown>;
   for (const key of Object.keys(raw)) {
-    if (key === 'reports' || key === 'examples') throw fail(movedFrom02(`\`proof.${key}\``));
     if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
   }
   const globs = (key: string): string[] => {

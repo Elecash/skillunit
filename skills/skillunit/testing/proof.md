@@ -1,52 +1,73 @@
-# SkillUnit — proving units with the project's tests
+# SkillUnit — units declared in the project's tests
 
-How to tie a unit to a test of the code it describes, so the test fails when the unit stops being true.
+How to declare a unit in the test that checks it, so the skill is built from the code and changes when the code does.
 
-The project's own tests do the proving; SkillUnit only reads what their run left. A test proves the unit `<id>` when its title contains `[skill:<id>]`. A test can also produce a unit's example: `npx skillunit proof --write` copies it into the block flagged `proof=<id>` after the block's language.
+A unit that a test can check is declared in that test with `unit()` from `skillunit/vitest`, or `createUnit` from `skillunit/unit` for another runner. `source` in `skillunit.yaml` is the folder people write; `skill` is built from it. In the source, `{{unit:<id>}}` alone on a line is where a unit from a test goes, and `{{value:<id>.<name>}}` is a value a test lists in `values`. A unit no test can check, such as advice, is written in the source by hand.
 
-`skillunit.lock`, next to `skillunit.yaml`, lists the ids of the proved units. `npx skillunit proof --write` adds the units the tests prove, and never drops a unit that is still in the skill, so a unit whose test is deleted or skipped fails the check.
-
-| State of a unit | What makes it | What `npx skillunit proof` does |
+| Spec key | Kind | Becomes |
 | --- | --- | --- |
-| proved | a tagged test passed, and no tagged test failed | an error when the lock does not list it |
-| failed | a tagged test failed; or the lock lists the unit and no tagged test passed | an error |
-| unproved | the lock does not list it, and no test is tagged for it | nothing; it is counted |
+| `when` | every kind | `When:` |
+| `do` | rule | `Do:` |
+| `value`, or `u.value(text)` in the body | fact | `Value:` |
+| `decide`, `paths: [{ path, when }]` | decision | `Decide:` and its paths |
+| `unknown`, `evenWhen`, `check` | as in a unit by hand | `Unknown:`, `Even when:`, `Check:` |
+| `values: { name: value }` | any kind | `{{value:<id>.<name>}}` in the source |
 
-The settings are under `proof` in `skillunit.yaml`: `reports`, the JUnit XML report of the test run; `sources`, the test files with regions; `examples`, the folder where tests write examples (`./tmp/skill-proof`); `format`, the project's formatter. The tests run first, with a JUnit reporter, then `npx skillunit proof` or `npx skillunit check`.
+`npx skillunit proof` runs `proof.run`, builds the skill and compares it with the `skill` folder; `npx skillunit proof --write` writes it. Each finding about a line of the skill names the file that line comes from: the test of a unit, or the source.
 
 ## Rules
 
-### rule: tag-the-test-that-asserts-it
+### rule: declare-in-the-test-that-checks-it
 
 When: a unit states what the code does: a default, which inputs it takes, what it returns or throws.
 
-Do: put `[skill:<unit id>]` in the title of a test that asserts exactly what the unit states, and write that test when none does; then run the tests and `npx skillunit proof --write`, and commit `skillunit.lock` with the test.
+Do: declare the unit with `unit()` around the test that asserts what it states, put `{{unit:<id>}}` in the source where the unit goes, run `npx skillunit proof --write`, and commit the test, the source and the built skill together.
 
-Even when: a test on the same topic already exists; tag it only if it asserts what the unit says, value for value. A unit no test can prove, such as advice, gets no tag and stays unproved.
+Even when: a test on the same topic already exists; wrap it only if it asserts what the unit says. A unit no test can check, such as advice, stays in the source, written by hand.
 
 Right:
 
-```md
-it("does not retry by default, and waits 300 ms [skill:retry-defaults]", async () => {
+````md
+```ts
+unit("retry-defaults", { when: "a request sets no `retry`.", value: `\`retry\` is ${DEFAULT_RETRY}.` }, async () => {
+  expect(calls).toHaveLength(DEFAULT_RETRY + 1);
+});
 ```
+````
 
-### decision: region-or-file
+### rule: build-the-sentence-from-the-code
 
-When: a unit's example should come from a test, so it is code that ran.
+When: the sentence of a unit in a test names a value the code has, such as a default or the name of an error.
 
-Decide: where the test leaves the example.
+Do: build it from the code in a template string, such as `${DEFAULT_TIMEOUT / 1000} seconds`, and list the value in `values` when the reference part of the skill repeats it.
 
-- **region** — the example is code: put it in the test between a `// #region skill:<id>` line and a `// #endregion` line, add the test file to `proof.sources`, and flag the block `proof=<id>`.
+Even when: the value looks fixed; a value typed into the sentence is a second copy that nothing compares with the code.
 
-- **file** — the example is a value, such as a JSON definition or a config: write it from the test with `skillExample(id, value)` from `skillunit/proof`, or in another language as `<proof.examples>/<id>.<extension>`, and flag the block `proof=<id>`.
+### decision: region-or-example
 
-### rule: write-blocks-from-tests
+When: a unit from a test should show an example, so the example is code that ran.
 
-When: `npx skillunit proof` reports that a block differs from what its test gives.
+Decide: where the example comes from.
 
-Do: run the tests, then `npx skillunit proof --write`, and commit the skill with the change.
+- **region** — the example is code: put it in the body between a `// #region skill:<id>` line and a `// #endregion` line, and add the test file to `proof.sources`. A path of a decision takes the region `skill:<id>.<path>`.
 
-Even when: the difference is formatting; set `proof.format` to the project's formatter rather than edit the block by hand.
+- **example** — the example is something the body produced, such as an output or a config: pass it to `u.example(lang, text)` in the body.
+
+### rule: edit-the-source-not-the-skill
+
+When: the agent changes the text of a skill that `skillunit.yaml` builds from `source`.
+
+Do: edit the file of the source, or the test that declares the unit, then run `npx skillunit proof --write`; never edit the `skill` folder by hand.
+
+Even when: the fix is one word; the next build would undo it, and `npx skillunit proof` fails until then.
+
+### rule: rebuild-after-the-code-moved
+
+When: `npx skillunit proof` reports that a line of the skill is not what the build gives, after a change to the code.
+
+Do: read the line the build gives; when it says what the code now does, run `npx skillunit proof --write` and commit the built skill with the change.
+
+Even when: the tests pass; a sentence built from the code changes without any test failing, and the difference in the skill is the signal.
 
 Right:
 
@@ -56,22 +77,16 @@ npx skillunit proof --write
 
 ### rule: fix-the-unit-when-its-test-fails
 
-When: a test tagged for a unit fails after a change to the code.
+When: the test of a unit fails after a change to the code.
 
-Do: read the change; when the code is right, correct what the unit says and what the test asserts together, then run the tests and `npx skillunit proof` again.
+Do: read the change; when the code is right, correct the test's assertions and any literal in its sentence, then run `npx skillunit proof` again.
 
-Even when: the report would pass sooner by skipping the test or removing its tag; the lock lists the unit, so a unit whose tests were all skipped or untagged fails too.
+Even when: skipping the test would make the test run pass; the slot then has no unit, and the proof fails on it.
 
-### rule: forget-only-what-is-no-longer-proved
+### rule: keep-the-slot-until-the-unit-goes
 
-When: `npx skillunit proof` reports that `skillunit.lock` lists a unit that no test proves.
+When: `npx skillunit proof` reports a `{{unit:<id>}}` that no test left.
 
-Do: bring back the test that proved it; run `npx skillunit proof --forget <unit id>` only when the unit is no longer meant to be proved, such as a statement about the code rewritten as advice, and commit `skillunit.lock` with that change.
+Do: bring back the test that declared it; remove the slot only when the unit is no longer meant to be in the skill, or write the unit by hand in its place when it became advice.
 
-Even when: `--forget` would make the check pass at once; a proof that is lost by mistake is what the lock is there to catch.
-
-Right:
-
-```sh
-npx skillunit proof --forget retry-defaults
-```
+Even when: removing the slot would make the check pass at once; a test that is lost by mistake is what the slot is there to catch.

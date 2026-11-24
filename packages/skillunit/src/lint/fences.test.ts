@@ -27,8 +27,7 @@ describe('fence flags', () => {
 });
 
 describe('key=value flags', () => {
-  it('says nothing about them: the proof rule reports the `proof=` of 0.2', () => {
-    expect(flagsOf('ts proof=a')).toEqual([]);
+  it('says nothing about them', () => {
     expect(flagsOf('ts prof=a')).toEqual([]);
     expect(flagsOf('ts root=a title="b"')).toEqual([]);
   });

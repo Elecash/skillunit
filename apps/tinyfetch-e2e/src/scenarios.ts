@@ -2,7 +2,8 @@
  * The acceptance scenarios: each changes tinyfetch or its skill in a copy of the app, and lists
  * what SkillUnit must report. Findings are written `rule file unit code`, the code being a
  * TypeScript code when there is one; proof findings are unit ids, or the file for one about no
- * unit; model findings are test ids. Before `check`, the app's tests run, as in CI, and write the report proof reads.
+ * unit; model findings are test ids. `check` runs the app's tests itself, through `proof.run`.
+ * A change to the skill is made in `skill-src`, then built with `proof --write`, as people do.
  * Anything reported that is not listed fails the scenario, as does anything listed that is not
  * reported.
  */
@@ -13,7 +14,7 @@ export interface Expected {
   /** Lint errors. */
   lint?: string[];
   lintWarnings?: string[];
-  /** Proof errors, by unit id, or by file for one about no unit (a report, a test file). */
+  /** Proof errors, by unit id, or by file for one about no unit (a line of prose, the settings). */
   proof?: string[];
   proofWarnings?: string[];
   /** Tests that must fail. Only scenarios that need the model. */
@@ -40,15 +41,25 @@ export interface Scenario {
 const RETRY_SETUP = 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```\n\n';
 const TIMEOUT_SETUP = 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```\n\n';
 
-/** Prettier over every Markdown file of the skill. */
+/** Prettier over Markdown files of the source. */
 async function prettier(app: App, files: string[], proseWrap: 'preserve' | 'always' | 'never') {
   for (const file of files) app.write(file, await format(app.read(file), { parser: 'markdown', proseWrap }));
 }
 
-/** The tests of tinyfetch, which prove units of its skill. */
+/** The tests of tinyfetch, which declare units of its skill. */
 const TEST = 'src/tinyfetch.test.ts';
 
-const SKILL_FILES = ['skill/SKILL.md', ...['clients', 'errors', 'requests', 'retries', 'timeouts'].map((f) => `skill/features/${f}.md`)];
+const SOURCE_FILES = ['skill-src/SKILL.md', ...['clients', 'errors', 'requests', 'retries', 'timeouts'].map((f) => `skill-src/features/${f}.md`)];
+
+/** The `unit(...)` call of `id` in the tests, from its line to the line after it ends. */
+function unitCall(text: string, id: string): { start: number; end: number } {
+  const start = text.indexOf(`  unit(\n    '${id}',`) >= 0 ? text.indexOf(`  unit(\n    '${id}',`) : text.indexOf(`  unit('${id}',`);
+  if (start < 0) throw new Error(`scenario edit: no unit(${id}) in ${TEST}`);
+  const close = text.indexOf('\n  );\n', start);
+  const short = text.indexOf('\n  });\n', start);
+  const end = [close, short].filter((i) => i >= 0).sort((a, b) => a - b)[0]!;
+  return { start, end: end + (end === close ? '\n  );\n'.length : '\n  });\n'.length) };
+}
 
 export const scenarios: Scenario[] = [
   {
@@ -57,7 +68,7 @@ export const scenarios: Scenario[] = [
     apply(app) {
       app.edit('src/types.ts', '  /** Milliseconds to wait before the first new attempt, doubled each time. Default 300. */\n  retryDelay?: number;\n', '');
       app.edit('src/request.ts', '    options.retry,\n    options.retryDelay,\n', '    options.retry,\n');
-      app.edit('src/retry.ts', 'retry = 0, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = 0): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
+      app.edit('src/retry.ts', 'retry = DEFAULT_RETRY, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = DEFAULT_RETRY): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
       app.commit('Drop retryDelay');
     },
     expect: { lint: ['types skill/features/retries.md - TS2353'] },
@@ -77,7 +88,9 @@ export const scenarios: Scenario[] = [
     name: 'stale example',
     change: 'fix a rule (tinyfetch sets content-type, so a Check now forbids setting it), leave an old example that sets it',
     apply(app) {
-      app.edit('skill/features/requests.md', 'Check: forbid `/JSON\\.stringify/` in ts\n', 'Check: forbid `/JSON\\.stringify/` in ts\n\nCheck: forbid `/["\']content-type["\']\\s*:/` in ts\n');
+      // The rule comes from a test, so its `Check` is in the test's spec.
+      app.edit(TEST, "check: 'forbid `/JSON\\\\.stringify/` in ts',", "check: 'forbid `/JSON\\\\.stringify|[\"\\']content-type[\"\\']\\\\s*:/` in ts',");
+      app.build();
       app.commit('body-as-object: do not set content-type');
     },
     expect: { lint: ['check skill/features/clients.md -'] },
@@ -86,7 +99,8 @@ export const scenarios: Scenario[] = [
     name: 'broken example next to a stale one',
     change: 'add an example that does not parse, and remove the `query` option another example uses',
     apply(app) {
-      app.edit('skill/features/requests.md', '## Rules\n', '```ts\nawait tf.get("https://api.example.com/users", {\n```\n\n## Rules\n');
+      app.edit('skill-src/features/requests.md', '## Rules\n', '```ts\nawait tf.get("https://api.example.com/users", {\n```\n\n## Rules\n');
+      app.build();
       app.edit('src/types.ts', '  /** Query parameters, encoded and appended to the path. */\n  query?: Record<string, string | number | boolean>;\n', '');
       app.edit('src/request.ts', '  for (const [key, value] of Object.entries(options.query ?? {})) url.searchParams.set(key, String(value));\n', '');
       app.commit('Drop query, add an example');
@@ -101,7 +115,8 @@ export const scenarios: Scenario[] = [
     name: 'example without its import',
     change: "delete the `Setup` of a file that needs more than the `Setup` of `SKILL.md`",
     apply(app) {
-      app.edit('skill/features/timeouts.md', TIMEOUT_SETUP, '');
+      app.edit('skill-src/features/timeouts.md', TIMEOUT_SETUP, '');
+      app.build();
       app.commit('Drop the timeouts Setup');
     },
     // `tf` still comes from `SKILL.md`; `TimeoutError` does not, so `instanceof` no longer
@@ -112,8 +127,9 @@ export const scenarios: Scenario[] = [
     name: 'Setup moved to SKILL.md',
     change: "move a file's `Setup` to `SKILL.md`, which then covers that file",
     apply(app) {
-      app.edit('skill/features/timeouts.md', TIMEOUT_SETUP, '');
-      app.edit('skill/SKILL.md', 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```', 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```');
+      app.edit('skill-src/features/timeouts.md', TIMEOUT_SETUP, '');
+      app.edit('skill-src/SKILL.md', 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```', 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```');
+      app.build();
       app.commit('One Setup for the skill');
     },
     expect: {},
@@ -122,7 +138,8 @@ export const scenarios: Scenario[] = [
     name: 'Setup the same as SKILL.md',
     change: "delete a file's `Setup` that only repeats the one of `SKILL.md`",
     apply(app) {
-      app.edit('skill/features/retries.md', RETRY_SETUP, '');
+      app.edit('skill-src/features/retries.md', RETRY_SETUP, '');
+      app.build();
       app.commit('Drop the retries Setup');
     },
     expect: {},
@@ -131,7 +148,8 @@ export const scenarios: Scenario[] = [
     name: 'wrong package',
     change: 'change the package name in a `Setup`',
     apply(app) {
-      app.edit('skill/features/timeouts.md', 'import { tf, TimeoutError } from "tinyfetch";', 'import { tf, TimeoutError } from "tiny-fetch";');
+      app.edit('skill-src/features/timeouts.md', 'import { tf, TimeoutError } from "tinyfetch";', 'import { tf, TimeoutError } from "tiny-fetch";');
+      app.build();
       app.commit('Typo in the package name');
     },
     // With the import broken, `instanceof TimeoutError` no longer narrows `error`, so reading
@@ -144,10 +162,11 @@ export const scenarios: Scenario[] = [
     model: 'required',
     apply(app) {
       app.edit(
-        'skill/features/retries.md',
+        'skill-src/features/retries.md',
         'Which failures it repeats, and how long it waits, are in the rules below.',
         'The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.',
       );
+      app.build();
       app.commit('Say retries are always safe');
     },
     // The sentence replaces the one that points to the rules. Measured on Jev over five runs:
@@ -161,7 +180,8 @@ export const scenarios: Scenario[] = [
     change: "weaken a rule's wording",
     model: 'required',
     apply(app) {
-      app.edit('skill/features/retries.md', 'Do: enable `retry` only for GET, HEAD, PUT and DELETE.', 'Do: think about whether `retry` suits the method before you enable it.');
+      app.edit('skill-src/features/retries.md', 'Do: enable `retry` only for GET, HEAD, PUT and DELETE.', 'Do: think about whether `retry` suits the method before you enable it.');
+      app.build();
       app.commit('Soften the retry rule');
     },
     // The weakened rule names no method, so the test that asks for the list fails too.
@@ -173,10 +193,11 @@ export const scenarios: Scenario[] = [
     apply(app) {
       const unit =
         '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n';
-      app.write('skill/features/timeouts.md', app.read('skill/features/timeouts.md') + unit);
+      app.write('skill-src/features/timeouts.md', app.read('skill-src/features/timeouts.md') + unit);
+      app.build();
       app.commit('Add a unit about TimeoutError');
     },
-    // An unproved unit is counted, not reported: the lock does not list it.
+    // A unit written by hand is counted, not reported.
     expect: {},
   },
   ...(['preserve', 'always', 'never'] as const).map(
@@ -184,10 +205,11 @@ export const scenarios: Scenario[] = [
       name: `formatter run (proseWrap: ${proseWrap})`,
       change: `run Prettier over the skill with proseWrap ${proseWrap}`,
       async apply(app) {
-        await prettier(app, SKILL_FILES, proseWrap);
-        app.commit(`Format the skill (${proseWrap})`);
+        await prettier(app, SOURCE_FILES, proseWrap);
+        app.build();
+      app.commit(`Format the skill (${proseWrap})`);
       },
-      // Formatting changes no unit, no example and no block a test produced.
+      // Formatting the source changes no unit and no example.
       expect: {},
     }),
   ),
@@ -197,8 +219,9 @@ export const scenarios: Scenario[] = [
     async apply(app) {
       const compact =
         '\n### rule: log-failed-requests\nWhen: code logs a failed tinyfetch request.\nDo: log the method, the URL and `error.status` together.\n';
-      app.write('skill/features/errors.md', app.read('skill/features/errors.md') + compact);
-      await prettier(app, ['skill/features/errors.md'], 'always');
+      app.write('skill-src/features/errors.md', app.read('skill-src/features/errors.md') + compact);
+      await prettier(app, ['skill-src/features/errors.md'], 'always');
+      app.build();
       app.commit('Add a unit, format');
     },
     expect: {
@@ -223,14 +246,17 @@ export const scenarios: Scenario[] = [
     change: 'turn the `Right` example of `retry-idempotent-only` into a retried POST',
     apply(app) {
       app.edit(
-        'skill/features/retries.md',
+        'skill-src/features/retries.md',
         'Right:\n\n```ts\nawait tf.get("https://api.example.com/users", { retry: 3 });\n```',
         'Right:\n\n```ts\nawait tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });\n```',
       );
+      app.build();
       app.commit('Retry a POST in the Right example');
     },
     expect: { lint: ['check skill/features/retries.md retry-idempotent-only'] },
   },
+  // The agents' case: a default changed, and no test edited, since the test builds the sentence
+  // from the same constant. The tests pass; the skill still says 10 seconds.
   {
     name: 'README 4: default changed',
     change: 'in `src/timeout.ts`, change `DEFAULT_TIMEOUT` from `10_000` to `5_000`',
@@ -238,72 +264,104 @@ export const scenarios: Scenario[] = [
       app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
       app.commit('Lower the default timeout');
     },
-    // The test tagged `[skill:default-timeout]` fails too: it asserts 10 seconds.
-    expect: { proof: ['default-timeout'] },
+    // The `Value` of the unit, and the row of the options table that shows the default.
+    expect: { proof: ['default-timeout', 'features/timeouts.md'] },
   },
   {
-    name: 'README 4: default changed, unit and test edited',
-    change: 'the same change, then edit the `Value` of `default-timeout` and the test that proves it',
+    name: 'README 4: default changed, skill rebuilt',
+    change: 'the same change, then `skillunit proof --write`',
     apply(app) {
       app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
-      app.edit('skill/features/timeouts.md', 'Value: 10 seconds (`timeout: 10_000`), for every method.', 'Value: 5 seconds (`timeout: 5_000`), for every method.');
-      // The test that proves `default-timeout` asserts the value too.
-      app.write(TEST, app.read(TEST).replace('times out after 10 seconds', 'times out after 5 seconds').replaceAll('10_000', '5_000').replace('9_999', '4_999'));
+      app.build();
       app.commit('Lower the default timeout');
     },
     expect: {},
   },
   {
-    name: 'proof 1: default changed under a proved fact',
+    name: 'proof 1: default changed under a fact and a table',
     change: 'in `src/retry.ts`, change `DEFAULT_RETRY_DELAY` from 300 to 500, leave the skill and the tests',
     apply(app) {
       app.edit('src/retry.ts', 'export const DEFAULT_RETRY_DELAY = 300;', 'export const DEFAULT_RETRY_DELAY = 500;');
       app.commit('Raise the retry delay');
     },
-    // The test tagged `[skill:retry-defaults]` fails, and proof names the unit.
-    expect: { proof: ['retry-defaults'] },
+    expect: { proof: ['retry-defaults', 'features/retries.md'] },
   },
   {
-    name: 'proof 2: region changed without --write',
-    change: 'change the code inside the region of `query-in-options` and its assertion, and leave the skill',
+    name: 'proof 2: a 4xx is now retried',
+    change: 'in `src/retry.ts`, retry a 4xx status too, leave the skill and the tests',
     apply(app) {
-      app.edit(TEST, "query: { page: 2, sort: 'name' },", "query: { page: 2, sort: 'email' },");
-      app.edit(TEST, 'users?page=2&sort=name', 'users?page=2&sort=email');
-      app.commit('Sort by email');
+      app.edit('src/retry.ts', 'error.status >= 500', 'error.status >= 400');
+      app.commit('Retry 4xx');
+    },
+    // The body of `what-is-retried` observes each case, so no test fails: the sentence changes.
+    expect: { proof: ['what-is-retried'] },
+  },
+  {
+    name: 'proof 3: a unit from a test edited in skill/',
+    change: 'edit the `Value` of `default-timeout` in the built skill',
+    apply(app) {
+      app.edit('skill/features/timeouts.md', 'Value: 10 seconds', 'Value: 30 seconds');
+      app.commit('Say 30 seconds');
+    },
+    expect: { proof: ['default-timeout'] },
+  },
+  {
+    name: 'proof 4: the test of a unit deleted, and one skipped',
+    change: 'delete the `unit()` of `body-as-object`, and turn the one of `response-body` into `unit.skip`',
+    apply(app) {
+      const text = app.read(TEST);
+      const { start, end } = unitCall(text, 'body-as-object');
+      app.write(TEST, text.slice(0, start) + text.slice(end).replace(/^\n/, ''));
+      app.edit(TEST, "  unit(\n    'response-body',", "  unit.skip(\n    'response-body',");
+      app.commit('Drop one test, skip another');
+    },
+    expect: { proof: ['body-as-object', 'response-body'] },
+  },
+  {
+    name: 'proof 5: a body that fails',
+    change: 'make the assertion of `body-as-object` expect another body',
+    apply(app) {
+      app.edit(TEST, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
+      app.commit('Expect Bob');
+    },
+    expect: { proof: ['body-as-object'] },
+  },
+  {
+    name: 'proof 6: a unit declared with no slot',
+    change: 'remove `{{unit:response-body}}` from the source',
+    apply(app) {
+      app.edit('skill-src/features/requests.md', '{{unit:response-body}}\n\n', '');
+      app.commit('Drop a slot');
+    },
+    // The test that declares it, and the built file, which still has the unit.
+    expect: { proof: ['response-body', 'features/requests.md'] },
+  },
+  {
+    name: 'proof 7: a slot twice',
+    change: 'add `{{unit:query-in-options}}` to clients.md too',
+    apply(app) {
+      app.write('skill-src/features/clients.md', `${app.read('skill-src/features/clients.md')}\n{{unit:query-in-options}}\n`);
+      app.commit('A second slot');
     },
     expect: { proof: ['query-in-options'] },
   },
   {
-    name: 'proof 3: tagged test deleted',
-    change: 'delete the test that proves `body-as-object`, with its region',
+    name: 'proof 8: a value with no unit',
+    change: 'use `{{value:connect-timeout.ms}}`, which no test declares, in the source',
     apply(app) {
-      const text = app.read(TEST);
-      const start = text.indexOf("  it('sends the body as JSON [skill:body-as-object]'");
-      const end = text.indexOf('  it(', start + 1);
-      app.write(TEST, text.slice(0, start) + text.slice(end));
-      app.commit('Drop a test');
+      app.edit('skill-src/features/timeouts.md', 'Every request has a timeout,', 'Every request has a timeout ({{value:connect-timeout.ms}} ms to connect),');
+      app.commit('A value nobody gives');
     },
-    // The block has no source any more, and the lock lists a unit no test proves.
-    expect: { proof: ['body-as-object', 'body-as-object'] },
+    expect: { proof: ['connect-timeout'] },
   },
   {
-    name: 'proof 4: tagged test skipped',
-    change: 'skip the test that proves `body-as-object`',
+    name: 'proof 9: a file in skill/ the source does not build',
+    change: 'add `skill/notes.txt`',
     apply(app) {
-      app.edit(TEST, "  it('sends the body as JSON [skill:body-as-object]'", "  it.skip('sends the body as JSON [skill:body-as-object]'");
-      app.commit('Skip a test');
+      app.write('skill/notes.txt', 'notes\n');
+      app.commit('Notes');
     },
-    // The lock lists the unit, and its only test was skipped.
-    expect: { proof: ['body-as-object'] },
-  },
-  {
-    name: 'proof 5: tag with no unit',
-    change: 'tag a test with an id that no unit has',
-    apply(app) {
-      app.edit(TEST, "it('cancels with the caller signal'", "it('cancels with the caller signal [skill:cancel-with-signal]'");
-      app.commit('Tag a test');
-    },
-    expect: { proof: ['../reports/junit.xml'] },
+    expect: { proof: ['notes.txt'] },
   },
   {
     name: 'clean',

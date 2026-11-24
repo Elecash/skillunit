@@ -365,7 +365,7 @@ describe('reporters', () => {
         },
         { file: '../../skills-src/demo/features/retries.md', line: 30, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test of `retry-delay` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000' },
         { file: '../../skills-src/demo/SKILL.md', line: 28, unit: 'await-every-request', severity: 'error', rule: 'proof', message: 'no test left the unit `await-every-request`: its test was skipped or deleted, or did not run' },
-        { file: '../../skillunit.yaml', line: 3, severity: 'warning', rule: 'proof', message: 'this project keeps what SkillUnit 0.2 proved units with: `skillunit.lock`.' },
+        { file: '../../skillunit.yaml', line: 3, severity: 'warning', rule: 'proof', message: '`proof.format` failed on the build of SKILL.md' },
       ],
       summary: { units: 4, fromTests: 1, byHand: 1, failed: 1, missing: 1, values: 2, files: 2, differ: 1, written: 0, extra: 0 },
     };

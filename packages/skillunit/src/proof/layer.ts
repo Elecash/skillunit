@@ -6,7 +6,7 @@
  * 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, whatever it exits with:
  *    a failing test is what the proof is there to report;
  * 3. read the units, fill the source, run `proof.format` on each built Markdown file;
- * 4. compare with the `skill` folder, the first line that differs in each file, or write it.
+ * 4. compare with the `skill` folder, the first line of each block that differs, or write it.
  *
  * Every finding about a line of the skill says where that line comes from: the test that declares
  * its unit, or the file of the source.
@@ -14,10 +14,10 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import { alignLines } from '../build/align.js';
+import { alignLines, differences } from '../build/align.js';
 import { buildSkill, listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
 import { readRecords } from '../build/records.js';
-import { FROM_02_DOCS, type ProofConfig } from '../config.js';
+import type { ProofConfig } from '../config.js';
 import { output, quote } from '../lint/commands.js';
 import type { Origin, Problem } from '../lint/types.js';
 import type { UnitKind } from '../unit/contract.js';
@@ -165,8 +165,6 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const build = buildSkill({ source: sourceDir, records: records.units, regions: regions.regions, missingReason, shown: fromProject });
   for (const p of build.problems) add(fromSkill(p.file), p.line, p.message, p.unit ? { unit: p.unit } : {});
 
-  const leftovers = from02(cfg, sourceFiles, fromProject);
-  if (leftovers) problems.push({ file: settings.file, line: settings.line(), severity: 'warning', rule: 'proof', message: leftovers });
 
   // ---------------------------------------------------------------- 3: format
   const formatted = new Map<string, string>();
@@ -215,12 +213,17 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       add(f.file, 1, `this file is not the one in \`source\`, which it is copied from: edit ${fromProject(join(sourceDir, f.file))}, then run \`skillunit proof --write\``, { origin: { kind: 'source', file: fromSkill(join(sourceDir, f.file)), line: 1 } });
       continue;
     }
-    const d = firstDifference(formatted.get(f.file)!, have.toString('utf8'));
-    const from = origin(f.file, d.line);
-    const unit = from?.kind === 'test' ? from.unit : undefined;
-    // Where the line comes from is in `origin`, which every reporter shows.
-    const edit = from ? '. The skill is built: edit the file this line comes from, then run `skillunit proof --write`' : '. Run `skillunit proof --write`';
-    add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected)}, the skill has ${shownLine(d.actual)}${edit}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
+    // One finding per block that differs, so a value in a table and the unit that states it are
+    // both named. Where each line comes from is in `origin`, which every reporter shows.
+    const found = differences(formatted.get(f.file)!.split(/\r?\n/), have.toString('utf8').split(/\r?\n/));
+    if (!found.length) found.push({ line: 1, expected: 'other line ends', actual: 'these' });
+    for (const d of found.slice(0, MAX_DIFFERENCES)) {
+      const from = origin(f.file, d.line);
+      const unit = from?.kind === 'test' ? from.unit : undefined;
+      const edit = from ? '. The skill is built: edit the file this line comes from, then run `skillunit proof --write`' : '. Run `skillunit proof --write`';
+      add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected, 'nothing here')}, the skill has ${shownLine(d.actual, 'nothing here')}${edit}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
+    }
+    if (found.length > MAX_DIFFERENCES) add(f.file, found[MAX_DIFFERENCES]!.line, `and ${found.length - MAX_DIFFERENCES} more blocks that differ from the build. Run \`skillunit proof --write\``);
   }
   for (const name of existsSync(skillDir) ? listFiles(skillDir) : []) {
     if (builtNames.has(name)) continue;
@@ -323,24 +326,6 @@ function emptyRecords(dir: string) {
   }
 }
 
-/**
- * What a project kept from the proof of 0.2, which units declared in tests replaced: the lock,
- * and tags in the titles of tests. Said once, as a warning, or null when there is nothing.
- */
-function from02(cfg: ProofConfig, sources: { file: string; text: string }[], fromProject: (abs: string) => string): string | null {
-  const found: string[] = [];
-  if (existsSync(join(cfg.cwd, 'skillunit.lock'))) found.push('`skillunit.lock`');
-  const tags: string[] = [];
-  for (const { file, text } of sources) {
-    text.split(/\r?\n/).forEach((l, i) => {
-      if (/\[skill:[A-Za-z0-9_.-]+\]/.test(l)) tags.push(`${fromProject(file)}:${i + 1}`);
-    });
-  }
-  if (tags.length) found.push(`\`[skill:<id>]\` tags in the titles of ${tags.length === 1 ? 'a test' : `${tags.length} tests`} (${tags.slice(0, 3).join(', ')}${tags.length > 3 ? ', …' : ''})`);
-  if (!found.length) return null;
-  return `this project keeps what SkillUnit 0.2 proved units with: ${found.join(' and ')}. A test now declares its unit with \`unit()\`, and nothing reads tags or the lock; remove them: ${FROM_02_DOCS}`;
-}
-
 function lastLines(text: string, n: number): string {
   return text
     .replace(/\x1b\[[0-9;]*m/g, '')
@@ -350,18 +335,11 @@ function lastLines(text: string, n: number): string {
     .join('\n');
 }
 
-function firstDifference(expected: string, actual: string): { line: number; expected: string | undefined; actual: string | undefined } {
-  const a = expected.split(/\r?\n/);
-  const b = actual.split(/\r?\n/);
-  let i = 0;
-  while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  // Equal lines and different line ends: the first line is where it shows.
-  if (i === a.length && i === b.length) return { line: 1, expected: 'other line ends', actual: 'these' };
-  return { line: i + 1, expected: a[i], actual: b[i] };
-}
+/** Blocks that differ reported per file; the rest are counted. */
+const MAX_DIFFERENCES = 10;
 
-function shownLine(line: string | undefined): string {
-  if (line === undefined) return 'nothing more';
+function shownLine(line: string | undefined, none = 'nothing more'): string {
+  if (line === undefined) return none;
   if (!line.trim()) return 'an empty line';
   const cut = line.length > 100 ? `${line.slice(0, 99)}…` : line;
   return `\`${cut.replace(/`/g, "'")}\``;

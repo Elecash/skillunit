@@ -12,7 +12,5 @@ packages/skillunit/skills
 packages/skillunit/docs
 lab/
 /PLAN.md
-# What a test run leaves for `skillunit proof`.
-reports/
-tmp/skill-proof/
-tmp/skill-units/
+# What a test run leaves for `skillunit proof`: the units the tests declare, in any project.
+**/tmp/skill-units/

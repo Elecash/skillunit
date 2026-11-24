@@ -11,7 +11,6 @@ import { proof, runProof, traceSkill, type ProofOptions } from './layer.js';
 // Region markers built from parts: this file holds no region of its own.
 const OPEN = (id: string) => `#${'region'} skill:${id}`;
 const CLOSE = `#${'endregion'}`;
-const DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/index.md#coming-from-02';
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
@@ -228,6 +227,12 @@ describe('a skill folder edited by hand', () => {
     ]);
   });
 
+  it('each block that differs gets a finding of its own, with its origin', () => {
+    const root = written();
+    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits 10 seconds.', 'A request waits 30 seconds.').replace('Value: 10 seconds', 'Value: 30 seconds'));
+    expect(errors(run(root)).map((e) => e.replace(/ error: .* \[/, ' ['))).toEqual(['SKILL.md:3 - [source ../skill-src/SKILL.md:3]', 'SKILL.md:23 default-timeout [test ../tests/a.test.ts:10]']);
+  });
+
   it('a line of prose: the finding names the source', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits', 'Every request waits'));
@@ -295,6 +300,15 @@ describe('what the build cannot fill', () => {
     ]);
   });
 
+  it('leaves a placeholder in a sentence about slots as it is', () => {
+    const src = `# Demo\n\nPut \`{{unit:<id>}}\` where a unit goes, and \`{{value:<id>.<name>}}\` for a value: {{value:default-timeout.seconds}}.\n\n## Rules\n\n{{unit:default-timeout}}\n`;
+    const root = project({ ...GOOD, 'skill-src/SKILL.md': src, 'tmp/skill-units/check-status.0002.json': null, 'tmp/skill-units/one-client-per-api.0003.json': null, 'tests/a.test.ts': '' });
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toContain('Put `{{unit:<id>}}` where a unit goes, and `{{value:<id>.<name>}}` for a value: 10.');
+    expect(r.summary.values).toBe(1);
+  });
+
   it('a slot that is not alone on its line, or names no id', () => {
     const src = `# Demo\n\n## Rules\n\nSee {{unit:default-timeout}}.\n\n{{unit:Default}}\n`;
     const root = project({ ...GOOD, 'skill-src/SKILL.md': src });
@@ -323,7 +337,10 @@ describe('a unit in two places, or in none', () => {
 
   it('a slot twice', () => {
     const root = project({ ...GOOD, 'skill-src/features.md': '# More\n\n## Rules\n\n{{unit:check-status}}\n' });
-    expect(errors(run(root, {}, { write: true }))).toEqual([`../skill-src/features.md:5 check-status error: the slot of \`check-status\` is also at skill-src/SKILL.md:21; a unit goes in one place`]);
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual([`../skill-src/features.md:5 check-status error: the slot of \`check-status\` is also at skill-src/SKILL.md:21; a unit goes in one place`]);
+    // Neither file is built: which slot is the right one is not known.
+    expect(r.files.filter((f) => f.state === 'broken').map((f) => f.file)).toEqual(['features.md', 'SKILL.md']);
   });
 
   it('a region of a unit no test declares, and a region that names no path of its decision', () => {
@@ -419,15 +436,6 @@ writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\\n', '# Demo\\n\\n<!-- 
   });
 });
 
-describe('what 0.2 left', () => {
-  it('a lock and tags in the titles of tests: one warning', () => {
-    const root = project({ ...GOOD, 'skillunit.lock': '{ "version": 2, "proved": [] }\n', 'tests/a.test.ts': `${TEST}test('x [skill:check-status]', () => {});\n` });
-    expect(run(root).problems.filter((p) => p.severity === 'warning').map(show)).toEqual([
-      `../skillunit.yaml:3 - warning: this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\` and \`[skill:<id>]\` tags in the titles of a test (tests/a.test.ts:9). A test now declares its unit with \`unit()\`, and nothing reads tags or the lock; remove them: ${DOCS}`,
-    ]);
-  });
-});
-
 describe('where a line comes from, for lint and the model tests', () => {
   it('traces the skill folder as it is, from the units already left, without running anything', () => {
     const root = project({ ...GOOD, 'skillunit.yaml': 'skill: ./skill\nsource: ./skill-src\nproof:\n  run: "exit 9"\n' });
@@ -469,10 +477,8 @@ describe('the settings', () => {
     expect(load('skill: ./skill\n').config().proof).toBeUndefined();
   });
 
-  it('rejects a wrong key, and says where the settings of 0.2 went', () => {
+  it('rejects a wrong key', () => {
     const fails = (yaml: string) => () => load(yaml).config();
-    expect(fails('proof:\n  reports: ./reports/junit.xml\n')).toThrow(/`proof\.reports` is a setting of SkillUnit 0\.2, whose proof read JUnit reports, tags and `skillunit\.lock`\. Now a test declares its unit with `unit\(\)` and the skill is built from `source`: https/);
-    expect(fails('skill: ./skill\nsource: ./src\nproof:\n  examples: ./tmp\n')).toThrow(/`proof\.examples` is a setting of SkillUnit 0\.2/);
     expect(fails('proof:\n  run: x\n')).toThrow(/`proof` says how the skill is built from `source`; set `source` too/);
     expect(fails('skill: ./skill\nsource: ./src\nproof:\n  runs: x\n')).toThrow(/unknown key `proof.runs` \(allowed: run, units, sources, format\)/);
     expect(fails('skill: ./skill\nsource: ./src\nproof:\n  run: ""\n')).toThrow(/`proof.run` must be a command/);

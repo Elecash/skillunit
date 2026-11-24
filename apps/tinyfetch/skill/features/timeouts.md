@@ -10,10 +10,10 @@ import { tf, TimeoutError } from "tinyfetch";
 
 ## Options
 
-| Option    | Type        | Meaning                                                      |
-| --------- | ----------- | ------------------------------------------------------------ |
-| `timeout` | number (ms) | abort the request after this long; `0` turns the timeout off |
-| `signal`  | AbortSignal | cancel the request, and any retry still to come              |
+| Option    | Type        | Default  | Meaning                                                      |
+| --------- | ----------- | -------- | ------------------------------------------------------------ |
+| `timeout` | number (ms) | `10_000` | abort the request after this long; `0` turns the timeout off |
+| `signal`  | AbortSignal | none     | cancel the request, and any retry still to come              |
 
 ```ts
 try {

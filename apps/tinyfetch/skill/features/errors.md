@@ -24,7 +24,7 @@ Do: test the error with `isHttpError(error)` before reading `status` or `body`.
 
 Right:
 
-```ts proof=check-with-is-http-error
+```ts
 try {
   await tf.get("https://api.example.com/users/1");
 } catch (error) {

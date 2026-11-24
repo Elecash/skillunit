@@ -5,6 +5,7 @@ import { format } from 'prettier';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codeSpans, parseCheck, parseFile, parseSkill } from './parse.js';
 import type { Fence, InlineCode } from './types.js';
+import { unit } from '../vitest.js';
 
 const F = '```';
 
@@ -410,7 +411,8 @@ Decide:
 });
 
 describe('Check', () => {
-  it('accepts only a regex in a code span, and says to add the backticks [skill:check-regex-in-a-code-span]', () => {
+  unit('check-regex-in-a-code-span', { when: "a rule's mistake can be matched by a regex.", do: 'add `Check: forbid` with the regex inside backticks, followed by `in` and the fence languages it applies to.', check: 'forbid `/Check: forbid \\//` in md' }, (u) => {
+    u.example('md', 'Check: forbid `/\\.(post|patch)\\([^)]*retry/` in ts');
     expect(messages('### rule: r\nCheck: forbid /post.*retry/ in ts\n')).toEqual([
       '2: put the regex of a `Check` in backticks, as in ``forbid `/regex/` in ts``: outside a code span, Markdown reads `*` and `_` as emphasis and a formatter rewrites them',
     ]);
@@ -438,7 +440,7 @@ describe('Check', () => {
 });
 
 describe('labels and lists', () => {
-  it('reports a label right under a list item, and still reads it as a label [skill:blank-line-after-a-list]', () => {
+  unit('blank-line-after-a-list', { when: 'a label follows a list, such as the items of `Right` or the paths of `Decide`.', do: 'leave a blank line between the last item and the label.' }, () => {
     const file = parse('### decision: d\nDecide:\n- **a** — x\nEven when: y\n');
     expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual([
       '4: leave a blank line between the list and `Even when:`; without it, Markdown reads the label as part of the last list item',
@@ -605,11 +607,6 @@ ${F}
 
   it('are misplaced in a unit that is not a fact', () => {
     expect(file.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Decide` or the `Value` of a fact, not under `Value`']);
-  });
-
-  it('keeps a 0.2 `proof=` flag among the flags, for lint to report', () => {
-    const f = parse(`### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}ts proof=r\nx;\n${F}\n`);
-    expect(f.fences[0]!.flags).toEqual(['proof=r']);
   });
 
   it('reads Proof as a paragraph that is not a label', () => {

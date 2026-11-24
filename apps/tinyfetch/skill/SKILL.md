@@ -38,7 +38,7 @@ Do: `await` the call, or return its promise: every method returns a promise of t
 
 Right:
 
-```ts proof=await-every-request
+```ts
 const user = await tf.get<{ name: string }>("https://api.example.com/users/1");
 console.log(user.name);
 ```

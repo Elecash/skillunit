@@ -8,6 +8,7 @@ to the file. Without a file, the skill is the current folder and the specs are i
 
 ```yaml
 skill: ./skill               # folder with SKILL.md (default: the folder of this file)
+source: ./skill-src          # the folder people write; skill is built from it (no proof without it)
 specs: ./specs               # a spec file, a folder of them, or a list (default: ./specs)
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 model: { provider: typesafe, name: jev-latest }   # or provider: openai, or a module: ./my-model.mjs
@@ -22,13 +23,17 @@ examples:
 lint:
   off: [length]              # lint rules not to report
 proof:
-  reports: ./reports/junit.xml               # the JUnit XML of the test run: a glob or a list
-  examples: ./tmp/skill-proof                # where tests write examples (the default)
+  run: "npx vitest run"                      # the project's tests, run through the shell
+  units: ./tmp/skill-units                   # where the tests leave their units (the default)
   sources: ["src/**/*.test.ts"]              # test files with `#region skill:<id>` examples
-  format: "npx --no-install prettier --write {file}"   # run on a skill file after writing it
+  format: "npx --no-install prettier --write {file}"   # run on each built Markdown file
 ```
 
-- `skill`: the folder with `SKILL.md`. `--skill` overrides it.
+- `skill`: the folder with `SKILL.md`. `--skill` overrides it. With `source`, it is built.
+- `source`: the folder people write, with `{{unit:<id>}}` where the unit of a test goes and
+  `{{value:<id>.<name>}}` where a value of one does. `skillunit proof --write` builds `skill` from
+  it and the units the tests declare. The two folders cannot sit one inside the other. Without
+  `source` there is no proof layer. [Proof](proof.md#the-source-and-its-slots) has the details.
 - `specs`: where the [specs](writing-specs.md) are. A test command given paths uses those instead.
 - `context`: one sentence about what the skill is for. It is sent with every question and helps
   the reader with the vocabulary of the domain.
@@ -46,6 +51,9 @@ proof:
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
   name to its source, usually with a `paths` entry. Any other language takes a `command` with
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
+  A key and a fence name a language the same way, and the usual pairs are one language: `py` and
+  `python`, `js` and `javascript`, `ts` and `typescript`, `sh`, `bash` and `shell`, `yml` and
+  `yaml`. Lint warns about a language set here that no block of the skill is in.
   An example that uses names it does not declare fails with "Cannot find name": declare them
   once in a `Setup:` block, which lint puts in front of every example of that language in the
   file. A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
@@ -54,18 +62,16 @@ proof:
   checked. The [style guide](style-guide.md#setup) has the details.
 - `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
   the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `command`,
-  `index`, `length`, `fence` and `proof`. `length` is the warning about a file above about 300 lines,
+  `index`, `length` and `fence`. `length` is the warning about a file above about 300 lines,
   the first to turn off on a skill someone else wrote; `fence` is the warning about a word after
-  a fence's language that SkillUnit does not know; `proof` is about the marks of the proof layer
-  in the skill, such as a `proof=<id>` that names another unit. The summary says which rules are
-  off.
-- `proof`: the proof layer, which reads what the project's test run left. `reports` is required:
-  the JUnit XML report, as a glob or a list. `examples` is the folder where tests write examples
-  (default `./tmp/skill-proof`). `sources` are globs of the test files with
-  `#region skill:<id>` examples. `format` is a command with `{file}`, run on each skill file
-  `skillunit proof --write` changes; the check compares the blocks as it leaves them. Globs
-  start from the folder of this file and leave out `node_modules`. [Proof](proof.md) has the
-  details.
+  a fence's language that SkillUnit does not know. The summary says which rules are off.
+- `proof`: how `skillunit proof` builds the skill, with `source`. `run` is the command that runs
+  the project's tests, from the folder of this file; without it, the units already in `units` are
+  used. `units` is the folder where the tests leave their units (default `./tmp/skill-units`), and
+  `proof` empties it of its records before `run`. `sources` are globs of the test files with
+  `#region skill:<id>` examples. `format` is a command with `{file}`, run on each built Markdown
+  file. Globs start from the folder of this file and leave out `node_modules`.
+  [Proof](proof.md#settings) has the details.
 
 Any other key is an error.
 
@@ -75,37 +81,14 @@ SkillUnit's own repository keeps its settings at the root, next to `package-lock
 skill folder holds only what an agent reads, which is what someone who installs the skill gets:
 
 ```
-skillunit.yaml       skill: ./skills/skillunit, specs: ./specs, proof: { reports: ./packages/skillunit/reports/junit.xml }
-skillunit.lock       the units the package's tests prove
+skillunit.yaml       skill: ./skills/skillunit, source: ./skills-src/skillunit, proof: { run: … }
 specs/               the spec files
-skills/skillunit/    SKILL.md and the files it links to
-packages/skillunit/  the code the units describe, and the tests that prove them
+skills-src/skillunit/  the skill as people write it, with a slot for each unit from a test
+skills/skillunit/    SKILL.md and the files it links to, built from the source and the tests
+packages/skillunit/  the code the units describe, and the tests that declare eleven of them
 ```
 
 From the root, every command runs with no `--config`.
-
-## skillunit.lock
-
-The units the project's tests prove, written by `skillunit proof --write` and committed with the
-skill. It sits next to `skillunit.yaml`.
-
-```json
-{
-  "version": 2,
-  "proved": [
-    "check-with-is-http-error",
-    "retry-defaults"
-  ]
-}
-```
-
-The ids are sorted, one to a line, so a diff shows one unit per line. `--write` adds the units a
-test proves and drops ids no unit has, and never drops a unit that is still in the skill;
-`skillunit proof --forget <id>` takes a unit off. [Proof](proof.md#the-lock) has the details.
-
-A merge conflict in the lock is resolved by keeping both sides, then running
-`skillunit proof --write`, which sorts the ids and puts back a comma missing between the sides.
-It also reads a lock with the conflict markers still in it.
 
 ## The API key
 

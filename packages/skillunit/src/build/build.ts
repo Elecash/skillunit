@@ -2,7 +2,8 @@
  * Builds a skill from its source and the units the tests left. In a Markdown file of the source,
  * `{{unit:<id>}}` alone on a line is where the unit of a test goes, and `{{value:<id>.<name>}}`,
  * anywhere, a fenced block included, is a value of a unit. A unit written by hand stays as it is.
- * Every other file is copied as it is.
+ * Every other file is copied as it is. Braces around something that cannot be an id, such as
+ * `{{unit:<id>}}` in a sentence about slots, are text.
  *
  * The build is in memory: the proof layer formats it, compares it with the skill folder or
  * writes it there.
@@ -81,6 +82,8 @@ const VALUE_SLOT = /\{\{\s*value:([^}]*)\}\}/g;
 const SLOT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const VALUE_ID = /^([a-z0-9]+(?:-[a-z0-9]+)*)\.([A-Za-z0-9]+(?:-[A-Za-z0-9]+)*)$/;
 const FENCE = /^\s*(`{3,}|~{3,})/;
+/** What follows `unit:` or `value:` when it cannot be an id at all, such as `<id>`: the text is left as it is. */
+const PLACEHOLDER = /[^A-Za-z0-9_.-]/;
 
 export function buildSkill(input: BuildInput): Build {
   const problems: BuildProblem[] = [];
@@ -106,6 +109,8 @@ export function buildSkill(input: BuildInput): Build {
   /** Units by hand, by id, from every Markdown file of the source. */
   const hand = new Map<string, { file: string; line: number }>();
   let values = 0;
+  /** Files with the first of two slots for one id. */
+  const twice = new Set<string>();
 
   for (const rel of files) {
     const abs = join(input.source, rel);
@@ -135,14 +140,20 @@ export function buildSkill(input: BuildInput): Build {
       if (fence === null && opens) fence = opens[1]!;
       else if (fence !== null && opens && opens[1]![0] === fence[0] && opens[1]!.length >= fence.length && !raw.trim().slice(opens[1]!.length).trim()) fence = null;
 
-      const unit = inFence ? null : UNIT_SLOT.exec(raw);
+      const found = inFence ? null : UNIT_SLOT.exec(raw);
+      // A placeholder such as `{{unit:<id>}}` in a sentence that explains slots is prose.
+      const unit = found && PLACEHOLDER.test(found[1]!.trim()) ? null : found;
       if (unit) {
         prose.push('');
         const id = unit[1]!.trim();
         if (raw.trim() !== unit[0]) return fail(line, `\`${unit[0]}\` goes alone on its line, where the unit goes`);
         if (!SLOT_ID.test(id)) return fail(line, `\`${unit[0]}\` needs the id of a unit, in kebab-case: \`{{unit:default-timeout}}\``);
         const first = slots.get(id);
-        if (first) return fail(line, `the slot of \`${id}\` is also at ${place({ abs: first.file, line: first.line })}; a unit goes in one place`, id);
+        if (first) {
+          // Neither file is built: which of the two slots is the right one is not known.
+          twice.add(first.file);
+          return fail(line, `the slot of \`${id}\` is also at ${place({ abs: first.file, line: first.line })}; a unit goes in one place`, id);
+        }
         slots.set(id, { file: abs, line });
         const record = byId.get(id);
         const base = { id, from: 'test' as const, source: { file: abs, line }, file: rel };
@@ -170,6 +181,7 @@ export function buildSkill(input: BuildInput): Build {
 
       prose.push(raw);
       const filled = raw.replace(VALUE_SLOT, (whole, ref: string) => {
+        if (PLACEHOLDER.test(ref.trim())) return whole;
         values++;
         const m = VALUE_ID.exec(ref.trim());
         if (!m) {
@@ -205,6 +217,8 @@ export function buildSkill(input: BuildInput): Build {
     }
     built.push({ file: rel, text: out.join(eol), origins, broken });
   }
+
+  for (const f of built) if (twice.has(join(input.source, f.file))) f.broken = true;
 
   // ---------------------------------------------------------------- what has no place
   for (const [id, record] of byId) {
