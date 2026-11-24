@@ -104,6 +104,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               value = text;
             },
             example(lang, text) {
+              if (kind === 'decision') throw new Error(`unit \`${id}\`: a decision shows its examples in its paths, from the regions \`skill:${id}.<path>\`; \`u.example\` is for a rule or a fact`);
               if (typeof lang !== 'string' || !/^[A-Za-z0-9_+.-]+$/.test(lang)) throw new Error(`unit \`${id}\`: \`u.example\` takes a fence language first, such as \`text\` or \`json\`; got ${JSON.stringify(lang)}`);
               if (typeof text !== 'string') throw new Error(`unit \`${id}\`: \`u.example\` takes the block's text as a string`);
               examples.push({ lang, text });

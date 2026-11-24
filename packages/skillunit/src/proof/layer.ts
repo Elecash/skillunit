@@ -1,79 +1,70 @@
 /**
- * `skillunit proof`: which units the project's tests prove, and whether each block flagged
- * `proof=<id>` holds what its test produced. It reads the JUnit XML report of a test run, the
- * folder where tests wrote examples, and the regions of test files. It never runs the tests.
+ * `skillunit proof`: builds the skill from `source` and the units the tests declare, and compares
+ * the build with the `skill` folder, or with `write` writes it there.
  *
- * A unit is proved when a test whose title carries `[skill:<id>]` passed and none failed. It
- * failed when a tagged test failed, or when `skillunit.lock` lists it and no tagged test passed.
- * Any other unit is unproved. The lock remembers which units were proved, since a deleted test
- * takes its tag with it.
+ * 1. empty the `proof.units` folder of its records, when `proof.run` is set and `noRun` is not;
+ * 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, whatever it exits with:
+ *    a failing test is what the proof is there to report;
+ * 3. read the units, fill the source, run `proof.format` on each built Markdown file;
+ * 4. compare with the `skill` folder, the first line that differs in each file, or write it.
  *
- * With `write`, every flagged block is rewritten from its file or region, and the lock gets the
- * units the tests prove; without it, the comparison is made in memory, so the check needs no git
- * and works before a commit. `forget` takes ids off the lock before the check.
+ * Every finding about a line of the skill says where that line comes from: the test that declares
+ * its unit, or the file of the source.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, globSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
-import type { ProofConfig } from '../config.js';
+import { alignLines } from '../build/align.js';
+import { buildSkill, listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
+import { readRecords } from '../build/records.js';
+import { FROM_02_DOCS, type ProofConfig } from '../config.js';
 import { output, quote } from '../lint/commands.js';
-import { namesUnit, proofMarks } from '../lint/proof.js';
-import type { Problem } from '../lint/types.js';
-import { parseFile, parseSkill, type Fence, type ParsedFile, type Unit } from '../units/index.js';
-import { readExamples, type ExampleFile } from './examples.js';
-import { readJUnit, ReportError, type TestCase, type TestStatus } from './junit.js';
-import { formatLock, LOCK_FILE, parseLock, type Lock } from './lock.js';
-import { collectRegions, type Region } from './regions.js';
+import type { Origin, Problem } from '../lint/types.js';
+import type { UnitKind } from '../unit/contract.js';
+import { collectRegions } from './regions.js';
 
 export interface ProofOptions {
-  /** Folder of the skill. */
+  /** Folder of the built skill. */
   skill: string;
+  /** Folder the skill is built from. */
+  source: string;
   config: ProofConfig;
   /** The settings file, for findings about the settings. */
   configFile?: string;
-  /** Rewrite every flagged block from what its test produced, and add the proved units to the lock. */
+  /** Write the build to the skill folder instead of comparing. */
   write?: boolean;
-  /** Ids to take off the lock before the check: all of them, or none when the lock lacks one. */
-  forget?: string[];
-  /**
-   * Also report what lint reports about `proof=`. `check` turns it off, since lint ran before;
-   * `skillunit proof` alone keeps it on.
-   */
-  marks?: boolean;
+  /** Do not run `proof.run`: use the units already in `proof.units`. */
+  noRun?: boolean;
 }
 
-export type UnitProofState = 'proved' | 'failed' | 'unproved';
+/** What ran the tests: the command, with how long it took and what it exited with, or why nothing did. */
+export type RunReport = { command: string; status: number | null; ms: number } | { skipped: 'no-run' | 'not-set' };
 
-export interface ProofTest {
-  /** The report, from the skill folder. */
-  report: string;
-  line: number;
-  title: string;
-  status: TestStatus;
-}
-
-export interface ProofFence {
-  /** The `proof=` id. */
-  id: string;
-  line: number;
-  /** Where its text comes from: an example file, a region, or nothing found. */
-  from: 'file' | 'region' | null;
-  /** The text differs from what its file or region gives (before `write` rewrote it). */
-  differs: boolean;
-  /** `write` rewrote it. */
-  written: boolean;
-}
+export type UnitProofState = 'passed' | 'failed' | 'missing' | 'hand';
 
 export interface UnitProof {
   id: string;
-  /** Skill file of the unit, from the skill folder. */
+  /** Null for a slot whose test left no unit. */
+  kind: UnitKind | null;
+  from: 'test' | 'hand';
+  /** `passed`: built from its test; `failed`: its test failed; `missing`: no test left it; `hand`: written in the source. */
+  state: UnitProofState;
+  /** The file of the skill the unit is built into, from the skill folder, and the line of its heading there (1 when it is not there). */
   file: string;
   line: number;
-  state: UnitProofState;
-  /** `skillunit.lock` lists the unit, after `write` or `forget` changed it. */
-  listed: boolean;
-  tests: ProofTest[];
-  fences: ProofFence[];
+  /** The slot, or the heading of the unit by hand, from the skill folder. */
+  source: { file: string; line: number };
+  /** Where its test declares it, from the skill folder. */
+  test?: { file: string; line: number };
+  /** The message of its failed test. */
+  error?: string;
+}
+
+export interface FileProof {
+  /** From the skill folder. */
+  file: string;
+  /** `same`; `differs` or `missing` in the skill folder; `written` by `write`; `extra`: no file of the source builds it; `broken`: the build of it failed. */
+  state: 'same' | 'differs' | 'missing' | 'written' | 'extra' | 'broken';
 }
 
 export interface ProofResult {
@@ -82,391 +73,291 @@ export interface ProofResult {
   ok: boolean;
   /** Absolute path of the skill folder. */
   skill: string;
-  /** The reports read, from the skill folder. */
-  reports: string[];
+  /** Absolute path of the source. */
+  source: string;
   write: boolean;
-  lock: LockReport;
+  run: RunReport;
   units: UnitProof[];
+  files: FileProof[];
   problems: Problem[];
   summary: {
     units: number;
-    proved: number;
-    /** Units with a tagged test that failed, or listed in the lock and not proved. */
+    /** Units built from a test that passed. */
+    fromTests: number;
+    byHand: number;
+    /** Slots whose test failed. */
     failed: number;
-    unproved: number;
-    /** Tests in the reports that carry a `[skill:<id>]` tag. */
-    tagged: number;
-    /** Flagged blocks whose text comes from a test: an example file or a region. */
-    fences: number;
-    /** Of those, blocks whose text differs from what the test gives. */
+    /** Slots no test left a unit for. */
+    missing: number;
+    /** `{{value:…}}` in the source. */
+    values: number;
+    files: number;
+    /** Files of the skill folder that differ from the build, or that it lacks. */
     differ: number;
-    /** Blocks `--write` rewrote. */
     written: number;
+    /** Files of the skill folder no file of the source builds. */
+    extra: number;
   };
 }
 
-/** `skillunit.lock`, and what this run did to it. */
-export interface LockReport {
-  /** The lock, from the skill folder. */
-  file: string;
-  /** The file exists, after this run. */
-  exists: boolean;
-  /** How many ids it lists, after this run. */
-  listed: number;
-  /** Ids `write` added. */
-  added: string[];
-  /** Ids `write` dropped: no unit of the skill has them. */
-  dropped: string[];
-  /** Ids `forget` took off. */
-  forgot: string[];
-  /** The file was written. */
-  written: boolean;
-}
-
-/** What `check` reports when the settings have no `proof` key. */
+/** What `check` reports when the settings have no `source`. */
 export interface ProofSkipped {
   configured: false;
   ok: true;
 }
 
-/** How the finding about a failed tagged test starts, so a reporter can show it under that test. */
-export const failedTestPrefix = (title: string) => `the test "${title}" (`;
+/** Where a line of the skill folder comes from: `file` from the skill folder. */
+export type OriginLookup = (file: string, line: number) => Origin | undefined;
 
-/** Slack on the start of a run read from a timestamp with no zone, which may be local time. */
-const UNZONED_SLACK_MS = 14 * 60 * 60 * 1000;
+/** How many lines of the output of `proof.run` a finding shows. */
+const TAIL = 20;
 
 export function proof(options: ProofOptions): ProofResult {
+  return runProof(options).result;
+}
+
+/** The proof, and where each line of the skill folder comes from, for lint and the model tests. */
+export function runProof(options: ProofOptions): { result: ProofResult; origin: OriginLookup } {
   const skillDir = resolve(options.skill);
+  const sourceDir = resolve(options.source);
   const cfg = options.config;
-  const skill = parseSkill(skillDir);
-  const fromSkill = (abs: string) => relative(skillDir, abs).split('\\').join('/');
-  /** Paths inside messages start from the project, the folder of the settings. */
+  const fromSkill = (abs: string) => relative(skillDir, abs).split('\\').join('/') || '.';
   const fromProject = (abs: string) => relative(cfg.cwd, abs).split('\\').join('/') || '.';
-  const regionPlace = (r: Region) => `${fromProject(resolve(skillDir, r.file))}:${r.line}`;
   const problems: Problem[] = [];
-  const add = (file: string, line: number, message: string, severity: Problem['severity'] = 'error', unit?: string) =>
-    problems.push({ file, line, severity, rule: 'proof', message, ...(unit ? { unit } : {}) });
+  const add = (file: string, line: number, message: string, more: Partial<Problem> = {}) => problems.push({ file, line, severity: 'error', rule: 'proof', message, ...more });
   const settings = settingsPlace(options.configFile, skillDir);
+  const units = fromProject(cfg.units);
 
-  if (options.marks) problems.push(...proofMarks(skill));
+  // ---------------------------------------------------------------- 1, 2: the tests
+  let run: RunReport;
+  let tail = '';
+  if (!cfg.run) run = { skipped: 'not-set' };
+  else if (options.noRun) run = { skipped: 'no-run' };
+  else {
+    emptyRecords(cfg.units);
+    const started = Date.now();
+    const done = spawnSync(cfg.run, { shell: true, cwd: cfg.cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+    run = { command: cfg.run, status: done.status, ms: Date.now() - started };
+    tail = lastLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`, TAIL);
+  }
 
-  // ---------------------------------------------------------------- the lock, and --forget
-  const lockAbs = join(cfg.cwd, LOCK_FILE);
-  const lockFile = fromSkill(lockAbs);
-  let lockText = existsSync(lockAbs) ? readFileSync(lockAbs, 'utf8') : null;
-  let lock: Lock = parseLock(lockText);
-  const lockReport: LockReport = { file: lockFile, exists: lockText !== null, listed: 0, added: [], dropped: [], forgot: [], written: false };
-  if (options.forget?.length) {
-    const wanted = [...new Set(options.forget)].sort();
-    if (lock.kind === 'missing') {
-      add(settings.file, settings.line(), `there is no \`${LOCK_FILE}\`, so \`--forget\` has nothing to take off`);
-    } else if (lock.kind === 'ok') {
-      const ids = new Set(lock.ids.map((i) => i.id));
-      const missing = wanted.filter((id) => !ids.has(id));
-      if (missing.length) {
-        add(lockFile, 1, `\`${LOCK_FILE}\` does not list ${missing.map((id) => `\`${id}\``).join(', ')}, so nothing was forgotten: \`--forget\` takes only ids the lock lists`);
-      } else {
-        lockText = formatLock([...ids].filter((id) => !wanted.includes(id)));
-        writeFileSync(lockAbs, lockText);
-        lock = parseLock(lockText);
-        lockReport.forgot = wanted;
-        lockReport.written = true;
-      }
+  // ---------------------------------------------------------------- 3: the build
+  const records = readRecords(cfg.units, cfg.cwd);
+  for (const p of records.problems) add(fromSkill(p.path), 1, p.message);
+  const ranAndFailed = 'command' in run && run.status !== 0;
+  if (ranAndFailed && !records.units.length) {
+    const code = 'command' in run && run.status !== null ? `exited with ${run.status}` : 'did not run';
+    add(settings.file, settings.line('run'), `\`proof.run\` ${code} and left no unit in \`${units}\`${tail ? `. The end of its output:\n${tail}` : ''}`);
+  }
+  const missingReason =
+    'skipped' in run
+      ? run.skipped === 'no-run'
+        ? `\`--no-run\` used the units already in \`${units}\`, and none is this one: run the tests first, or leave out \`--no-run\``
+        : `\`proof.run\` is not set, so the units are those already in \`${units}\`: run the tests first, or set \`proof.run\``
+      : ranAndFailed && !records.units.length
+        ? 'the tests did not run; see `proof.run`'
+        : 'its test was skipped or deleted, or did not run';
+
+  const sourceFiles = expand(cfg.sources, cfg.cwd).map((abs) => ({ file: abs, text: readFileSync(abs, 'utf8') }));
+  const regions = collectRegions(sourceFiles, fromProject);
+  for (const p of regions.problems) add(fromSkill(p.file), p.line, p.message);
+
+  const build = buildSkill({ source: sourceDir, records: records.units, regions: regions.regions, missingReason, shown: fromProject });
+  for (const p of build.problems) add(fromSkill(p.file), p.line, p.message, p.unit ? { unit: p.unit } : {});
+
+  const leftovers = from02(cfg, sourceFiles, fromProject);
+  if (leftovers) problems.push({ file: settings.file, line: settings.line(), severity: 'warning', rule: 'proof', message: leftovers });
+
+  // ---------------------------------------------------------------- 3: format
+  const formatted = new Map<string, string>();
+  for (const f of build.files) {
+    if (f.text === undefined || f.broken) continue;
+    let text = f.text;
+    if (cfg.format) {
+      const result = formatCopy(text, join(skillDir, f.file), cfg);
+      if (typeof result === 'string') text = result;
+      else add(settings.file, settings.line('format'), `\`proof.format\` failed on the build of ${f.file}${result.output ? `:\n${result.output}` : ''}`);
     }
-    // A lock that cannot be read gets its own finding below, and nothing is forgotten.
+    formatted.set(f.file, text);
   }
 
-  // ---------------------------------------------------------------- what the tests left
-  const reportPaths = expand(cfg.reports, cfg.cwd);
-  if (!reportPaths.length) {
-    add(settings.file, settings.line('reports'), `no report matches \`proof.reports\` (${cfg.reports.map((g) => `\`${g}\``).join(', ')}); run the tests with a JUnit reporter first, such as \`vitest run --reporter=junit --outputFile=reports/junit.xml\``);
-  }
-  const cases: TestCase[] = [];
-  let started: number | undefined;
-  /** At least one report was read. Without one, what the tests proved is unknown, not failed. */
-  let read = false;
-  for (const path of reportPaths) {
-    try {
-      const report = readJUnit(readFileSync(path, 'utf8'), fromSkill(path));
-      read = true;
-      cases.push(...report.cases);
-      if (report.started) {
-        const at = report.started.ms - (report.started.zoned ? 2000 : UNZONED_SLACK_MS);
-        started = started === undefined ? at : Math.min(started, at);
-      }
-    } catch (e) {
-      if (!(e instanceof ReportError)) throw e;
-      add(e.file, e.line, `this report cannot be read: ${e.message.slice(e.message.indexOf(': ') + 2)}`);
-    }
-  }
+  const origin = lookup(build, skillDir, fromSkill);
 
-  const folder = readExamples(cfg.examples);
-  for (const p of folder.problems) add(fromSkill(join(cfg.examples, p.name)), 1, p.message, /no extension/.test(p.message) ? 'warning' : 'error');
-
-  const sourceFiles = expand(cfg.sources, cfg.cwd).map((abs) => ({ file: fromSkill(abs), text: readFileSync(abs, 'utf8') }));
-  const found = collectRegions(sourceFiles);
-  for (const p of found.problems) add(p.file, p.line, p.message);
-
-  // ---------------------------------------------------------------- tags
-  const units = new Map<string, Unit>();
-  for (const unit of skill.units) if (!units.has(unit.id)) units.set(unit.id, unit);
-  const tagged = new Map<string, TestCase[]>();
-  for (const c of cases) {
-    for (const tag of c.tags) {
-      if (!units.has(tag)) {
-        const what = tag ? `\`[skill:${tag}]\` names no unit of the skill` : '`[skill:]` has no unit id';
-        add(c.report, c.line, `${what}, in the test ${quoteTitle(c)}`);
-        continue;
-      }
-      tagged.set(tag, [...(tagged.get(tag) ?? []), c]);
-    }
-  }
-
-  // ---------------------------------------------------------------- what the tests prove
-  const outcomes = [...units.values()].map((unit) => {
-    const tests = tagged.get(unit.id) ?? [];
-    return { unit, tests, failed: tests.filter((t) => t.status === 'failed'), passed: tests.filter((t) => t.status === 'passed') };
-  });
-  const provedIds = outcomes.filter((o) => o.passed.length && !o.failed.length).map((o) => o.unit.id);
-
-  // ---------------------------------------------------------------- the lock, with --write
-  // Without a report, what the tests prove is unknown, so the lock is left as it is.
-  if (options.write && read && lock.kind !== 'broken') {
-    const before = lock.kind === 'ok' || lock.kind === 'conflict' ? lock.ids.map((i) => i.id) : [];
-    const kept = before.filter((id) => units.has(id));
-    const text = formatLock([...kept, ...provedIds]);
-    if (text !== lockText && (lock.kind !== 'missing' || provedIds.length)) {
-      writeFileSync(lockAbs, text);
-      lockReport.added = [...new Set(provedIds.filter((id) => !before.includes(id)))].sort();
-      lockReport.dropped = [...new Set(before.filter((id) => !units.has(id)))].sort();
-      lockReport.written = true;
-      lock = parseLock(text);
-    }
-  }
-  /** The ids the lock lists; null when the lock cannot be read, which is then its only finding. */
-  let listed: Set<string> | null = null;
-  if (lock.kind === 'ok') listed = new Set(lock.ids.map((i) => i.id));
-  else if (lock.kind === 'missing') listed = new Set();
-  else if (lock.kind === 'conflict') add(lockFile, lock.line, `\`${LOCK_FILE}\` cannot be read: ${lock.problem}. Run \`skillunit proof --write\`, which keeps the units of both sides`);
-  else add(lockFile, lock.line, `\`${LOCK_FILE}\` cannot be read: ${lock.message}`);
-  lockReport.exists = existsSync(lockAbs);
-  lockReport.listed = listed?.size ?? 0;
-
-  // ---------------------------------------------------------------- units
-  const results: UnitProof[] = [];
-  const usedFiles = new Set<string>();
-  const usedRegions = new Set<string>();
-  const edits = new Map<string, Edit[]>();
-  for (const { unit, tests, failed, passed } of outcomes) {
-    const isListed = listed?.has(unit.id) ?? false;
-    const state: UnitProofState = failed.length ? 'failed' : passed.length ? 'proved' : isListed ? 'failed' : 'unproved';
-    const fences = unit.proofs.filter((f) => f.proof && namesUnit(f.proof, unit.id));
-    const at = (message: string, line = unit.line, severity: Problem['severity'] = 'error') => add(unit.file, line, message, severity, unit.id);
-
-    // With no report read, only the report is reported: every unit would look unproved.
-    if (!read) {
-      results.push({ id: unit.id, file: unit.file, line: unit.line, state: 'unproved', listed: isListed, tests: [], fences: [] });
+  // ---------------------------------------------------------------- 4: compare, or write
+  const files: FileProof[] = [];
+  const builtNames = new Set(build.files.map((f) => f.file));
+  for (const f of build.files) {
+    if (f.broken) {
+      files.push({ file: f.file, state: 'broken' });
       continue;
     }
-    for (const t of failed) at(`${failedTestPrefix(title(t))}${fromProject(resolve(skillDir, t.report))}:${t.line}) failed${t.message ? `: ${t.message}` : ''}. It proves this unit, so the unit may no longer say what the code does`);
-    if (!failed.length && !passed.length) {
-      const skipped = `every test tagged \`[skill:${unit.id}]\` was skipped (${tests.map(quoteTitle).join(', ')})`;
-      if (isListed) {
-        at(`\`${LOCK_FILE}\` lists this unit as proved, and ${tests.length ? skipped : `no test in the reports is tagged \`[skill:${unit.id}]\``}. Bring the test back, or run \`skillunit proof --forget ${unit.id}\` if the unit is no longer meant to be proved`);
-      } else if (tests.length) {
-        if (fences.length) at(`${skipped}, so nothing proves this unit or produces its block`);
-        else at(`${skipped}, so the unit counts as unproved`, unit.line, 'warning');
-      } else if (fences.length) {
-        at(`no test is tagged \`[skill:${unit.id}]\`, but the block at line ${fences.map((f) => f.line).join(', ')} says a test produced it; tag the test that proves this unit`, fences[0]!.line);
-      }
+    const abs = join(skillDir, f.file);
+    const want = f.bytes ?? Buffer.from(formatted.get(f.file)!, 'utf8');
+    const have = existsSync(abs) ? readFileSync(abs) : null;
+    if (have && have.equals(want)) {
+      files.push({ file: f.file, state: 'same' });
+      continue;
     }
-    if (state === 'proved' && lock.kind === 'ok' && !isListed) at(`a test proves this unit and \`${LOCK_FILE}\` does not list it. Run \`skillunit proof --write\``);
-
-    const proofFences: ProofFence[] = [];
-    for (const fence of fences) {
-      const id = fence.proof!;
-      const file = folder.examples.get(id);
-      const region = found.regions.get(id);
-      const pf: ProofFence = { id, line: fence.line, from: null, differs: false, written: false };
-      proofFences.push(pf);
-      if (file) usedFiles.add(id);
-      if (region) usedRegions.add(id);
-      if (file && region) {
-        at(`both \`${fromProject(file.path)}\` and the region at ${regionPlace(region)} give \`proof=${id}\`; a block comes from one of them`, fence.line);
-        continue;
-      }
-      if (!file && !region) {
-        at(`nothing gives \`proof=${id}\`: no test wrote \`${fromProject(cfg.examples)}/${id}.<extension>\`${cfg.sources.length ? ', and no file of `proof.sources` has the region `skill:' + id + '`' : ', and `proof.sources` is not set'}`, fence.line);
-        continue;
-      }
-      pf.from = file ? 'file' : 'region';
-      const text = file ? normalize(file.text) : region!.code;
-      if (file && started !== undefined && file.mtimeMs < started) {
-        add(unit.file, fence.line, `\`${fromProject(file.path)}\` is older than the test run in the reports: a test did not write it this time. Empty \`proof.examples\` before the tests run`, 'warning', unit.id);
-      }
-      const list = edits.get(unit.file) ?? [];
-      list.push({ fence, unit: unit.id, text, origin: file ? fromProject(file.path) : regionPlace(region!), result: pf });
-      edits.set(unit.file, list);
+    if (options.write) {
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, want);
+      files.push({ file: f.file, state: 'written' });
+      continue;
     }
-    results.push({ id: unit.id, file: unit.file, line: unit.line, state, listed: isListed, tests: tests.map((t) => ({ report: t.report, line: t.line, title: title(t), status: t.status })), fences: proofFences });
-  }
-
-  if (read && lock.kind === 'missing' && provedIds.length) {
-    const shown = provedIds.slice(0, 5).join(', ') + (provedIds.length > 5 ? ', …' : '');
-    add(settings.file, settings.line(), `there is no \`${LOCK_FILE}\`, and the tests prove ${provedIds.length === 1 ? 'a unit' : `${provedIds.length} units`} (${shown}). Run \`skillunit proof --write\` to create it`);
-  }
-  if (lock.kind === 'ok') {
-    const reported = new Set<string>();
-    for (const { id, line } of lock.ids) {
-      if (units.has(id) || reported.has(id)) continue;
-      reported.add(id);
-      add(lockFile, line, `\`${LOCK_FILE}\` lists \`${id}\`, and no unit of the skill has that id; \`skillunit proof --write\` drops it`);
+    if (!have) {
+      files.push({ file: f.file, state: 'missing' });
+      const first = f.origins[0];
+      add(f.file, 1, `the skill folder has no \`${f.file}\`, which \`source\` builds. Run \`skillunit proof --write\``, first ? { origin: toOrigin(first, fromSkill) } : {});
+      continue;
     }
+    files.push({ file: f.file, state: 'differs' });
+    if (f.bytes) {
+      add(f.file, 1, `this file is not the one in \`source\`, which it is copied from: edit ${fromProject(join(sourceDir, f.file))}, then run \`skillunit proof --write\``, { origin: { kind: 'source', file: fromSkill(join(sourceDir, f.file)), line: 1 } });
+      continue;
+    }
+    const d = firstDifference(formatted.get(f.file)!, have.toString('utf8'));
+    const from = origin(f.file, d.line);
+    const unit = from?.kind === 'test' ? from.unit : undefined;
+    // Where the line comes from is in `origin`, which every reporter shows.
+    const edit = from ? '. The skill is built: edit the file this line comes from, then run `skillunit proof --write`' : '. Run `skillunit proof --write`';
+    add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected)}, the skill has ${shownLine(d.actual)}${edit}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
   }
+  for (const name of existsSync(skillDir) ? listFiles(skillDir) : []) {
+    if (builtNames.has(name)) continue;
+    files.push({ file: name, state: 'extra' });
+    add(name, 1, `no file of \`source\` builds \`${name}\`: move it to ${fromProject(join(sourceDir, name))}, or remove it from the skill folder${options.write ? '. `--write` leaves it there' : ''}`);
+  }
+  files.sort((a, b) => a.file.localeCompare(b.file));
 
-  for (const [id, file] of read ? folder.examples : []) {
-    if (!usedFiles.has(id)) add(fromSkill(file.path), 1, `no block has \`proof=${id}\`, so nothing uses \`${file.name}\``, 'warning');
-  }
-  for (const [id, region] of read ? found.regions : []) {
-    if (!usedRegions.has(id)) add(region.file, region.line, `no block has \`proof=${id}\`, so nothing uses this region`, 'warning');
-  }
+  // ---------------------------------------------------------------- the units
+  const finalText = (file: string) => {
+    const abs = join(skillDir, file);
+    return formatted.get(file) ?? (existsSync(abs) ? readFileSync(abs, 'utf8') : '');
+  };
+  const unitResults: UnitProof[] = build.units.map((u) => {
+    const heading = new RegExp(`^###\\s+(?:rule|decision|fact):\\s*${u.id}\\s*$`);
+    const line = finalText(u.file).split(/\r?\n/).findIndex((l) => heading.test(l)) + 1 || 1;
+    return {
+      id: u.id,
+      kind: u.kind,
+      from: u.from,
+      state: u.state,
+      file: u.file,
+      line,
+      source: { file: fromSkill(u.source.file), line: u.source.line },
+      ...(u.test ? { test: { file: fromSkill(u.test.file), line: u.test.line } } : {}),
+      ...(u.error !== undefined ? { error: u.error } : {}),
+    };
+  });
 
-  // ---------------------------------------------------------------- the blocks
-  let written = 0;
-  for (const [name, list] of edits) {
-    const file = skill.files.find((f) => f.file === name)!;
-    written += applyFile(file, list, { skillDir, cfg, write: options.write === true, add, settings });
-  }
-
-  const count = (s: UnitProofState) => results.filter((u) => u.state === s).length;
-  const all = results.flatMap((u) => u.fences);
   problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
-  return {
+  const count = (s: UnitProofState) => unitResults.filter((u) => u.state === s).length;
+  const result: ProofResult = {
     configured: true,
     ok: !problems.some((p) => p.severity === 'error'),
     skill: skillDir,
-    reports: reportPaths.map(fromSkill),
+    source: sourceDir,
     write: options.write === true,
-    lock: lockReport,
-    units: results,
+    run,
+    units: unitResults,
+    files,
     problems,
     summary: {
-      units: results.length,
-      proved: count('proved'),
+      units: unitResults.length,
+      fromTests: count('passed'),
+      byHand: count('hand'),
       failed: count('failed'),
-      unproved: count('unproved'),
-      tagged: cases.filter((c) => c.tags.length).length,
-      fences: all.filter((f) => f.from).length,
-      differ: all.filter((f) => f.differs).length,
-      written,
+      missing: count('missing'),
+      values: build.values,
+      files: build.files.length,
+      differ: files.filter((f) => f.state === 'differs' || f.state === 'missing').length,
+      written: files.filter((f) => f.state === 'written').length,
+      extra: files.filter((f) => f.state === 'extra').length,
     },
+  };
+  return { result, origin };
+}
+
+/**
+ * Where each line of the skill folder comes from, without running the tests or the formatter:
+ * the source filled with the units already in `proof.units`. For `skillunit lint` and
+ * `skillunit test`, which read the skill folder as it is.
+ */
+export function traceSkill(options: Pick<ProofOptions, 'skill' | 'source' | 'config'>): OriginLookup {
+  const skillDir = resolve(options.skill);
+  const cfg = options.config;
+  const records = readRecords(cfg.units, cfg.cwd);
+  const sourceFiles = expand(cfg.sources, cfg.cwd).map((abs) => ({ file: abs, text: readFileSync(abs, 'utf8') }));
+  const build = buildSkill({ source: resolve(options.source), records: records.units, regions: collectRegions(sourceFiles).regions, missingReason: '' });
+  return lookup(build, skillDir, (abs) => relative(skillDir, abs).split('\\').join('/'));
+}
+
+/** The origin of a line of the skill folder: the line of the build it stands for, through the formatter and edits by hand. */
+function lookup(build: Build, skillDir: string, fromSkill: (abs: string) => string): OriginLookup {
+  const files = new Map<string, BuiltFile>(build.files.map((f) => [f.file, f]));
+  const maps = new Map<string, number[] | null>();
+  return (file, line) => {
+    const f = files.get(file);
+    if (!f || f.text === undefined || !f.origins.length) return undefined;
+    let map = maps.get(file);
+    if (map === undefined) {
+      const abs = join(skillDir, file);
+      map = existsSync(abs) ? alignLines(f.text.split(/\r?\n/), readFileSync(abs, 'utf8').split(/\r?\n/)) : null;
+      maps.set(file, map);
+    }
+    const at = map ? map[line - 1] : line - 1;
+    const o = at === undefined ? undefined : f.origins[Math.min(at, f.origins.length - 1)];
+    return o ? toOrigin(o, fromSkill) : undefined;
   };
 }
 
-interface Edit {
-  fence: Fence;
-  unit: string;
-  /** What the block should hold. */
-  text: string;
-  /** Where that comes from, for messages. */
-  origin: string;
-  result: ProofFence;
+function toOrigin(o: LineOrigin, fromSkill: (abs: string) => string): Origin {
+  return o.kind === 'test' ? { kind: 'test', file: fromSkill(o.file), line: o.line, unit: o.unit } : { kind: 'source', file: fromSkill(o.file), line: o.line };
 }
 
-type Add = (file: string, line: number, message: string, severity?: Problem['severity'], unit?: string) => void;
+/** Takes out the records of an earlier run: only `.json` files, so a wrong `proof.units` costs no other file. */
+function emptyRecords(dir: string) {
+  if (!existsSync(dir)) return;
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isFile() && e.name.endsWith('.json')) rmSync(join(dir, e.name), { force: true });
+  }
+}
 
 /**
- * Compares, and with `write` rewrites, the flagged blocks of one skill file. With `format`, the
- * rewritten file is formatted first, on a copy next to the file so the formatter finds the
- * project's settings, and the blocks are compared as the formatter leaves them. Returns how many
- * blocks it wrote.
+ * What a project kept from the proof of 0.2, which units declared in tests replaced: the lock,
+ * and tags in the titles of tests. Said once, as a warning, or null when there is nothing.
  */
-function applyFile(file: ParsedFile, edits: Edit[], ctx: { skillDir: string; cfg: ProofConfig; write: boolean; add: Add; settings: SettingsPlace }): number {
-  const abs = join(ctx.skillDir, file.file);
-  const ready = edits.filter((e) => {
-    const problem = fenceProblem(file.text, e.fence, e.text);
-    if (problem) ctx.add(file.file, e.fence.line, problem, 'error', e.unit);
-    return !problem;
-  });
-  const next = rewrite(file.text, ready);
-  if (next === file.text) return 0;
-
-  let target = next;
-  if (ctx.cfg.format) {
-    const formatted = formatCopy(next, abs, ctx.cfg);
-    if (typeof formatted === 'string') target = formatted;
-    else ctx.add(ctx.settings.file, ctx.settings.line('format'), `\`proof.format\` failed on a copy of ${file.file}${formatted.output ? `:\n${formatted.output}` : ''}`);
+function from02(cfg: ProofConfig, sources: { file: string; text: string }[], fromProject: (abs: string) => string): string | null {
+  const found: string[] = [];
+  if (existsSync(join(cfg.cwd, 'skillunit.lock'))) found.push('`skillunit.lock`');
+  const tags: string[] = [];
+  for (const { file, text } of sources) {
+    text.split(/\r?\n/).forEach((l, i) => {
+      if (/\[skill:[A-Za-z0-9_.-]+\]/.test(l)) tags.push(`${fromProject(file)}:${i + 1}`);
+    });
   }
-  const after = new Map(parseFile(target, file.file).fences.filter((f) => f.proof).map((f) => [f.proof!, f]));
-  let differ = 0;
-  for (const e of ready) {
-    const now = after.get(e.fence.proof!);
-    if (!now || now.code === e.fence.code) continue;
-    e.result.differs = true;
-    differ++;
-    if (ctx.write) {
-      e.result.written = true;
-      continue;
-    }
-    const { line, expected, actual } = firstDifference(now.code, e.fence.code);
-    ctx.add(
-      file.file,
-      e.fence.line + 1 + line,
-      `this block is not what \`${e.origin}\` gives, from line ${line + 1} of the block: the test gives ${shownLine(expected)}, the skill has ${shownLine(actual)}. Run \`skillunit proof --write\``,
-      'error',
-      e.unit,
-    );
-  }
-  if (ctx.write && differ) {
-    writeFileSync(abs, next);
-    if (ctx.cfg.format) {
-      const run = runFormat(ctx.cfg, abs);
-      if (run !== true) ctx.add(ctx.settings.file, ctx.settings.line('format'), `\`proof.format\` failed on ${file.file}${run ? `:\n${run}` : ''}`);
-    }
-  }
-  return ctx.write ? differ : 0;
+  if (tags.length) found.push(`\`[skill:<id>]\` tags in the titles of ${tags.length === 1 ? 'a test' : `${tags.length} tests`} (${tags.slice(0, 3).join(', ')}${tags.length > 3 ? ', …' : ''})`);
+  if (!found.length) return null;
+  return `this project keeps what SkillUnit 0.2 proved units with: ${found.join(' and ')}. A test now declares its unit with \`unit()\`, and nothing reads tags or the lock; remove them: ${FROM_02_DOCS}`;
 }
 
-const CLOSING = /^\s*(`{3,}|~{3,})\s*$/;
-
-/** Why a block cannot be rewritten, if it cannot. */
-function fenceProblem(text: string, fence: Fence, body: string): string | undefined {
-  const lines = text.split(/\r?\n/);
-  const close = lines[fence.endLine - 1];
-  if (fence.endLine <= fence.line || close === undefined || !CLOSING.test(close)) return 'this block is never closed, so it cannot be compared or written';
-  const marker = /^\s*(`{3,}|~{3,})/.exec(lines[fence.line - 1]!)![1]!;
-  for (const line of body.split('\n')) {
-    const m = CLOSING.exec(line);
-    if (m && m[1]![0] === marker[0] && m[1]!.length >= marker.length) {
-      return `the example has a line \`${line.trim()}\` that would close this block; open the block with a longer fence, such as \`${marker[0]!.repeat(m[1]!.length + 1)}\``;
-    }
-  }
-  return undefined;
-}
-
-/** The file with the body of each block replaced, at the block's own indentation. Line ends are kept. */
-function rewrite(text: string, edits: Edit[]): string {
-  const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const lines = text.split(/\r?\n/);
-  for (const e of [...edits].sort((a, b) => b.fence.line - a.fence.line)) {
-    const indent = /^\s*/.exec(lines[e.fence.line - 1]!)![0];
-    const body = e.text === '' ? [] : e.text.split('\n').map((l) => (l ? indent + l : l));
-    lines.splice(e.fence.line, e.fence.endLine - 1 - e.fence.line, ...body);
-  }
-  return lines.join(eol);
-}
-
-/** An example file's text, as a block holds it: `\n` line ends, no newline at the end. */
-function normalize(text: string): string {
-  return text.replace(/\r\n/g, '\n').replace(/\n+$/, '');
+function lastLines(text: string, n: number): string {
+  return text
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split(/\r?\n/)
+    .filter((l) => l.trim())
+    .slice(-n)
+    .join('\n');
 }
 
 function firstDifference(expected: string, actual: string): { line: number; expected: string | undefined; actual: string | undefined } {
-  const a = expected.split('\n');
-  const b = actual.split('\n');
+  const a = expected.split(/\r?\n/);
+  const b = actual.split(/\r?\n/);
   let i = 0;
   while (i < a.length && i < b.length && a[i] === b[i]) i++;
-  return { line: i, expected: a[i], actual: b[i] };
+  // Equal lines and different line ends: the first line is where it shows.
+  if (i === a.length && i === b.length) return { line: 1, expected: 'other line ends', actual: 'these' };
+  return { line: i + 1, expected: a[i], actual: b[i] };
 }
 
 function shownLine(line: string | undefined): string {
@@ -476,35 +367,31 @@ function shownLine(line: string | undefined): string {
   return `\`${cut.replace(/`/g, "'")}\``;
 }
 
-/** Formats `text` as the file at `abs` would be: on a hidden copy in the same folder. */
+/** Formats `text` as the file at `abs` would be: on a hidden copy in the nearest folder that exists. */
 function formatCopy(text: string, abs: string, cfg: ProofConfig): string | { output: string } {
-  const copy = join(dirname(abs), `.${basename(abs, '.md')}.skillunit-proof-${process.pid}.md`);
+  let dir = dirname(abs);
+  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
+  const copy = join(dir, `.${basename(abs, '.md')}.skillunit-build-${process.pid}.md`);
   try {
     writeFileSync(copy, text);
-    const run = runFormat(cfg, copy, abs);
-    return run === true ? readFileSync(copy, 'utf8') : { output: run };
+    const run = spawnSync(cfg.format!.replaceAll('{file}', quote(copy)), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
+    if (run.status === 0) return readFileSync(copy, 'utf8');
+    return { output: output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [copy], abs) || (run.error?.message ?? `exit ${run.status}`) };
   } finally {
     rmSync(copy, { force: true });
   }
 }
 
-/** Runs `proof.format` on `path`: true, or what it printed when it failed. */
-function runFormat(cfg: ProofConfig, path: string, shownAs = path): true | string {
-  const run = spawnSync(cfg.format!.replaceAll('{file}', quote(path)), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
-  if (run.status === 0) return true;
-  return output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [path], shownAs) || (run.error?.message ?? `exit ${run.status}`);
-}
-
 /** Files that match any of `globs` from `cwd`, absolute and sorted, `node_modules` left out. */
 export function expand(globs: string[], cwd: string): string[] {
   if (!globs.length) return [];
-  const found = globSync(globs, { cwd, exclude: (name: string) => name === 'node_modules' || name.endsWith('/node_modules') });
+  const found: string[] = globSync(globs, { cwd, exclude: (name: string) => name === 'node_modules' || name.endsWith('/node_modules') });
   return [...new Set(found.map((f) => resolve(cwd, f)))].filter((f) => statSync(f, { throwIfNoEntry: false })?.isFile()).sort();
 }
 
 interface SettingsPlace {
   file: string;
-  /** The line of `proof.<key>` in the settings, or of `proof:`, or 1. */
+  /** The line of `proof.<key>` in the settings, or of `proof:`, or of `source:`, or 1. */
   line: (key?: string) => number;
 }
 
@@ -520,17 +407,6 @@ function settingsPlace(configFile: string | undefined, skillDir: string): Settin
   const find = (re: RegExp) => lines.findIndex((l) => re.test(l)) + 1;
   return {
     file: relative(skillDir, configFile).split('\\').join('/'),
-    line: (key) => (key ? find(new RegExp(`^\\s+${key}\\s*:`)) : 0) || find(/^proof\s*:/) || 1,
+    line: (key) => (key ? find(new RegExp(`^\\s+${key}\\s*:`)) : 0) || find(/^proof\s*:/) || find(/^source\s*:/) || 1,
   };
 }
-
-/** The test's title as the runner shows it: the class or file, then the name, unless one holds the other. */
-function title(c: TestCase): string {
-  if (!c.classname || c.name.includes(c.classname)) return c.name;
-  if (c.classname.includes(c.name)) return c.classname;
-  return `${c.classname} › ${c.name}`;
-}
-
-const quoteTitle = (c: TestCase | ProofTest) => `"${'title' in c ? c.title : title(c)}"`;
-
-export type { ExampleFile, Region };

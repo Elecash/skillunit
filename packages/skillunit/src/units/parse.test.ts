@@ -399,7 +399,7 @@ Decide:
   it('reports a fence under a label that takes no code', () => {
     const f = parse(`### rule: r\n\nDo: y\n\n${F}ts\nx\n${F}\n`);
     expect(f.fences[0]!.owner).toEqual({ kind: 'misplaced', unit: 'r', label: 'Do' });
-    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right` or `Decide`, not under `Do`']);
+    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Decide` or the `Value` of a fact, not under `Do`']);
   });
 
   it('reports a fence under Decide that is not inside an item', () => {
@@ -566,67 +566,49 @@ describe('language names', () => {
   });
 });
 
-describe('proof', () => {
-  /** A rule with a proved Right fence, a decision with a proved fence in each path, and a flag-less fence. */
-  const PROVED = `# T
+describe('blocks under the Value of a fact', () => {
+  const FACT = `## Rules
 
-${F}ts proof=outside
-const a = 1;
+### fact: what-is-retried
+
+When: a request with \`retry\` fails.
+
+Value: network errors and 5xx responses are retried.
+
+${F}text
+network error  retried
+404            not retried
 ${F}
 
-## Rules
+Unknown: say what the code does.
 
-### rule: check-status
+### rule: r
 
-When: a request failed.
+When: a.
 
-Do: test the error with \`isHttpError\`.
+Do: b.
 
-Right:
+Value: c.
 
-${F}ts proof=check-status
-isHttpError(error);
+${F}ts
+x;
 ${F}
-
-### decision: pick-a-client
-
-When: more than one request.
-
-Decide:
-
-- **shared** — same base URL.
-
-  ${F}ts title="a.ts" proof=pick-a-client.shared
-  const api = tf.create({});
-  ${F}
-
-- **direct** — one request.
-
-  ${F}ts proof='pick-a-client.direct'
-  tf.get('/a');
-  ${F}
-
-  ${F}ts
-  tf.get('/b');
-  ${F}
 `;
-  const file = parse(PROVED);
+  const file = parse(FACT);
 
-  it('keeps the id of a proof= flag on the fence, and the flag among its flags', () => {
-    expect(file.errors).toEqual([]);
-    const right = file.fences.find((f) => f.owner.kind === 'right')!;
-    expect(right).toMatchObject({ lang: 'ts', flags: ['proof=check-status'], proof: 'check-status' });
-    expect(file.fences[0]).toMatchObject({ proof: 'outside', owner: { kind: 'reference' } });
+  it('belong to the fact, and the labels after them still read', () => {
+    const [fact] = file.units;
+    expect(fact!.valueFences.map((f) => [f.lang, f.owner])).toEqual([['text', { kind: 'value', unit: 'what-is-retried' }]]);
+    expect(fact!.unknown).toBe('say what the code does.');
   });
 
-  it('collects the flagged fences of a unit, those in list items included, with quotes taken off', () => {
-    const [rule, decision] = file.units;
-    expect(rule!.proofs.map((f) => f.proof)).toEqual(['check-status']);
-    expect(decision!.proofs.map((f) => [f.proof, f.owner])).toEqual([
-      ['pick-a-client.shared', { kind: 'decide', unit: 'pick-a-client', path: 'shared' }],
-      ['pick-a-client.direct', { kind: 'decide', unit: 'pick-a-client', path: 'direct' }],
-    ]);
-    expect(file.fences.filter((f) => f.proof === undefined)).toHaveLength(1);
+  it('are misplaced in a unit that is not a fact', () => {
+    expect(file.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Decide` or the `Value` of a fact, not under `Value`']);
+  });
+
+  it('keeps a 0.2 `proof=` flag among the flags, for lint to report', () => {
+    const f = parse(`### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}ts proof=r\nx;\n${F}\n`);
+    expect(f.fences[0]!.flags).toEqual(['proof=r']);
   });
 
   it('reads Proof as a paragraph that is not a label', () => {

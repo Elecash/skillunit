@@ -16,12 +16,12 @@
  *     py: { command: "python3 -m py_compile {file}" }   # any other language
  *   lint:
  *     off: [length]              # lint rules not to report, by the name they are reported under
- *   proof:                       # units proved by the project's tests (`skillunit proof`)
- *     reports: ./reports/*.xml   # JUnit XML of the test run: a glob or a list of them
- *     examples: ./tmp/skill-proof   # where tests write examples (the default)
- *     units: ./tmp/skill-units      # where `unit()` tests leave their units (the default)
+ *   source: ./skill-src          # the skill as people write it; `skill` is built from it
+ *   proof:                       # how `skillunit proof` builds `skill` from `source` and the tests
+ *     run: "npx vitest run"      # the project's tests, run through the shell
+ *     units: ./tmp/skill-units   # where the tests leave their units (the default)
  *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
- *     format: "npx prettier --write {file}"   # run on a skill file after writing it
+ *     format: "npx prettier --write {file}"   # run on each built Markdown file
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -56,28 +56,28 @@ export interface Config {
   configDir?: string;
   /** Absolute path of the config file, when there is one. */
   configFile?: string;
-  /** The proof layer; absent when the settings have no `proof` key. */
+  /** Absolute path of the folder people write, which `skill` is built from. Without it there is no proof layer. */
+  source?: string;
+  /** The proof layer: set, with its defaults, whenever `source` is. */
   proof?: ProofConfig;
 }
 
-/** Where the proof layer finds what the tests left. Globs start from `cwd`. */
+/** How the proof layer builds `skill` from `source` and what the tests left. Globs start from `cwd`. */
 export interface ProofConfig {
-  /** Globs of the JUnit XML reports of the test run. */
-  reports: string[];
-  /** Absolute folder where tests write examples. */
-  examples: string;
+  /** The project's tests, run through the shell from `cwd`. Without it, the units already in `units` are used. */
+  run?: string;
   /** Absolute folder where the tests of `skillunit/vitest` and `skillunit/unit` leave their units. */
   units: string;
   /** Globs of the test files to read `#region skill:<id>` examples from. */
   sources: string[];
-  /** A command with `{file}`, run on each skill file `--write` changes. */
+  /** A command with `{file}`, run on each built Markdown file. */
   format?: string;
   /** Folder of the config file: globs and commands start there. */
   cwd: string;
 }
 
-/** Where tests write examples when `proof.examples` is not set, from the config file's folder. */
-export const DEFAULT_PROOF_EXAMPLES = './tmp/skill-proof';
+/** Where the docs explain the move from the proof of 0.2. */
+export const FROM_02_DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/index.md#coming-from-02';
 
 /** Where tests leave units when `proof.units` is not set, from the config file's folder. */
 export const DEFAULT_PROOF_UNITS = './tmp/skill-units';
@@ -104,7 +104,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, 
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
+const KEYS = new Set(['skill', 'source', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -158,32 +158,47 @@ export function loadConfig(path?: string): Config {
   }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
   if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);
-  if (raw.proof !== undefined) config.proof = readProof(raw.proof, root, fail);
+  if (raw.source !== undefined) {
+    if (typeof raw.source !== 'string' || !raw.source.trim()) throw fail('`source` must be a path: the folder the skill is built from');
+    config.source = resolve(root, raw.source);
+    const inside = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || a.startsWith(`${b}\\`);
+    if (inside(config.source, config.skill) || inside(config.skill, config.source)) {
+      throw fail('`source` and `skill` are two folders, neither inside the other: `skill` is built from `source`');
+    }
+  }
+  if (raw.proof !== undefined && config.source === undefined) {
+    const old = raw.proof && typeof raw.proof === 'object' && ('reports' in raw.proof || 'examples' in raw.proof);
+    throw fail(old ? movedFrom02('`proof.reports`') : '`proof` says how the skill is built from `source`; set `source` too');
+  }
+  if (config.source !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
   return config;
 }
 
-const PROOF_KEYS = ['reports', 'examples', 'units', 'sources', 'format'];
+/** The message for a setting of the proof of 0.2, which units declared in tests replaced. */
+function movedFrom02(what: string): string {
+  return `${what} is a setting of SkillUnit 0.2, whose proof read JUnit reports, tags and \`skillunit.lock\`. Now a test declares its unit with \`unit()\` and the skill is built from \`source\`: ${FROM_02_DOCS}`;
+}
+
+const PROOF_KEYS = ['run', 'units', 'sources', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { reports: ./reports/junit.xml }`');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
   const raw = value as Record<string, unknown>;
   for (const key of Object.keys(raw)) {
+    if (key === 'reports' || key === 'examples') throw fail(movedFrom02(`\`proof.${key}\``));
     if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
   }
-  const globs = (key: string, required: boolean): string[] => {
+  const globs = (key: string): string[] => {
     const v = raw[key];
-    if (v === undefined || v === null) {
-      if (required) throw fail(`\`proof.${key}\` is missing: the glob of the JUnit XML reports your test run writes, such as \`./reports/junit.xml\``);
-      return [];
-    }
+    if (v === undefined || v === null) return [];
     const list = Array.isArray(v) ? v : [v];
     if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
     return list as string[];
   };
-  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), units: resolve(root, DEFAULT_PROOF_UNITS), sources: globs('sources', false), cwd: root };
-  if (raw.examples !== undefined) {
-    if (typeof raw.examples !== 'string' || !raw.examples.trim()) throw fail('`proof.examples` must be a folder');
-    out.examples = resolve(root, raw.examples);
+  const out: ProofConfig = { units: resolve(root, DEFAULT_PROOF_UNITS), sources: globs('sources'), cwd: root };
+  if (raw.run !== undefined) {
+    if (typeof raw.run !== 'string' || !raw.run.trim()) throw fail('`proof.run` must be a command, such as `npx vitest run`');
+    out.run = raw.run;
   }
   if (raw.units !== undefined) {
     if (typeof raw.units !== 'string' || !raw.units.trim()) throw fail('`proof.units` must be a folder');

@@ -435,11 +435,11 @@ Lint  skills/demo
   ✓ 1 other file clean
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
-Units  proof reports/junit.xml · test jev-1.14.0
+Units  proof ran \`npx vitest run\` in 2.3 s, exit 0 · test jev-1.14.0
 
   skills/demo/SKILL.md
-    ~ pick-a-client          decision  –         –
-    ~ await-every-request    rule      –         –
+    ~ pick-a-client          decision  hand      –
+    ~ await-every-request    rule      hand      –
 
   skills/demo/features/retries.md
     ✗ -                                          1/2
@@ -451,9 +451,9 @@ Units  proof reports/junit.xml · test jev-1.14.0
                  got:       none · probability 0.66, threshold 0.50 · wrong answer
                             none 66% · explain 34% · tool 0%
                  phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
-    ✗ retry-idempotent-only  rule      proved    1/1
+    ✗ retry-idempotent-only  rule      test      1/1
         lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
-    ✗ retry-delay            fact      –         0/1
+    ✗ retry-delay            fact      hand      0/1
         test   ✗ skills/demo/specs/retries.yaml:19  exact-command  exact 0.44
                  scenario:  The user asks to retry a POST.
                  question:  What does the skill say?
@@ -462,7 +462,7 @@ Units  proof reports/junit.xml · test jev-1.14.0
                             exact 44% · none 40% · loose 16%
 
   4 units · 1 proof and test · 0 proof only · 1 test only · 2 not covered
-  proved 1 of 4 units · 0 blocks from tests · 1 tagged test · 1 unit in the lock
+  4 units · 1 from tests · 3 by hand · 0 values in prose
   4 tests · 2 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
 
 Elsewhere
@@ -479,16 +479,16 @@ FAILED  lint 1 error, 1 warning · proof ok · test 2/4 passed (1 spec could not
 "
 `;
 
-exports[`reporters > the proof layer > github: proved, failed and unproved units, with every kind of finding 1`] = `
-"::error file=skills/demo/features/retries.md,line=32,title=SkillUnit proof%3A retry-idempotent-only::this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
-::error file=skills/demo/features/retries.md,line=40,title=SkillUnit proof%3A retry-delay::the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
-::error file=skills/demo/SKILL.md,line=30,title=SkillUnit proof%3A await-every-request::\`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
-::warning file=tmp/skill-proof/gone.json,line=1,title=SkillUnit proof::no block has \`proof=gone\`, so nothing uses \`gone.json\`
+exports[`reporters > the proof layer > github: units from tests and by hand, with every kind of finding 1`] = `
+"::error file=skills/demo/features/retries.md,line=22,title=SkillUnit proof%3A retry-idempotent-only::this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`%0Afrom the test of \`retry-idempotent-only\`, src/retry.test.ts:12
+::error file=skills-src/demo/features/retries.md,line=30,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
+::error file=skills-src/demo/SKILL.md,line=28,title=SkillUnit proof%3A await-every-request::no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
+::warning file=skillunit.yaml,line=3,title=SkillUnit proof::this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.
 FAILED  proof 3 errors, 1 warning
 "
 `;
 
-exports[`reporters > the proof layer > json: proved, failed and unproved units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > json: units from tests and by hand, with every kind of finding 1`] = `
 "{
   "schema": 5,
   "command": "proof",
@@ -523,189 +523,209 @@ exports[`reporters > the proof layer > json: proved, failed and unproved units, 
     "configured": true,
     "ok": false,
     "skill": "/repo/skills/demo",
-    "reports": [
-      "../../reports/junit.xml"
-    ],
+    "source": "/repo/skills-src/demo",
     "write": false,
-    "lock": {
-      "file": "../../skillunit.lock",
-      "exists": true,
-      "listed": 2,
-      "added": [],
-      "dropped": [],
-      "forgot": [],
-      "written": false
+    "run": {
+      "command": "npx vitest run",
+      "status": 1,
+      "ms": 4200
     },
     "units": [
       {
         "id": "retry-idempotent-only",
+        "kind": "rule",
+        "from": "test",
+        "state": "passed",
         "file": "features/retries.md",
         "line": 20,
-        "state": "proved",
-        "listed": true,
-        "tests": [
-          {
-            "report": "../../reports/junit.xml",
-            "line": 4,
-            "title": "retries > only GET [skill:retry-idempotent-only]",
-            "status": "passed"
-          }
-        ],
-        "fences": [
-          {
-            "id": "retry-idempotent-only",
-            "line": 31,
-            "from": "region",
-            "differs": true,
-            "written": false
-          }
-        ]
+        "source": {
+          "file": "../../skills-src/demo/features/retries.md",
+          "line": 20
+        },
+        "test": {
+          "file": "../../src/retry.test.ts",
+          "line": 12
+        }
       },
       {
         "id": "retry-delay",
+        "kind": null,
+        "from": "test",
+        "state": "failed",
         "file": "features/retries.md",
         "line": 40,
-        "state": "failed",
-        "listed": true,
-        "tests": [
-          {
-            "report": "../../reports/junit.xml",
-            "line": 7,
-            "title": "retries > delay [skill:retry-delay]",
-            "status": "failed"
-          }
-        ],
-        "fences": []
+        "source": {
+          "file": "../../skills-src/demo/features/retries.md",
+          "line": 30
+        },
+        "test": {
+          "file": "../../src/retry.test.ts",
+          "line": 40
+        },
+        "error": "expected 500 to be 1000"
       },
       {
         "id": "pick-a-client",
+        "kind": "decision",
+        "from": "hand",
+        "state": "hand",
         "file": "SKILL.md",
         "line": 12,
-        "state": "unproved",
-        "listed": false,
-        "tests": [],
-        "fences": []
+        "source": {
+          "file": "../../skills-src/demo/SKILL.md",
+          "line": 12
+        }
       },
       {
         "id": "await-every-request",
+        "kind": null,
+        "from": "test",
+        "state": "missing",
         "file": "SKILL.md",
         "line": 30,
-        "state": "failed",
-        "listed": true,
-        "tests": [],
-        "fences": []
+        "source": {
+          "file": "../../skills-src/demo/SKILL.md",
+          "line": 28
+        }
+      }
+    ],
+    "files": [
+      {
+        "file": "SKILL.md",
+        "state": "broken"
+      },
+      {
+        "file": "features/retries.md",
+        "state": "differs"
       }
     ],
     "problems": [
       {
         "file": "features/retries.md",
-        "line": 32,
+        "line": 22,
         "unit": "retry-idempotent-only",
         "severity": "error",
         "rule": "proof",
-        "message": "this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`"
+        "message": "this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`",
+        "origin": {
+          "kind": "test",
+          "file": "../../src/retry.test.ts",
+          "line": 12,
+          "unit": "retry-idempotent-only"
+        }
       },
       {
-        "file": "features/retries.md",
-        "line": 40,
+        "file": "../../skills-src/demo/features/retries.md",
+        "line": 30,
         "unit": "retry-delay",
         "severity": "error",
         "rule": "proof",
-        "message": "the test \\"retries > delay [skill:retry-delay]\\" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does"
+        "message": "the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000"
       },
       {
-        "file": "SKILL.md",
-        "line": 30,
+        "file": "../../skills-src/demo/SKILL.md",
+        "line": 28,
         "unit": "await-every-request",
         "severity": "error",
         "rule": "proof",
-        "message": "\`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved"
+        "message": "no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run"
       },
       {
-        "file": "../../tmp/skill-proof/gone.json",
-        "line": 1,
+        "file": "../../skillunit.yaml",
+        "line": 3,
         "severity": "warning",
         "rule": "proof",
-        "message": "no block has \`proof=gone\`, so nothing uses \`gone.json\`"
+        "message": "this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`."
       }
     ],
     "summary": {
       "units": 4,
-      "proved": 1,
-      "failed": 2,
-      "unproved": 1,
-      "tagged": 2,
-      "fences": 1,
+      "fromTests": 1,
+      "byHand": 1,
+      "failed": 1,
+      "missing": 1,
+      "values": 2,
+      "files": 2,
       "differ": 1,
-      "written": 0
+      "written": 0,
+      "extra": 0
     }
   }
 }
 "
 `;
 
-exports[`reporters > the proof layer > junit: proved, failed and unproved units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > junit: units from tests and by hand, with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="SkillUnit" tests="5" failures="3" errors="0">
   <testsuite name="proof" tests="5" failures="3" errors="0">
     <testcase name="retry-idempotent-only" classname="proof.skills/demo/features/retries.md">
       <properties>
-        <property name="state" value="proved"/>
+        <property name="from" value="test"/>
+        <property name="state" value="passed"/>
+        <property name="origin" value="src/retry.test.ts:12"/>
       </properties>
-      <failure message="skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`">skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`</failure>
+      <failure message="skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`">skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`
+from the test of \`retry-idempotent-only\`, src/retry.test.ts:12</failure>
     </testcase>
     <testcase name="retry-delay" classname="proof.skills/demo/features/retries.md">
       <properties>
+        <property name="from" value="test"/>
         <property name="state" value="failed"/>
+        <property name="origin" value="src/retry.test.ts:40"/>
       </properties>
-      <failure message="skills/demo/features/retries.md:40  retry-delay  the test &quot;retries &gt; delay [skill:retry-delay]&quot; (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does">skills/demo/features/retries.md:40  retry-delay  the test &quot;retries &gt; delay [skill:retry-delay]&quot; (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does</failure>
+      <failure message="skills-src/demo/features/retries.md:30  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000">skills-src/demo/features/retries.md:30  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000</failure>
     </testcase>
     <testcase name="pick-a-client" classname="proof.skills/demo/SKILL.md">
       <properties>
-        <property name="state" value="unproved"/>
+        <property name="from" value="hand"/>
+        <property name="state" value="hand"/>
+        <property name="origin" value="skills-src/demo/SKILL.md:12"/>
       </properties>
     </testcase>
     <testcase name="await-every-request" classname="proof.skills/demo/SKILL.md">
       <properties>
-        <property name="state" value="failed"/>
+        <property name="from" value="test"/>
+        <property name="state" value="missing"/>
+        <property name="origin" value="skills-src/demo/SKILL.md:28"/>
       </properties>
-      <failure message="skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved">skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved</failure>
+      <failure message="skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run">skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run</failure>
     </testcase>
-    <testcase name="tmp/skill-proof/gone.json:1" classname="proof">
-      <system-out>warning: tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`</system-out>
+    <testcase name="skillunit.yaml:3" classname="proof">
+      <system-out>warning: skillunit.yaml:3  -  this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.</system-out>
     </testcase>
   </testsuite>
 </testsuites>
 "
 `;
 
-exports[`reporters > the proof layer > table: proved, failed and unproved units, with every kind of finding 1`] = `
+exports[`reporters > the proof layer > table: units from tests and by hand, with every kind of finding 1`] = `
 "
-Units  proof reports/junit.xml
+Units  proof ran \`npx vitest run\` in 4.2 s, exit 1
 
   skills/demo/SKILL.md
     pick-a-client  decision
-      proof  –
+      proof  – by hand
     await-every-request  rule
-      proof  ✗ skills/demo/SKILL.md:30  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
+      proof  ✗ skills-src/demo/SKILL.md:28  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
 
   skills/demo/features/retries.md
     retry-idempotent-only  rule
-      proof  ✓ retries > only GET
-      proof  ✗ skills/demo/features/retries.md:32  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
+      proof  ✓ from a test src/retry.test.ts:12
+      proof  ✗ skills/demo/features/retries.md:22  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`
+               from the test of \`retry-idempotent-only\`, src/retry.test.ts:12
     retry-delay  fact
-      proof  ✗ retries > delay
-               the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
+      proof  ✗ skills-src/demo/features/retries.md:30  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
 
-  proved 1 of 4 units, 2 failed · 1 block from tests, 1 out of date · 2 tagged tests · 2 units in the lock
+  4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date
 
 Elsewhere
-  proof  ~ tmp/skill-proof/gone.json:1  no block has \`proof=gone\`, so nothing uses \`gone.json\`
+  proof  ~ skillunit.yaml:3  this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.
 
 Failed
-  skills/demo/SKILL.md › await-every-request › proof skills/demo/SKILL.md:30
-  skills/demo/features/retries.md › retry-idempotent-only › proof skills/demo/features/retries.md:32
-  skills/demo/features/retries.md › retry-delay › retries > delay
+  skills/demo/SKILL.md › await-every-request › proof skills-src/demo/SKILL.md:28
+  skills/demo/features/retries.md › retry-idempotent-only › proof skills/demo/features/retries.md:22
+  skills/demo/features/retries.md › retry-delay › proof skills-src/demo/features/retries.md:30
 
 FAILED  proof 3 errors, 1 warning
 "

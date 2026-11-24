@@ -32,10 +32,6 @@
     "skillunit": "bin/skillunit.js"
   },
   "exports": {
-    "./proof": {
-      "types": "./dist/proof/helper.d.ts",
-      "default": "./dist/proof/helper.js"
-    },
     "./vitest": {
       "types": "./dist/vitest.d.ts",
       "default": "./dist/vitest.js"

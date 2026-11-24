@@ -249,7 +249,7 @@ class FileParser {
       right: [],
       skipped: 0,
       check: [],
-      proofs: [],
+      valueFences: [],
       text: '',
     };
     this.label = null;
@@ -354,9 +354,6 @@ class FileParser {
       code: raw.code,
       owner: { kind: 'reference' },
     };
-    const proof = proofFlag(flags);
-    if (proof !== undefined) fence.proof = proof;
-
     if (this.pendingSetup !== null) {
       this.pendingSetup = null;
       fence.owner = { kind: 'setup' };
@@ -364,7 +361,6 @@ class FileParser {
       else this.result.setup[fence.lang] ??= fence;
     } else if (this.unit) {
       fence.owner = this.unitFenceOwner(raw, fence);
-      if (fence.proof !== undefined) this.unit.proofs.push(fence);
       // A fence ends the paragraph before it; a line after it starts a new one.
       this.para = null;
       this.blank = true;
@@ -392,8 +388,12 @@ class FileParser {
       path.fences.push(fence);
       return { kind: 'decide', unit: u.id, path: path.id };
     }
+    if (this.label === 'Value' && u.kind === 'fact') {
+      u.valueFences.push(fence);
+      return { kind: 'value', unit: u.id };
+    }
     const where = this.label ? `\`${this.label}\`` : 'the unit heading';
-    return misplaced(`fenced blocks go under \`Right\` or \`Decide\`, not under ${where}`);
+    return misplaced(`fenced blocks go under \`Right\`, \`Decide\` or the \`Value\` of a fact, not under ${where}`);
   }
 
   // ---------------------------------------------------------------- lines inside a unit
@@ -550,14 +550,6 @@ class FileParser {
     this.result.inlineCode.push(...found);
     return found;
   }
-}
-
-/** The value of the first `proof=` flag of a fence, with quotes around it taken off. */
-export function proofFlag(flags: string[]): string | undefined {
-  const flag = flags.find((f) => f.startsWith('proof='));
-  if (flag === undefined) return undefined;
-  const value = flag.slice('proof='.length);
-  return /^(["'])(.*)\1$/.exec(value)?.[2] ?? value;
 }
 
 const CHECK_FORMAT = '`Check` reads ``forbid `/regex/` in <languages>``';

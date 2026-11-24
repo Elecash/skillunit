@@ -28,6 +28,8 @@ export type FenceOwner =
   /** A fence outside any unit. */
   | { kind: 'reference' }
   | { kind: 'right'; unit: string }
+  /** A block under the `Value` of a fact: what the fact's test produced, or an example of the value. */
+  | { kind: 'value'; unit: string }
   /** `path` is the id of the `Decide` path the fence sits in. */
   | { kind: 'decide'; unit: string; path: string }
   /** A fence under a label that takes no code. The parser also reports it as an error. */
@@ -49,11 +51,6 @@ export interface Fence {
   lang: string;
   /** The other words of the info string, such as `no-check`. */
   flags: string[];
-  /**
-   * The value of the first `proof=<id>` flag, quotes taken off: a test produced this block. ''
-   * for a bare `proof=`. Lint checks that it names the fence's own unit.
-   */
-  proof?: string;
   /** The code between the fences, with the fence's own indentation removed. */
   code: string;
   owner: FenceOwner;
@@ -119,8 +116,8 @@ export interface Unit {
   skipped: number;
 
   check: Check[];
-  /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
-  proofs: Fence[];
+  /** Fences under the `Value` of a fact. */
+  valueFences: Fence[];
 
   /** The unit as written, heading to `endLine`. */
   text: string;

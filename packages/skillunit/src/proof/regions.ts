@@ -1,6 +1,7 @@
 /**
  * Reads the regions of test files: the lines between a line containing `#region skill:<id>` and
- * the next line containing `#endregion` are the example of the fence flagged `proof=<id>`. The
+ * the next line containing `#endregion` are an example of the unit `<id>` declares, and
+ * `skill:<id>.<path>` the example of a path of a decision. The
  * markers are comments in the file's language (`// #region skill:x`, `# #region skill:x`,
  * `<!-- #region skill:x -->`); only the text on their lines matters. A line where `skill:` is
  * followed by something that is not an id, such as `<id>` in a comment that explains the
@@ -40,7 +41,7 @@ const REGION_ID = /^[A-Za-z0-9_.-]+$/;
 const END = /#endregion\b/;
 
 /** The regions of several files. An id found twice is reported at its second place. */
-export function collectRegions(files: { file: string; text: string }[]): Regions {
+export function collectRegions(files: { file: string; text: string }[], shown: (file: string) => string = (f) => f): Regions {
   const regions = new Map<string, Region>();
   const problems: RegionProblem[] = [];
   for (const { file, text } of files) {
@@ -49,7 +50,7 @@ export function collectRegions(files: { file: string; text: string }[]): Regions
     for (const region of found.regions) {
       const first = regions.get(region.id);
       if (first) {
-        problems.push({ file, line: region.line, message: `the region \`skill:${region.id}\` is also at ${first.file}:${first.line}; each example comes from one region` });
+        problems.push({ file, line: region.line, message: `the region \`skill:${region.id}\` is also at ${shown(first.file)}:${first.line}; each example comes from one region` });
       } else {
         regions.set(region.id, region);
       }

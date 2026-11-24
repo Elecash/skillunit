@@ -1,8 +1,7 @@
 /**
- * The words after a fence's language. SkillUnit knows `no-check` and `proof=<id>`; any other bare
- * word is ignored, which hides a typo such as `nocheck`, so it gets a warning. Other `key=value`
- * flags and `{...}` are left alone: other tools give them a meaning (`title="app.ts"`, `{1,3}`),
- * except a key one letter away from `proof`, such as `prof=`.
+ * The words after a fence's language. SkillUnit knows `no-check`; any other bare word is ignored,
+ * which hides a typo such as `nocheck`, so it gets a warning. `key=value` flags and `{...}` are
+ * left alone: other tools give them a meaning (`title="app.ts"`, `{1,3}`).
  */
 import type { ParsedSkill } from '../units/index.js';
 import type { Problem } from './types.js';
@@ -14,16 +13,6 @@ export function fenceFlags(skill: ParsedSkill): Problem[] {
   for (const file of skill.files) {
     for (const fence of file.fences) {
       if (!fence.lang) continue;
-      for (const key of keys(fence.flags)) {
-        if (key === 'proof' || distance(key.toLowerCase(), 'proof') > 1) continue;
-        out.push({
-          file: file.file,
-          line: fence.line,
-          severity: 'warning',
-          rule: 'fence',
-          message: `\`${key}=\` after \`${fence.lang}\` is not a flag SkillUnit knows; did you mean \`proof=\`? The block is not marked as proved`,
-        });
-      }
       for (const flag of bareWords(fence.flags)) {
         if (FENCE_FLAGS.includes(flag)) continue;
         const close = FENCE_FLAGS.find((known) => near(flag, known));
@@ -54,11 +43,6 @@ function bareWords(flags: string[]): string[] {
     .replace(/"[^"]*"?|'[^']*'?/g, ' ')
     .split(/\s+/)
     .filter(Boolean);
-}
-
-/** The keys of the `key=value` flags. */
-function keys(flags: string[]): string[] {
-  return [...flags.join(' ').matchAll(/(?:^|\s)([\w:.-]+)=/g)].map((m) => m[1]!);
 }
 
 /** The same word give or take case, separators or two edits: `nocheck`, `no_check`, `no-chek`. */

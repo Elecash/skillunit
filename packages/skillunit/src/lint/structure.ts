@@ -36,7 +36,7 @@ export function structure(skill: ParsedSkill): Problem[] {
     out.push(...rulesSection(file));
     for (const fence of file.fences) {
       const kind = fence.owner.kind;
-      if (fence.lang || !(kind === 'right' || kind === 'decide')) continue;
+      if (fence.lang || !(kind === 'right' || kind === 'decide' || kind === 'value')) continue;
       out.push({
         file: file.file,
         line: fence.line,

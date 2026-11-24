@@ -9,7 +9,7 @@ import { runCommands } from './commands.js';
 import { isExample, isNoCheck, ownerUnit, setupFor } from './examples.js';
 import { index } from './links.js';
 import { fenceFlags } from './fences.js';
-import { proofMarks } from './proof.js';
+import { removedProofFlags } from './proof.js';
 import { setups } from './setup.js';
 import { structure } from './structure.js';
 import { runTsc, type TsBlock, type TsDiagnostic } from './tsc.js';
@@ -38,7 +38,7 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     off: [...(options.off ?? [])],
     undeclared: [],
   };
-  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill), ...index(skill), ...fenceFlags(skill), ...proofMarks(skill)];
+  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill), ...index(skill), ...fenceFlags(skill), ...removedProofFlags(skill)];
   problems.push(...typeCheck(skill, options.examples, summary));
   if (options.examples) {
     const commands = runCommands(skill, options.examples);

@@ -24,7 +24,15 @@ export interface Problem {
   code?: string;
   /** Markdown line where the example (or `Setup`) the problem is in starts. */
   example?: number;
+  /** Where the line comes from, when the skill is built from `source`: the file to edit instead. */
+  origin?: Origin;
 }
+
+/**
+ * Where a line of a built skill comes from: a test that declares a unit, or a file of `source`.
+ * `file` is from the skill folder, with `/`, as `Problem.file` is.
+ */
+export type Origin = { kind: 'test'; file: string; line: number; unit: string } | { kind: 'source'; file: string; line: number };
 
 export interface LintSummary {
   files: number;

@@ -10,7 +10,7 @@ import { init } from './init.js';
 import { ConfigError, lintSkill } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
-import { proof, type ProofResult, type ProofSkipped } from './proof/index.js';
+import { runProof, traceSkill, type OriginLookup, type ProofResult, type ProofSkipped } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
 import { runAll, type Report } from './test/runner.js';
@@ -25,8 +25,8 @@ const HELP = `SkillUnit checks that an agent skill still says what the code it d
 Usage
   skillunit check [options]           lint, proof and test: what CI runs
   skillunit lint [skill] [options]    the skill's format, examples, Check rules and links
-  skillunit proof [skill] [options]   units the project's tests prove, from their JUnit report, and
-                                      whether each block flagged proof=<id> holds what its test produced
+  skillunit proof [options]           run the project's tests, build the skill from \`source\` and the
+                                      units the tests declare, and compare it with the skill folder
   skillunit test [specs...] [options] ask a decision model the spec tests about the skill
   skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
 
@@ -36,6 +36,7 @@ Options
   --reporter <name>   table (default), json, junit or github
   --json              the same as --reporter json
   --compact           proof, test and check, with the table reporter: one row per unit
+  --no-run            proof and check: do not run proof.run; build from the units already left
 
 Options for test and check
   --dry-run           check that specs load, headings exist and requests fit; send nothing
@@ -50,10 +51,7 @@ Options for test and check
   --margin <0-1>      how close to a threshold a verdict is marked borderline (default 0.13)
 
 Options for proof
-  --write             rewrite every block flagged proof=<id> from what its test produced, add the
-                      units the tests prove to skillunit.lock, then check
-  --forget <ids>      take these units off skillunit.lock, then check: ids separated by commas,
-                      or the option given more than once. For a unit no longer meant to be proved
+  --write             write the build to the skill folder instead of comparing
 
 Exit codes
   0  every check passed (lint warnings and borderline verdicts allowed)
@@ -75,7 +73,7 @@ interface Args {
   dryRun: boolean;
   changed: boolean;
   write: boolean;
-  forget: string[];
+  noRun: boolean;
   reporter: ReporterName;
   compact: boolean;
   model?: string;
@@ -86,9 +84,9 @@ interface Args {
 /** Options each command takes, besides --config, --skill, --reporter and --json. */
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
-  proof: ['--compact', '--write', '--forget'],
+  proof: ['--compact', '--write', '--no-run'],
   test: ['--compact', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
-  check: ['--compact', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
 };
 
 async function main() {
@@ -102,7 +100,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { specs: [], dryRun: false, changed: false, write: false, forget: [], reporter: 'table', compact: false, thresholds: {} };
+  const args: Args = { specs: [], dryRun: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -131,11 +129,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     else if (flag === '--compact') args.compact = true;
     else if (flag === '--changed') args.changed = true;
     else if (flag === '--write') args.write = true;
-    else if (flag === '--forget') {
-      const ids = value().split(',');
-      if (ids.some((id) => !/^[A-Za-z0-9_.-]+$/.test(id))) usage('--forget takes unit ids separated by commas, with no spaces: --forget retry-defaults,timeouts');
-      args.forget.push(...ids);
-    }
+    else if (flag === '--no-run') args.noRun = true;
     else if (flag === '--model') args.model = value();
     else if (flag === '--provider') {
       const name = value();
@@ -149,9 +143,9 @@ function parseArgs(command: Command, argv: string[]): Args {
     else positional.push(flag);
   }
   if (args.base !== undefined && !args.changed) usage('--base only works with --changed');
-  if (args.write && args.forget.length) usage('--forget and --write go in separate runs: --write would add back a unit a test still proves');
   if (command === 'test') args.specs = positional;
   else if (command === 'check' && positional.length) usage('check takes no paths; use --skill and the settings');
+  else if (command === 'proof' && positional.length) usage('proof takes no paths; it builds `skill` from `source`, as the settings say');
   else if (positional.length > 1) usage(`${command} takes one skill folder`);
   else if (positional[0]) args.skill = positional[0];
   return args;
@@ -175,12 +169,14 @@ async function runCommand(command: Command, args: Args) {
     config.model = { provider: config.model.provider, name: args.model };
   }
   Object.assign(config.thresholds, args.thresholds);
-  if (!existsSync(config.skill)) usage(`no skill folder at ${config.skill}`);
+  // `proof --write` builds the skill folder, so it may not exist yet.
+  if (!existsSync(config.skill) && !(command === 'proof' && args.write)) usage(`no skill folder at ${config.skill}`);
 
   const testing = command === 'test' || command === 'check';
-  if (command === 'proof' && !config.proof) {
-    usage(`no \`proof\` key in ${config.configFile ?? CONFIG_FILE}: set \`proof.reports\` to the JUnit XML report of your test run`);
+  if (command === 'proof' && !(config.source && config.proof)) {
+    usage(`no \`source\` in ${config.configFile ?? CONFIG_FILE}: the proof builds \`skill\` from \`source\`, the folder people write, and the units the tests declare`);
   }
+  if (config.source && !existsSync(config.source) && (command === 'proof' || command === 'check')) usage(`no source folder at ${config.source}`);
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
@@ -195,15 +191,22 @@ async function runCommand(command: Command, args: Args) {
     let lintResult: LintResult | undefined;
     let proofResult: ProofResult | ProofSkipped | undefined;
     let testResult: Report | undefined;
+    // The proof first: it runs the tests, and it says where each line of the skill comes from.
+    let origin: OriginLookup | undefined;
+    if (command === 'proof' || command === 'check') {
+      if (config.source && config.proof) {
+        const run = runProof({ skill: config.skill, source: config.source, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun });
+        proofResult = run.result;
+        origin = run.origin;
+      } else proofResult = { configured: false, ok: true };
+    } else if (config.source && config.proof && existsSync(config.source)) {
+      origin = traceSkill({ skill: config.skill, source: config.source, config: config.proof });
+    }
     // Parsed once: lint reads it, and the report lists its units so the layers can be joined on them.
     const skill = parseSkill(config.skill);
     if (command === 'lint' || command === 'check') {
       lintResult = lintSkill(skill, { ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
-    }
-    if (command === 'proof' || command === 'check') {
-      proofResult = config.proof
-        ? proof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, forget: args.forget, marks: command === 'proof' })
-        : { configured: false, ok: true };
+      if (origin) for (const p of lintResult.problems) p.origin ??= origin(p.file, p.line);
     }
     if (testing) {
       const model = await loadModel(config.model);

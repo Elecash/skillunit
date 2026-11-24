@@ -170,12 +170,12 @@ ${F}
     expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
-  it('runs the command on a fence flagged proof= like any other example', () => {
-    const unit = `# T\n\n## Rules\n\n### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}sh proof=r\nif then fi\n${F}\n`;
+  it('runs the command on a block under the Value of a fact like any other example', () => {
+    const unit = `# T\n\n## Rules\n\n### fact: r\n\nWhen: a.\n\nValue: b.\n\n${F}sh\nif then fi\n${F}\n`;
     const root = skillDir({ 'SKILL.md': unit });
     const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
     expect(result.checked).toBe(1);
-    expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['13 r command']);
+    expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['11 r command']);
   });
 
   it('reports a failing Setup', () => {

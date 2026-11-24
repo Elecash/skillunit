@@ -22,7 +22,7 @@ afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true }))
 
 /** Runs Vitest on `files` in a new project; returns its exit code and the records it left, by id. */
 function vitest(files: Record<string, string>, more = '') {
-  const yaml = 'proof:\n  reports: ./reports/junit.xml\n  units: ./out/units\n';
+  const yaml = 'skill: ./skill\nsource: ./skill-src\nproof:\n  units: ./out/units\n';
   const root = mkdtempSync(join(tmpdir(), 'skillunit-vitest-'));
   roots.push(root);
   writeFileSync(join(root, 'skillunit.yaml'), yaml);
