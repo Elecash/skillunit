@@ -19,6 +19,7 @@
  *   proof:                       # units proved by the project's tests (`skillunit proof`)
  *     reports: ./reports/*.xml   # JUnit XML of the test run: a glob or a list of them
  *     examples: ./tmp/skill-proof   # where tests write examples (the default)
+ *     units: ./tmp/skill-units      # where `unit()` tests leave their units (the default)
  *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
  *     format: "npx prettier --write {file}"   # run on a skill file after writing it
  */
@@ -65,6 +66,8 @@ export interface ProofConfig {
   reports: string[];
   /** Absolute folder where tests write examples. */
   examples: string;
+  /** Absolute folder where the tests of `skillunit/vitest` and `skillunit/unit` leave their units. */
+  units: string;
   /** Globs of the test files to read `#region skill:<id>` examples from. */
   sources: string[];
   /** A command with `{file}`, run on each skill file `--write` changes. */
@@ -75,6 +78,9 @@ export interface ProofConfig {
 
 /** Where tests write examples when `proof.examples` is not set, from the config file's folder. */
 export const DEFAULT_PROOF_EXAMPLES = './tmp/skill-proof';
+
+/** Where tests leave units when `proof.units` is not set, from the config file's folder. */
+export const DEFAULT_PROOF_UNITS = './tmp/skill-units';
 
 /**
  * The decision model the `test` layer asks: a provider that ships with SkillUnit, with the model
@@ -156,7 +162,7 @@ export function loadConfig(path?: string): Config {
   return config;
 }
 
-const PROOF_KEYS = ['reports', 'examples', 'sources', 'format'];
+const PROOF_KEYS = ['reports', 'examples', 'units', 'sources', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { reports: ./reports/junit.xml }`');
@@ -174,10 +180,14 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
     if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
     return list as string[];
   };
-  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), sources: globs('sources', false), cwd: root };
+  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), units: resolve(root, DEFAULT_PROOF_UNITS), sources: globs('sources', false), cwd: root };
   if (raw.examples !== undefined) {
     if (typeof raw.examples !== 'string' || !raw.examples.trim()) throw fail('`proof.examples` must be a folder');
     out.examples = resolve(root, raw.examples);
+  }
+  if (raw.units !== undefined) {
+    if (typeof raw.units !== 'string' || !raw.units.trim()) throw fail('`proof.units` must be a folder');
+    out.units = resolve(root, raw.units);
   }
   if (raw.format !== undefined) {
     if (typeof raw.format !== 'string' || !raw.format.includes('{file}')) throw fail('`proof.format` must be a command with `{file}` where the skill file goes');

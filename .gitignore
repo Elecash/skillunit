@@ -15,3 +15,4 @@ lab/
 # What a test run leaves for `skillunit proof`.
 reports/
 tmp/skill-proof/
+tmp/skill-units/

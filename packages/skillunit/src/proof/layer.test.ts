@@ -41,6 +41,7 @@ function junit(...cases: [string, Status][]): string {
 const config = (root: string, more: Partial<ProofConfig> = {}): ProofConfig => ({
   reports: ['reports/*.xml'],
   examples: join(root, 'tmp/skill-proof'),
+  units: join(root, 'tmp/skill-units'),
   sources: ['tests/*.test.ts'],
   cwd: root,
   ...more,
@@ -421,20 +422,21 @@ describe('the settings', () => {
     return { root, config: () => loadConfig(join(root, 'skillunit.yaml')) };
   };
 
-  it('reads proof with its defaults: examples in ./tmp/skill-proof', () => {
+  it('reads proof with its defaults: examples in ./tmp/skill-proof, units in ./tmp/skill-units', () => {
     const { root, config } = load('proof:\n  reports: ./reports/junit.xml\n');
-    expect(config().proof).toEqual({ reports: ['./reports/junit.xml'], examples: join(root, 'tmp/skill-proof'), sources: [], cwd: root });
+    expect(config().proof).toEqual({ reports: ['./reports/junit.xml'], examples: join(root, 'tmp/skill-proof'), units: join(root, 'tmp/skill-units'), sources: [], cwd: root });
   });
 
   it('reads every key, a list of reports included', () => {
-    const { root, config } = load("proof:\n  reports: [a.xml, 'b/*.xml']\n  examples: out\n  sources: src/**/*.test.ts\n  format: npx prettier --write {file}\n");
-    expect(config().proof).toEqual({ reports: ['a.xml', 'b/*.xml'], examples: join(root, 'out'), sources: ['src/**/*.test.ts'], format: 'npx prettier --write {file}', cwd: root });
+    const { root, config } = load("proof:\n  reports: [a.xml, 'b/*.xml']\n  examples: out\n  units: built\n  sources: src/**/*.test.ts\n  format: npx prettier --write {file}\n");
+    expect(config().proof).toEqual({ reports: ['a.xml', 'b/*.xml'], examples: join(root, 'out'), units: join(root, 'built'), sources: ['src/**/*.test.ts'], format: 'npx prettier --write {file}', cwd: root });
   });
 
   it('rejects a wrong proof key', () => {
     expect(() => load('proof: yes\n').config()).toThrow(/`proof` must be a mapping/);
     expect(() => load('proof:\n  examples: out\n').config()).toThrow(/`proof.reports` is missing/);
-    expect(() => load('proof:\n  reports: a.xml\n  report: b.xml\n').config()).toThrow(/unknown key `proof.report` \(allowed: reports, examples, sources, format\)/);
+    expect(() => load('proof:\n  reports: a.xml\n  report: b.xml\n').config()).toThrow(/unknown key `proof.report` \(allowed: reports, examples, units, sources, format\)/);
+    expect(() => load('proof:\n  reports: a.xml\n  units: ""\n').config()).toThrow(/`proof.units` must be a folder/);
     expect(() => load('proof:\n  reports: [a.xml, 3]\n').config()).toThrow(/`proof.reports` must be a glob or a list of globs/);
     expect(() => load('proof:\n  reports: a.xml\n  format: prettier --write\n').config()).toThrow(/`proof.format` must be a command with `\{file\}`/);
     expect(() => load('proof:\n  reports: a.xml\n  require: true\n').config()).toThrow(/unknown key `proof.require`/);
