@@ -16,6 +16,32 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
   "schema": 5,
   "command": "check",
   "ok": false,
+  "units": [
+    {
+      "id": "pick-a-client",
+      "kind": "decision",
+      "file": "SKILL.md",
+      "line": 12
+    },
+    {
+      "id": "await-every-request",
+      "kind": "rule",
+      "file": "SKILL.md",
+      "line": 30
+    },
+    {
+      "id": "retry-idempotent-only",
+      "kind": "rule",
+      "file": "features/retries.md",
+      "line": 20
+    },
+    {
+      "id": "retry-delay",
+      "kind": "fact",
+      "file": "features/retries.md",
+      "line": 40
+    }
+  ],
   "lint": {
     "skill": "/repo/skills/demo",
     "files": [
@@ -130,7 +156,8 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
               "loose": 0.16
             },
             "pass": false,
-            "line": 19
+            "line": 19,
+            "unit": "retry-delay"
           },
           {
             "scenario": "The user asks to retry a POST.",
@@ -149,6 +176,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
             },
             "pass": false,
             "line": 30,
+            "unit": "no-such-unit",
             "variants": [
               0.34,
               0.41,
@@ -176,7 +204,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "tests": 4,
       "passed": 2,
       "borderline": 2,
-      "skipped": 1,
+      "skipped": 0,
       "usage": {
         "input_tokens": 2000,
         "output_tokens": 200
@@ -234,13 +262,23 @@ Lint  skills/demo
   ✓ 2 files, all clean
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
-Test  jev-1.14.0
-    SPEC                              PASSING  FAILING  ERRORS  BORDERLINE
-  ~ skills/demo/specs/retries.yaml          2        0       0           1
-  2 tests · 2,000 in / 200 out tokens
+Units  test jev-1.14.0
 
-Borderline  passed, but within 0.13 of the threshold; the next run may fail them
-  skills/demo/specs/retries.yaml:12  get-retry  yes, P(yes) 0.76, needs ≥ 0.70
+  skills/demo/SKILL.md
+    pick-a-client  decision
+      test   –
+    await-every-request  rule
+      test   –
+
+  skills/demo/features/retries.md
+    test   ~ skills/demo/specs/retries.yaml:12  get-retry  yes P(yes) 0.76
+             P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it
+    retry-idempotent-only  rule
+      test   ✓ skills/demo/specs/retries.yaml:3  post-retry  stop 0.92
+    retry-delay  fact
+      test   –
+
+  2 tests · 1 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
 
 OK  lint ok · test 2/2 passed (1 borderline)
 "
@@ -254,9 +292,25 @@ OK  lint ok · test 2/2 passed (1 borderline)
 
 exports[`reporters > table: a dry run 1`] = `
 "
-Test  dry run: nothing sent
+Units  test dry run: nothing sent
     SPEC                              TESTS   TOKENS
   ✓ skills/demo/specs/retries.yaml        4     ~700
+
+  skills/demo/SKILL.md
+    pick-a-client  decision
+      test   –
+    await-every-request  rule
+      test   –
+
+  skills/demo/features/retries.md
+    test   · skills/demo/specs/retries.yaml:12  get-retry  ready
+    test   · skills/demo/specs/retries.yaml:30  user-asks-for-mutations  ready
+             unit: no-such-unit names no unit of the skill
+    retry-idempotent-only  rule
+      test   · skills/demo/specs/retries.yaml:3  post-retry  ready
+    retry-delay  fact
+      test   · skills/demo/specs/retries.yaml:19  exact-command  ready
+
   4 tests
 
 OK  test dry run ok, 4 tests ready
@@ -271,41 +325,48 @@ exports[`reporters > table: colour on a terminal 1`] = `
   [32m✓[0m 1 other file clean
 [2m  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh[0m
 
-[1mTest[0m  [2mjev-1.14.0[0m
-[2m    SPEC                              PASSING  FAILING  ERRORS  BORDERLINE[0m
-  [31m✗[0m skills/demo/specs/retries.yaml          2        2       0           2
-  [31m✗[0m skills/demo/specs/broken.yaml           0        0       1           0
-[2m  4 tests · 1 spec left out by --changed · 2,000 in / 200 out tokens[0m
+[1mUnits[0m  [2mtest jev-1.14.0[0m
 
-[1m[31mFailures[0m[0m
+  [1mskills/demo/SKILL.md[0m
+    [32mpick-a-client[0m  [2mdecision[0m
+      test   [2m–[0m
+    [32mawait-every-request[0m  [2mrule[0m
+      test   [2m–[0m
 
-  1) skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+  [1mskills/demo/features/retries.md[0m
+    lint   [33m~[0m skills/demo/features/retries.md:3  312 lines; above about 300, look for a split into files of one task each
+    test   [33m~[0m skills/demo/specs/retries.yaml:12  get-retry  yes P(yes) 0.76
+             P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it
+    test   [31m✗[0m skills/demo/specs/retries.yaml:30  user-asks-for-mutations  none 0.66
+             [33munit: no-such-unit names no unit of the skill[0m
+             scenario:  The user asks to retry a POST.
+             question:  What does the skill say?
+             expected:  explain
+             got:       none · probability 0.66, threshold 0.50 · wrong answer
+                        none 66% · explain 34% · tool 0%
+             phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+    [31mretry-idempotent-only[0m  [2mrule[0m
+      lint   [31m✗[0m skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+      test   [32m✓[0m skills/demo/specs/retries.yaml:3  post-retry  stop 0.92
+    [31mretry-delay[0m  [2mfact[0m
+      test   [31m✗[0m skills/demo/specs/retries.yaml:19  exact-command  exact 0.44
+               scenario:  The user asks to retry a POST.
+               question:  What does the skill say?
+               expected:  exact
+               got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                          exact 44% · none 40% · loose 16%
 
-  2) skills/demo/specs/retries.yaml:19  exact-command
-     skill:     skills/demo/features/retries.md › Rules
-     scenario:  The user asks to retry a POST.
-     question:  What does the skill say?
-     expected:  exact
-     got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
-                exact 44% · none 40% · loose 16%
+[2m  4 tests · 2 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens[0m
 
-  3) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
-     skill:     skills/demo/features/retries.md › Rules
-     scenario:  The user asks to retry a POST.
-     question:  What does the skill say?
-     expected:  explain
-     got:       none · probability 0.66, threshold 0.50 · wrong answer
-                none 66% · explain 34% · tool 0%
-     phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+[1mElsewhere[0m
+  test   [31m✗[0m skills/demo/specs/broken.yaml  could not run
+           no heading "Gone" in SKILL.md
 
-  4) skills/demo/specs/broken.yaml  could not run
-     no heading "Gone" in SKILL.md
-
-[1m[33mBorderline[0m[0m  [2mpassed, but within 0.13 of the threshold; the next run may fail them[0m
-  skills/demo/specs/retries.yaml:12  get-retry  yes, P(yes) 0.76, needs ≥ 0.70
-
-[1m[33mWarnings[0m[0m
-  skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each
+[1m[31mFailed[0m[0m
+  skills/demo/features/retries.md › skills/demo/specs/retries.yaml:30  user-asks-for-mutations
+  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
+  skills/demo/features/retries.md › retry-delay › skills/demo/specs/retries.yaml:19  exact-command
+  skills/demo/specs/broken.yaml  could not run
 
 [31mFAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 borderline)[0m
 "
@@ -319,43 +380,102 @@ Lint  skills/demo
   ✓ 1 other file clean
   3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
 
-Test  jev-1.14.0
-    SPEC                              PASSING  FAILING  ERRORS  BORDERLINE
-  ✗ skills/demo/specs/retries.yaml          2        2       0           2
-  ✗ skills/demo/specs/broken.yaml           0        0       1           0
-  4 tests · 1 spec left out by --changed · 2,000 in / 200 out tokens
+Units  test jev-1.14.0
 
-Failures
+  skills/demo/SKILL.md
+    pick-a-client  decision
+      test   –
+    await-every-request  rule
+      test   –
 
-  1) skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+  skills/demo/features/retries.md
+    lint   ~ skills/demo/features/retries.md:3  312 lines; above about 300, look for a split into files of one task each
+    test   ~ skills/demo/specs/retries.yaml:12  get-retry  yes P(yes) 0.76
+             P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it
+    test   ✗ skills/demo/specs/retries.yaml:30  user-asks-for-mutations  none 0.66
+             unit: no-such-unit names no unit of the skill
+             scenario:  The user asks to retry a POST.
+             question:  What does the skill say?
+             expected:  explain
+             got:       none · probability 0.66, threshold 0.50 · wrong answer
+                        none 66% · explain 34% · tool 0%
+             phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+    retry-idempotent-only  rule
+      lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+      test   ✓ skills/demo/specs/retries.yaml:3  post-retry  stop 0.92
+    retry-delay  fact
+      test   ✗ skills/demo/specs/retries.yaml:19  exact-command  exact 0.44
+               scenario:  The user asks to retry a POST.
+               question:  What does the skill say?
+               expected:  exact
+               got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                          exact 44% · none 40% · loose 16%
 
-  2) skills/demo/specs/retries.yaml:19  exact-command
-     skill:     skills/demo/features/retries.md › Rules
-     scenario:  The user asks to retry a POST.
-     question:  What does the skill say?
-     expected:  exact
-     got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
-                exact 44% · none 40% · loose 16%
+  4 tests · 2 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
 
-  3) skills/demo/specs/retries.yaml:30  user-asks-for-mutations
-     skill:     skills/demo/features/retries.md › Rules
-     scenario:  The user asks to retry a POST.
-     question:  What does the skill say?
-     expected:  explain
-     got:       none · probability 0.66, threshold 0.50 · wrong answer
-                none 66% · explain 34% · tool 0%
-     phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+Elsewhere
+  test   ✗ skills/demo/specs/broken.yaml  could not run
+           no heading "Gone" in SKILL.md
 
-  4) skills/demo/specs/broken.yaml  could not run
-     no heading "Gone" in SKILL.md
-
-Borderline  passed, but within 0.13 of the threshold; the next run may fail them
-  skills/demo/specs/retries.yaml:12  get-retry  yes, P(yes) 0.76, needs ≥ 0.70
-
-Warnings
-  skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each
+Failed
+  skills/demo/features/retries.md › skills/demo/specs/retries.yaml:30  user-asks-for-mutations
+  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
+  skills/demo/features/retries.md › retry-delay › skills/demo/specs/retries.yaml:19  exact-command
+  skills/demo/specs/broken.yaml  could not run
 
 FAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 borderline)
+"
+`;
+
+exports[`reporters > table: the report by unit > --compact: one row per unit, with what failed under it 1`] = `
+"
+Lint  skills/demo
+    FILE                        ERRORS  WARNINGS
+  ✗ features/retries.md              1         1
+  ✓ 1 other file clean
+  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
+
+Units  proof reports/junit.xml · test jev-1.14.0
+
+  skills/demo/SKILL.md
+    ~ pick-a-client          decision  –         –
+    ~ await-every-request    rule      –         –
+
+  skills/demo/features/retries.md
+    ✗ -                                          1/2
+        test   ✗ skills/demo/specs/retries.yaml:30  user-asks-for-mutations  none 0.66
+                 unit: no-such-unit names no unit of the skill
+                 scenario:  The user asks to retry a POST.
+                 question:  What does the skill say?
+                 expected:  explain
+                 got:       none · probability 0.66, threshold 0.50 · wrong answer
+                            none 66% · explain 34% · tool 0%
+                 phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+    ✗ retry-idempotent-only  rule      proved    1/1
+        lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+    ✗ retry-delay            fact      –         0/1
+        test   ✗ skills/demo/specs/retries.yaml:19  exact-command  exact 0.44
+                 scenario:  The user asks to retry a POST.
+                 question:  What does the skill say?
+                 expected:  exact
+                 got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                            exact 44% · none 40% · loose 16%
+
+  4 units · 1 proof and test · 0 proof only · 1 test only · 2 not covered
+  proved 1 of 4 units · 0 blocks from tests · 1 tagged test · 1 unit in the lock
+  4 tests · 2 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
+
+Elsewhere
+  test   ✗ skills/demo/specs/broken.yaml  could not run
+           no heading "Gone" in SKILL.md
+
+Failed
+  skills/demo/features/retries.md › skills/demo/specs/retries.yaml:30  user-asks-for-mutations
+  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
+  skills/demo/features/retries.md › retry-delay › skills/demo/specs/retries.yaml:19  exact-command
+  skills/demo/specs/broken.yaml  could not run
+
+FAILED  lint 1 error, 1 warning · proof ok · test 2/4 passed (1 spec could not run, 2 borderline)
 "
 `;
 
@@ -373,6 +493,32 @@ exports[`reporters > the proof layer > json: proved, failed and unproved units, 
   "schema": 5,
   "command": "proof",
   "ok": false,
+  "units": [
+    {
+      "id": "pick-a-client",
+      "kind": "decision",
+      "file": "SKILL.md",
+      "line": 12
+    },
+    {
+      "id": "await-every-request",
+      "kind": "rule",
+      "file": "SKILL.md",
+      "line": 30
+    },
+    {
+      "id": "retry-idempotent-only",
+      "kind": "rule",
+      "file": "features/retries.md",
+      "line": 20
+    },
+    {
+      "id": "retry-delay",
+      "kind": "fact",
+      "file": "features/retries.md",
+      "line": 40
+    }
+  ],
   "proof": {
     "configured": true,
     "ok": false,
@@ -535,22 +681,31 @@ exports[`reporters > the proof layer > junit: proved, failed and unproved units,
 
 exports[`reporters > the proof layer > table: proved, failed and unproved units, with every kind of finding 1`] = `
 "
-Proof  reports/junit.xml
-    FILE                        PROVED  FAILED  UNPROVED
-  ✗ features/retries.md              1       1         0
-  ✗ SKILL.md                         0       1         1
+Units  proof reports/junit.xml
+
+  skills/demo/SKILL.md
+    pick-a-client  decision
+      proof  –
+    await-every-request  rule
+      proof  ✗ skills/demo/SKILL.md:30  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
+
+  skills/demo/features/retries.md
+    retry-idempotent-only  rule
+      proof  ✓ retries > only GET
+      proof  ✗ skills/demo/features/retries.md:32  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
+    retry-delay  fact
+      proof  ✗ retries > delay
+               the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
+
   proved 1 of 4 units, 2 failed · 1 block from tests, 1 out of date · 2 tagged tests · 2 units in the lock
 
-Failures
+Elsewhere
+  proof  ~ tmp/skill-proof/gone.json:1  no block has \`proof=gone\`, so nothing uses \`gone.json\`
 
-  1) skills/demo/features/retries.md:32  retry-idempotent-only  this block is not what \`src/retry.test.ts:12\` gives, from line 1 of the block: the test gives \`tf.get(url, { retry: 3 })\`, the skill has \`tf.get(url)\`. Run \`skillunit proof --write\`
-
-  2) skills/demo/features/retries.md:40  retry-delay  the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does
-
-  3) skills/demo/SKILL.md:30  await-every-request  \`skillunit.lock\` lists this unit as proved, and no test in the reports is tagged \`[skill:await-every-request]\`. Bring the test back, or run \`skillunit proof --forget await-every-request\` if the unit is no longer meant to be proved
-
-Warnings
-  tmp/skill-proof/gone.json:1  -  no block has \`proof=gone\`, so nothing uses \`gone.json\`
+Failed
+  skills/demo/SKILL.md › await-every-request › proof skills/demo/SKILL.md:30
+  skills/demo/features/retries.md › retry-idempotent-only › proof skills/demo/features/retries.md:32
+  skills/demo/features/retries.md › retry-delay › retries > delay
 
 FAILED  proof 3 errors, 1 warning
 "

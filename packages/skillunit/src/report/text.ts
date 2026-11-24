@@ -45,9 +45,14 @@ export function shown(path: string, options: ReportOptions): string {
  * ran in, or from the skill folder, which the layer's header names, when the skill is outside it.
  */
 export function where(skill: string, p: Problem, options: ReportOptions): string {
-  const path = join(skill, p.file);
+  return `${skillFile(skill, p.file, options)}:${p.line}`;
+}
+
+/** A file of the skill (`file` from the skill folder) for people, from the same place as `where`. */
+export function skillFile(skill: string, file: string, options: ReportOptions): string {
+  const path = join(skill, file);
   // A file above the skill folder, such as `skillunit.yaml` or a report, gets its whole path.
-  return `${inside(path, options) ?? (p.file.startsWith('../') ? path.split('\\').join('/') : p.file)}:${p.line}`;
+  return inside(path, options) ?? (file.startsWith('../') ? path.split('\\').join('/') : file);
 }
 
 /** Options from most to least likely, e.g. "stop 96% · none 3% · local 1%". */

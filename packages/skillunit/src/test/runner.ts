@@ -38,6 +38,8 @@ export interface Report {
   /** What the verdicts were judged with. */
   thresholds: Thresholds;
   specs: SpecReport[];
+  /** With spec paths on the command line: those paths, which replace the settings' `specs`. */
+  paths?: string[];
   /** With `--changed`: the base the changed skill files were found against. */
   changed?: { ref: string; commit: string };
   summary: {

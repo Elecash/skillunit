@@ -7,13 +7,14 @@ import { dirname, join, resolve } from 'node:path';
 import { CONFIG_FILE, loadConfig, type Config, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
 import { init } from './init.js';
-import { ConfigError, lint } from './lint/index.js';
+import { ConfigError, lintSkill } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
 import { proof, type ProofResult, type ProofSkipped } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
 import { runAll, type Report } from './test/runner.js';
+import { parseSkill } from './units/index.js';
 
 const pad = (s: string) => s.padEnd(20);
 const ENVIRONMENT = PROVIDER_NAMES.flatMap((name) => PROVIDERS[name].env.map((v) => `  ${pad(v)}key of the ${name} provider, needed by test and check except with --dry-run`)).join('\n');
@@ -34,6 +35,7 @@ Options
   --skill <dir>       folder with SKILL.md, instead of the one in the settings
   --reporter <name>   table (default), json, junit or github
   --json              the same as --reporter json
+  --compact           proof, test and check, with the table reporter: one row per unit
 
 Options for test and check
   --dry-run           check that specs load, headings exist and requests fit; send nothing
@@ -75,6 +77,7 @@ interface Args {
   write: boolean;
   forget: string[];
   reporter: ReporterName;
+  compact: boolean;
   model?: string;
   provider?: ProviderName;
   thresholds: Partial<Thresholds>;
@@ -83,9 +86,9 @@ interface Args {
 /** Options each command takes, besides --config, --skill, --reporter and --json. */
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
-  proof: ['--write', '--forget'],
-  test: ['--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
-  check: ['--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  proof: ['--compact', '--write', '--forget'],
+  test: ['--compact', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  check: ['--compact', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
 };
 
 async function main() {
@@ -99,7 +102,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { specs: [], dryRun: false, changed: false, write: false, forget: [], reporter: 'table', thresholds: {} };
+  const args: Args = { specs: [], dryRun: false, changed: false, write: false, forget: [], reporter: 'table', compact: false, thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -125,6 +128,7 @@ function parseArgs(command: Command, argv: string[]): Args {
       args.reporter = name as ReporterName;
     } else if (flag === '--base') args.base = value();
     else if (flag === '--dry-run') args.dryRun = true;
+    else if (flag === '--compact') args.compact = true;
     else if (flag === '--changed') args.changed = true;
     else if (flag === '--write') args.write = true;
     else if (flag === '--forget') {
@@ -191,8 +195,10 @@ async function runCommand(command: Command, args: Args) {
     let lintResult: LintResult | undefined;
     let proofResult: ProofResult | ProofSkipped | undefined;
     let testResult: Report | undefined;
+    // Parsed once: lint reads it, and the report lists its units so the layers can be joined on them.
+    const skill = parseSkill(config.skill);
     if (command === 'lint' || command === 'check') {
-      lintResult = lint(config.skill, { ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
+      lintResult = lintSkill(skill, { ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
     }
     if (command === 'proof' || command === 'check') {
       proofResult = config.proof
@@ -205,13 +211,15 @@ async function runCommand(command: Command, args: Args) {
       const select = changed ? changedSelection(changed) : undefined;
       testResult = await runAll(config, model, { dryRun: args.dryRun, ...(select ? { select } : {}) });
       if (changed) testResult.changed = { ref: changed.ref, commit: changed.commit };
+      if (args.specs.length) testResult.paths = args.specs;
     }
     const report = buildReport(command, {
+      units: skill.units.map((u) => ({ id: u.id, kind: u.kind, file: u.file, line: u.line })),
       ...(lintResult ? { lint: lintResult } : {}),
       ...(proofResult ? { proof: proofResult } : {}),
       ...(testResult ? { test: testResult } : {}),
     });
-    print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault() }));
+    print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault(), compact: args.compact }));
     process.exitCode = report.ok ? 0 : 1;
   } catch (e) {
     if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
