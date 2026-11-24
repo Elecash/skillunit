@@ -3,9 +3,10 @@
  * The `skillunit` command. See README.md for the full reference.
  */
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, loadConfig, type Config, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
+import { Git } from './git.js';
 import { init } from './init.js';
 import { ConfigError, lintSkill } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
@@ -217,12 +218,16 @@ async function runCommand(command: Command, args: Args) {
       if (args.specs.length) testResult.paths = args.specs;
     }
     const report = buildReport(command, {
-      units: skill.units.map((u) => ({ id: u.id, kind: u.kind, file: u.file, line: u.line })),
+      units: skill.units.map((u) => {
+        const built = proofResult?.configured ? proofResult.units.find((p) => p.id === u.id && p.file === u.file) : undefined;
+        return { id: u.id, kind: u.kind, file: u.file, line: u.line, ...(built ? { from: built.from, ...(built.test ? { test: built.test } : {}) } : {}) };
+      }),
       ...(lintResult ? { lint: lintResult } : {}),
       ...(proofResult ? { proof: proofResult } : {}),
       ...(testResult ? { test: testResult } : {}),
     });
-    print(render(report, args.reporter, { cwd: process.cwd(), color: args.reporter === 'table' && colorByDefault(), compact: args.compact }));
+    const root = args.reporter === 'github' ? repositoryRoot(process.cwd()) : undefined;
+    print(render(report, args.reporter, { cwd: process.cwd(), ...(root ? { root } : {}), color: args.reporter === 'table' && colorByDefault(), compact: args.compact }));
     process.exitCode = report.ok ? 0 : 1;
   } catch (e) {
     if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
@@ -243,6 +248,17 @@ function initCommand(dir: string) {
 }
 
 // ---------------------------------------------------------------- helpers
+
+/** The repository the command runs in: `GITHUB_WORKSPACE` in GitHub Actions, else git's top folder. */
+function repositoryRoot(cwd: string): string | undefined {
+  const workspace = process.env.GITHUB_WORKSPACE;
+  if (workspace && !relative(resolve(workspace), cwd).startsWith('..')) return resolve(workspace);
+  try {
+    return new Git(cwd).top() ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function version(): string {
   try {

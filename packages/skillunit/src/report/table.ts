@@ -12,7 +12,7 @@ import type { LintResult, Problem } from '../lint/types.js';
 import type { RunReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, buildChange, decidingNumber, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
+import { brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
 
@@ -166,21 +166,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     const units = n.both + n.proof + n.test + n.none;
     notes.push(`${plural(units, 'unit')} · ${n.both} proof and test · ${n.proof} proof only · ${n.test} test only · ${n.none} not covered`);
   }
-  if (proof?.configured) {
-    const s = proof.summary;
-    notes.push(
-      [
-        plural(s.units, 'unit'),
-        `${s.fromTests} from tests${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
-        `${s.byHand} by hand`,
-        `${plural(s.values, 'value')} in prose`,
-        s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
-        s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
-      ]
-        .filter(Boolean)
-        .join(' · '),
-    );
-  }
+  if (proof?.configured) notes.push(proofSummary(proof));
   if (test) {
     const s = test.summary;
     notes.push(

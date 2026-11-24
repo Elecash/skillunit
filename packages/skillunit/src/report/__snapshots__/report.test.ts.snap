@@ -484,6 +484,7 @@ exports[`reporters > the proof layer > github: units from tests and by hand, wit
 ::error file=skills-src/demo/features/retries.md,line=30,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
 ::error file=skills-src/demo/SKILL.md,line=28,title=SkillUnit proof%3A await-every-request::no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
 ::warning file=skillunit.yaml,line=3,title=SkillUnit proof::this project keeps what SkillUnit 0.2 proved units with: \`skillunit.lock\`.
+::notice title=SkillUnit proof::4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date
 FAILED  proof 3 errors, 1 warning
 "
 `;

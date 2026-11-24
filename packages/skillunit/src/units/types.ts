@@ -46,7 +46,8 @@ export interface Fence {
   endLine: number;
   /**
    * First word of the info string, lowercased (`ts`, `tsx`, `sh`), or '' when there is none.
-   * `typescript` and `javascript` read as `ts` and `js`.
+   * Other names of a language read as its short one: `typescript` is `ts`, `javascript` is `js`,
+   * `python` is `py`, `bash` and `shell` are `sh`, `yml` is `yaml`.
    */
   lang: string;
   /** The other words of the info string, such as `no-check`. */
@@ -81,7 +82,7 @@ export interface Check {
   /** v1 has only `forbid`. */
   mode: 'forbid';
   regex: RegExp;
-  /** Fence languages the check runs on, lowercased. */
+  /** Fence languages the check runs on, by their short names (see `Fence.lang`). */
   langs: string[];
   line: number;
   /** The text after `Check:`, as written. */

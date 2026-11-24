@@ -205,6 +205,20 @@ describe('runAll', () => {
     expect((await runAll(config, enough.model, { dryRun: true })).ok).toBe(true);
   });
 
+  it('refuses, on a dry run too, a test whose `unit:` names no unit of the skill', async () => {
+    const config = project({ 'a.yaml': 'tests:\n  - id: t\n    unit: never-disable-timeout\n    scenario: s\n    question: q?\n    expect: no\n' });
+    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: keep-a-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
+    const { model, calls } = stub(() => new Error('must not be called'));
+    for (const dryRun of [true, false]) {
+      const report = await runAll(config, model, { dryRun });
+      expect(report.ok).toBe(false);
+      expect(report.specs[0]!.error).toBe('`unit: never-disable-timeout` (test t, line 2) names no unit of the skill: was the unit renamed or removed? Point `unit:` at the unit\'s id, or take it out');
+    }
+    expect(calls).toHaveLength(0);
+    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: never-disable-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
+    expect((await runAll(config, model, { dryRun: true })).ok).toBe(true);
+  });
+
   it('runs a spec where the model refused one question, and fails only that test', async () => {
     const config = project({ 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n  - id: u\n    scenario: s\n    question: r?\n    expect: no\n' });
     const { model } = stub(() => ({ t: { refused: true }, u: { probabilities: { yes: 0.1, no: 0.9 } } }));

@@ -31,6 +31,10 @@ export interface ReportUnit {
   file: string;
   /** Line of the unit's heading. */
   line: number;
+  /** When the skill is built (`source`, and the proof ran): from a test, or written by hand in the source. */
+  from?: 'test' | 'hand';
+  /** From a test: where the test declares it, from the skill folder. */
+  test?: { file: string; line: number };
 }
 
 export const REPORTERS = ['table', 'json', 'junit', 'github'] as const;
@@ -39,6 +43,11 @@ export type ReporterName = (typeof REPORTERS)[number];
 export interface ReportOptions {
   /** Paths in the output are relative to this folder. */
   cwd: string;
+  /**
+   * The repository's root: the GitHub reporter starts annotation paths there, so an annotation
+   * names its file wherever the command ran. Defaults to `cwd`.
+   */
+  root?: string;
   color: boolean;
   /** The table reporter prints one row per unit. The other reporters ignore it. */
   compact?: boolean;

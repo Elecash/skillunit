@@ -392,6 +392,32 @@ describe('reporters', () => {
       expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, wrote 2 files · test 0/0 passed');
     });
 
+    it('every reporter gives the summary of the build', () => {
+      const summary = '4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date';
+      expect(render(withProof, 'table', options)).toContain(`  ${summary}\n`);
+      expect(render(withProof, 'github', options)).toContain(`::notice title=SkillUnit proof::${summary}\n`);
+      expect(JSON.parse(render(withProof, 'json', options)).proof.summary).toMatchObject({ units: 4, fromTests: 1, byHand: 1, values: 2 });
+      expect(render(withProof, 'junit', options)).toContain('<property name="from" value="test"/>');
+    });
+
+    it('a failed model test says where its unit comes from, when the unit is built from a test', () => {
+      const built = units.map((u) => (u.id === 'retry-delay' ? { ...u, from: 'test' as const, test: { file: '../../src/retry.test.ts', line: 40 } } : { ...u, from: 'hand' as const }));
+      const report = buildReport('check', { units: built, lint, test });
+      const origin = 'the unit `retry-delay` comes from its test, src/retry.test.ts:40';
+      expect(render(report, 'github', options)).toContain(`%0A${origin}`);
+      expect(render(report, 'junit', options)).toContain(origin);
+      expect(JSON.parse(render(report, 'json', options)).units.find((u: { id: string }) => u.id === 'retry-delay')).toEqual({ id: 'retry-delay', kind: 'fact', file: 'features/retries.md', line: 40, from: 'test', test: { file: '../../src/retry.test.ts', line: 40 } });
+      // A unit by hand has nothing to point at.
+      expect(render(buildReport('check', { units: built.map((u) => ({ ...u, from: 'hand' as const, test: undefined })), lint, test }), 'github', options)).not.toContain('comes from its test');
+    });
+
+    it('github: annotation paths start at the repository root, messages keep the folder the command ran in', () => {
+      const out = render(withProof, 'github', { cwd: '/repo/skills', root: '/repo', color: false });
+      expect(out).toContain('::error file=skills/demo/features/retries.md,line=22,');
+      // Outside the folder the command ran in, a path in a message is shown whole.
+      expect(out).toContain('from the test of `retry-idempotent-only`, /repo/src/retry.test.ts:12');
+    });
+
     it('every reporter says what --write wrote', () => {
       const report = buildReport('proof', { proof: { ...proof, ok: true, problems: [], files: [{ file: 'SKILL.md', state: 'written' }, { file: 'features/retries.md', state: 'same' }], summary: { ...proof.summary, written: 1 } } });
       const line = 'Wrote 1 file of skills/demo: SKILL.md.';

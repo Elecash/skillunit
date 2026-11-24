@@ -104,6 +104,32 @@ export function withOrigin(skill: string, p: Problem, options: ReportOptions): s
   return origin ? `${p.message}\nfrom ${origin}` : p.message;
 }
 
+/** The proof in one line: `12 units · 9 from tests · 3 by hand · 2 values in prose`, and what is wrong. */
+export function proofSummary(proof: ProofResult): string {
+  const s = proof.summary;
+  return [
+    plural(s.units, 'unit'),
+    `${s.fromTests} from tests${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
+    `${s.byHand} by hand`,
+    `${plural(s.values, 'value')} in prose`,
+    s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
+    s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * For a model test about a unit of a built skill: where the unit comes from, so a failure says
+ * which file to edit. Null when the unit is written by hand or the skill is not built.
+ */
+export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
+  const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
+  if (!u?.test) return null;
+  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  return `the unit \`${u.id}\` comes from its test, ${skillFile(skill, u.test.file, options)}:${u.test.line}`;
+}
+
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];

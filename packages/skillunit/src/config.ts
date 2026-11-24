@@ -28,6 +28,7 @@ import { dirname, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { LINT_RULES, type LintRule } from './lint/types.js';
 import { isProviderName, PROVIDER_NAMES, providerList, type ProviderName } from './models/providers.js';
+import { canonicalLang } from './units/parse.js';
 
 export interface Thresholds {
   choice: number;
@@ -97,6 +98,8 @@ export interface ExamplesConfig {
   commands: Record<string, string>;
   /** Folder the commands run in: the folder of the config file. */
   cwd: string;
+  /** The settings file, and the line of each language's key in it, for findings about a key. */
+  place?: { file: string; lines: Record<string, number> };
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, margin: 0.13 };
@@ -156,7 +159,7 @@ export function loadConfig(path?: string): Config {
       config.thresholds[key as keyof Thresholds] = value;
     }
   }
-  if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
+  if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail, file);
   if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);
   if (raw.source !== undefined) {
     if (typeof raw.source !== 'string' || !raw.source.trim()) throw fail('`source` must be a path: the folder the skill is built from');
@@ -242,12 +245,20 @@ function readModel(value: unknown, root: string, fail: (msg: string) => Error): 
 /** Fence languages the `ts` entry covers. */
 export const TS_LANGS = ['ts', 'tsx', 'js', 'jsx'];
 
-function readExamples(value: unknown, root: string, fail: (msg: string) => Error): ExamplesConfig {
+function readExamples(value: unknown, root: string, fail: (msg: string) => Error, file: string): ExamplesConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw fail('`examples` must be a mapping of fence language to settings');
   }
-  const out: ExamplesConfig = { commands: {}, cwd: root };
-  for (const [lang, entry] of Object.entries(value as Record<string, unknown>)) {
+  const text = readFileSync(file, 'utf8').split(/\r?\n/);
+  const out: ExamplesConfig = { commands: {}, cwd: root, place: { file, lines: {} } };
+  const seen = new Map<string, string>();
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    // `python` and `py` are one language: the key and the fence are read by the short name.
+    const lang = canonicalLang(key);
+    const first = seen.get(lang);
+    if (first !== undefined) throw fail(`\`examples.${first}\` and \`examples.${key}\` are one language; keep one`);
+    seen.set(lang, key);
+    out.place!.lines[lang] = text.findIndex((l) => new RegExp(`^\\s+["']?${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?\\s*:`).test(l)) + 1 || 1;
     const settings = entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null;
     if (lang === 'ts') {
       if (!settings || typeof settings.tsconfig !== 'string' || Object.keys(settings).length !== 1) {
@@ -255,13 +266,13 @@ function readExamples(value: unknown, root: string, fail: (msg: string) => Error
       }
       out.ts = { tsconfig: resolve(root, settings.tsconfig) };
     } else if (TS_LANGS.includes(lang)) {
-      throw fail(`\`examples.${lang}\`: ${TS_LANGS.join(', ')} fences are all type-checked through \`examples.ts\``);
+      throw fail(`\`examples.${key}\`: ${TS_LANGS.join(', ')} fences are all type-checked through \`examples.ts\``);
     } else {
       if (!settings || typeof settings.command !== 'string' || Object.keys(settings).length !== 1) {
-        throw fail(`\`examples.${lang}\` takes one key, \`command\`, with \`{file}\` where the example's path goes`);
+        throw fail(`\`examples.${key}\` takes one key, \`command\`, with \`{file}\` where the example's path goes`);
       }
-      if (!settings.command.includes('{file}')) throw fail(`\`examples.${lang}.command\` must contain \`{file}\``);
-      out.commands[lang.toLowerCase()] = settings.command;
+      if (!settings.command.includes('{file}')) throw fail(`\`examples.${key}.command\` must contain \`{file}\``);
+      out.commands[lang] = settings.command;
     }
   }
   return out;

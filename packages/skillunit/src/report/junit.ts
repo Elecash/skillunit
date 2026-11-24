@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { buildChange, gotLine, shown, withOrigin } from './text.js';
+import { buildChange, gotLine, shown, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 interface Case {
@@ -73,7 +73,8 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       const cases: Case[] = spec.verdicts.map((v) => {
         const c: Case = { name: v.id, classname: name };
         const got = gotLine(v, report);
-        if (!v.pass) c.failure = `${got}\nscenario: ${v.scenario}\nquestion: ${v.question}`;
+        const origin = unitOrigin(report, v.unit, options);
+        if (!v.pass) c.failure = `${got}\nscenario: ${v.scenario}\nquestion: ${v.question}${origin ? `\n${origin}` : ''}`;
         if (v.borderline) {
           c.properties = { borderline: 'true' };
           if (v.pass) c.out = `borderline: ${got}`;

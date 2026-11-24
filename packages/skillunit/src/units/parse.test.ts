@@ -415,6 +415,7 @@ describe('Check', () => {
       '2: put the regex of a `Check` in backticks, as in ``forbid `/regex/` in ts``: outside a code span, Markdown reads `*` and `_` as emphasis and a formatter rewrites them',
     ]);
     expect(parseCheck('forbid `/a/i` in ts, TSX', 3)).toMatchObject({ mode: 'forbid', langs: ['ts', 'tsx'], line: 3 });
+    expect(parseCheck('forbid `/a/` in python, Bash, typescript', 1)).toMatchObject({ langs: ['py', 'sh', 'ts'] });
     expect(parseCheck('forbid ``/a`b/`` in ts', 1)).toMatchObject({ regex: /a`b/ });
   });
 

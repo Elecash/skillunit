@@ -178,6 +178,27 @@ ${F}
     expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['11 r command']);
   });
 
+  it('runs the command of a language on a fence that names it another way', () => {
+    const skill = `# T\n\n${F}python\nprint(1\n${F}\n\n${F}bash\nif then fi\n${F}\n\n${F}yml\na: [\n${F}\n`;
+    const root = skillDir({ 'SKILL.md': skill });
+    const result = runCommands(parseSkill(root), { commands: { py: 'exit 1 # {file}', sh: 'exit 2 # {file}', yaml: 'exit 3 # {file}' }, cwd: root });
+    expect(result.checked).toBe(3);
+    expect(result.problems.map((p) => p.message)).toEqual([
+      'this `py` example fails `exit 1 # {file}` (exit 1)',
+      'this `sh` example fails `exit 2 # {file}` (exit 2)',
+      'this `yaml` example fails `exit 3 # {file}` (exit 3)',
+    ]);
+  });
+
+  it('warns about a language set in the settings that no block is in', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n\n${F}py\nprint(1)\n${F}\n`, 'skillunit.yaml': 'examples:\n  ruby: { command: "ruby -c {file}" }\n  py: { command: "true {file}" }\n' });
+    const place = { file: join(root, 'skillunit.yaml'), lines: { ruby: 2, py: 3 } };
+    const r = lint(root, { examples: { commands: { ruby: 'ruby -c {file}', py: 'true {file}' }, cwd: root, place } });
+    expect(r.problems.map(show)).toEqual(['skillunit.yaml:2 warning: `examples.ruby` is set, and no block of the skill is in `ruby`, so its command never runs. The blocks are in `py`']);
+    const sh = lint(root, { examples: { commands: { sh: 'true {file}' }, cwd: root, place: { ...place, lines: { sh: 2 } } } });
+    expect(sh.problems.map(show)).toEqual(['skillunit.yaml:2 warning: `examples.sh` is set, and no block of the skill is in `sh` or `bash` or `shell`, so its command never runs. The blocks are in `py`']);
+  });
+
   it('reports a failing Setup', () => {
     const root = skillDir({ 'SKILL.md': `# T\n\nSetup:\n\n${F}sh\nfi\n${F}\n` });
     const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
