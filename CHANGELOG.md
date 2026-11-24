@@ -1,3 +1,13 @@
+## 0.2.2 (2026-11-24)
+
+### 🚀 Features
+
+- report by unit ([#8](https://github.com/Elecash/skillunit/pull/8))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.2.1 (2026-11-23)
 
 ### 🚀 Features
