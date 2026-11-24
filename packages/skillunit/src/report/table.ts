@@ -1,229 +1,287 @@
 /**
- * The default reporter, for people: per layer, one row per file or spec with counts, then one
- * block per failure, the borderline verdicts, the warnings, and a status line. Lint findings
- * come in one block per file, at most `PER_EXAMPLE` per example and each line once, so a skill
- * of fragments stays readable; the JSON report keeps every finding.
+ * The default reporter, for people. `lint` alone prints one row per file with findings, then one
+ * block per failure, the warnings, and a status line. The other commands print the report by
+ * unit (`units.ts`): each file of the skill, each unit in it, and under the unit the lines of
+ * each layer, each failure with its details under it. Then an index of what failed, so the end
+ * of the output, which is what a terminal shows, names it. Lint findings come at most
+ * `PER_EXAMPLE` per example and each line once, so a skill of fragments stays readable; the
+ * JSON report keeps every finding.
  */
 import { join } from 'node:path';
-import type { Problem } from '../lint/types.js';
+import type { LintResult, Problem } from '../lint/types.js';
+import type { Verdict } from '../test/reader.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, decidingNumber, distribution, lockChange, painter, pad, padStart, plural, shown, statusLine, undeclaredNames, where } from './text.js';
+import { brief, decidingNumber, distribution, lockChange, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
+import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
 
-/** Findings shown for one example; the rest are counted. */
-export const PER_EXAMPLE = 3;
+type Painter = ReturnType<typeof painter>;
 
 export function table(report: CheckReport, options: ReportOptions): string {
   const c = painter(options.color);
   const out: string[] = [];
-  const mark = (state: 'ok' | 'warn' | 'fail') => (state === 'ok' ? c.green('✓') : state === 'warn' ? c.yellow('~') : c.red('✗'));
-  const failures: string[][] = [];
-  const warnings: string[] = [];
-  const borderline: string[] = [];
-  let codes = '';
+  const { lint } = report;
+  if (lint) out.push(...lintBlock(lint, options, c));
+  const failed = report.command === 'lint' ? lintFailures(report, options, c, out) : byUnit(report, options, c, out);
 
-  /** Lint and proof findings keep the one-line form `file:line  unit-id  what is wrong`. */
-  // A message of several lines, such as a command's output, goes on under the finding, indented.
-  const problemBlock = (skill: string, p: Problem) => [`${where(skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`];
-
-  // ---------------------------------------------------------------- lint
-  const { lint, test } = report;
-  if (lint) {
-    out.push('', `${c.bold('Lint')}  ${c.dim(shown(lint.skill, options))}`);
-    const rows = lint.files.map((file) => {
-      const mine = lint.problems.filter((p) => p.file === file);
-      const errors = mine.filter((p) => p.severity === 'error').length;
-      return { file, errors, warnings: mine.length - errors };
-    });
-    // Problems about a file that does not exist (a missing SKILL.md) get a row of their own.
-    for (const p of lint.problems) {
-      if (!rows.some((r) => r.file === p.file)) rows.push({ file: p.file, errors: p.severity === 'error' ? 1 : 0, warnings: p.severity === 'warning' ? 1 : 0 });
-    }
-    // A row for each file with a finding; clean files are only counted.
-    const found = rows.filter((r) => r.errors || r.warnings);
-    const clean = rows.length - found.length;
-    const w = Math.max(24, ...found.map((r) => r.file.length)) + 2;
-    if (found.length) out.push(c.dim(`    ${pad('FILE', w)}${padStart('ERRORS', 8)}${padStart('WARNINGS', 10)}`));
-    for (const r of found) {
-      const state = r.errors ? 'fail' : 'warn';
-      out.push(`  ${mark(state)} ${pad(r.file, w)}${padStart(String(r.errors), 8)}${padStart(String(r.warnings), 10)}`);
-    }
-    if (clean) out.push(`  ${mark('ok')} ${found.length ? `${plural(clean, 'other file')} clean` : `${plural(clean, 'file')}, all clean`}`);
-    const s = lint.summary;
-    const notes = [
-      plural(s.units, 'unit'),
-      s.typeChecked ? `${plural(s.typeChecked, 'example')} type-checked with TypeScript ${s.typescript}` : '',
-      s.notParsed ? `${s.notParsed} did not parse, so their types were not checked` : '',
-      s.commandChecked ? `${plural(s.commandChecked, 'example')} run through a command` : '',
-      s.noCheck ? `${s.noCheck} marked no-check` : '',
-      s.notConfigured ? `${s.notConfigured} ts/js not type-checked: set \`examples.ts\` in skillunit.yaml` : '',
-      Object.keys(s.unchecked).length
-        ? `not checked, no command set: ${Object.entries(s.unchecked)
-            .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-            .map(([lang, n]) => `${n} ${lang}`)
-            .join(', ')}`
-        : '',
-      s.off.length ? `off: ${s.off.join(', ')}` : '',
-    ].filter(Boolean);
-    out.push(c.dim(`  ${notes.join(' · ')}`));
-    const line = (p: Problem) => problemBlock(lint.skill, p)[0]!;
-    // One failure per file: its first finding, then the others under it.
-    for (const lines of byFile(lint.problems.filter((p) => p.severity === 'error'), line)) failures.push([lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
-    for (const lines of byFile(lint.problems.filter((p) => p.severity === 'warning'), line)) warnings.push(...lines);
-    codes = codeCounts(lint.problems);
-  }
-
-  // ---------------------------------------------------------------- proof
-  const { proof } = report;
-  if (proof && !proof.configured) {
-    out.push('', `${c.bold('Proof')}  ${c.dim('not configured: no `proof` key in skillunit.yaml')}`);
-  } else if (proof) {
-    const reports = proof.reports.length ? proof.reports.map((r) => shown(join(proof.skill, r), options)).join(', ') : 'no report';
-    out.push('', `${c.bold('Proof')}  ${c.dim(reports)}`);
-    const files = [...new Set(proof.units.map((u) => u.file))];
-    const w = Math.max(24, ...files.map((f) => f.length)) + 2;
-    const errorsIn = (file: string) => proof.problems.some((p) => p.file === file && p.severity === 'error');
-    if (files.length) {
-      out.push(c.dim(`    ${pad('FILE', w)}${padStart('PROVED', 8)}${padStart('FAILED', 8)}${padStart('UNPROVED', 10)}`));
-      for (const file of files) {
-        const mine = proof.units.filter((u) => u.file === file);
-        const n = (state: string) => mine.filter((u) => u.state === state).length;
-        const state = errorsIn(file) || n('failed') ? 'fail' : 'ok';
-        out.push(`  ${mark(state)} ${pad(file, w)}${padStart(String(n('proved')), 8)}${padStart(String(n('failed')), 8)}${padStart(String(n('unproved')), 10)}`);
-      }
-    }
-    const s = proof.summary;
-    const notes = [
-      `proved ${s.proved} of ${plural(s.units, 'unit')}${s.failed ? `, ${s.failed} failed` : ''}`,
-      `${plural(s.fences, 'block')} from tests${s.written ? `, ${s.written} written` : s.differ ? `, ${s.differ} out of date` : ''}`,
-      `${plural(s.tagged, 'tagged test')}`,
-      `${plural(proof.lock.listed, 'unit')} in the lock`,
-    ];
-    out.push(c.dim(`  ${notes.join(' · ')}`));
-    const change = lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options));
-    if (change) out.push(`  ${change}`);
-    for (const p of proof.problems) {
-      if (p.severity === 'error') failures.push(problemBlock(proof.skill, p));
-      else warnings.push(`${where(proof.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message)}`);
-    }
-  }
-
-  // ---------------------------------------------------------------- test
-  if (test) {
-    const model = test.specs.find((s) => s.model)?.model;
-    const asked = [test.provider, model].filter(Boolean).join(' · ');
-    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : asked;
-    const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
-    out.push('', `${c.bold('Test')}  ${c.dim(`${label}${since}`)}`);
-    const names = test.specs.map((s) => shown(s.spec, options));
-    const w = Math.max(24, ...names.map((n) => n.length)) + 2;
-    if (test.specs.length === 0) {
-      // `test --changed` with nothing changed: no table.
-    } else if (test.dryRun) {
-      out.push(c.dim(`    ${pad('SPEC', w)}${padStart('TESTS', 7)}${padStart('TOKENS', 9)}`));
-    } else {
-      out.push(c.dim(`    ${pad('SPEC', w)}${padStart('PASSING', 9)}${padStart('FAILING', 9)}${padStart('ERRORS', 8)}${padStart('BORDERLINE', 12)}`));
-    }
-    test.specs.forEach((spec, i) => {
-      const passing = spec.verdicts.filter((v) => v.pass).length;
-      const failing = spec.verdicts.length - passing;
-      const near = spec.verdicts.filter((v) => v.borderline).length;
-      const state = spec.error || failing ? 'fail' : near ? 'warn' : 'ok';
-      if (test.dryRun) {
-        const tokens = spec.estimatedTokens ? `~${spec.estimatedTokens.toLocaleString('en-US')}` : '-';
-        out.push(`  ${mark(spec.error ? 'fail' : 'ok')} ${pad(names[i]!, w)}${padStart(String(spec.verdicts.length), 7)}${padStart(tokens, 9)}`);
-      } else {
-        out.push(
-          `  ${mark(state)} ${pad(names[i]!, w)}${padStart(String(passing), 9)}${padStart(String(failing), 9)}${padStart(spec.error ? '1' : '0', 8)}${padStart(String(near), 12)}`,
-        );
-      }
-      if (spec.error) failures.push([`${names[i]}  could not run`, `   ${spec.error}`]);
-      for (const v of spec.verdicts) {
-        const at = `${names[i]}:${v.line ?? 1}  ${v.id}`;
-        if (!v.pass) failures.push(testFailure(spec, v, at, report, options));
-        else if (v.borderline) borderline.push(`${at}  ${v.answer}, ${decidingNumber(v, report)}`);
-      }
-    });
-    const s = test.summary;
-    const notes = [
-      plural(s.tests, 'test'),
-      s.skipped ? `${plural(s.skipped, 'spec')} left out by --changed` : '',
-      test.dryRun || s.tests === 0 ? '' : `${s.usage.input_tokens.toLocaleString('en-US')} in / ${s.usage.output_tokens.toLocaleString('en-US')} out tokens`,
-    ].filter(Boolean);
-    out.push(c.dim(`  ${notes.join(' · ')}`));
-  }
-
-  // ---------------------------------------------------------------- details
-  if (failures.length) {
-    out.push('', c.bold(c.red('Failures')));
-    failures.forEach((block, i) => out.push('', `  ${i + 1}) ${block[0]}`, ...block.slice(1).map((l) => `  ${l}`)));
-  }
-  if (borderline.length) {
-    const margin = report.test?.thresholds.margin;
-    out.push('', `${c.bold(c.yellow('Borderline'))}  ${c.dim(`passed, but within ${margin} of the threshold; the next run may fail them`)}`);
-    out.push(...borderline.map((l) => `  ${l}`));
-  }
-  if (warnings.length) out.push('', c.bold(c.yellow('Warnings')), ...warnings.map((l) => `  ${l}`));
+  const codes = lint ? codeCounts(lint.problems) : '';
   if (codes) out.push('', c.dim(`Type problems by code: ${codes}`));
   const names = lint ? undeclaredNames(lint.summary) : null;
   if (names) out.push(...(codes ? [] : ['']), ...names);
+  if (failed.length) out.push('', c.bold(c.red('Failed')), ...failed.map((f) => `  ${f}`));
 
   out.push('', report.ok ? c.green(statusLine(report)) : c.red(statusLine(report)), '');
   return out.join('\n');
 }
 
-function testFailure(spec: SpecReport, v: SpecReport['verdicts'][number], at: string, report: CheckReport, options: ReportOptions): string[] {
-  const skill = report.test!.skill;
-  const part = spec.sections.length ? `${spec.file} › ${spec.sections.join(' + ')}` : spec.file;
-  const dir = shown(skill, options);
-  const skillLine = `${dir === '.' ? '' : `${dir}/`}${part}${v.unit ? `   unit: ${v.unit}` : ''}`;
-  const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
-  return [
-    at,
-    `   skill:     ${skillLine}`,
-    `   scenario:  ${v.scenario}`,
-    `   question:  ${v.question}`,
-    `   expected:  ${v.expect}`,
-    ...(v.refused
-      ? [`   got:       nothing: the model refused to answer`]
-      : [`   got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`, `              ${distribution(v)}`]),
-    ...(v.variants ? [`   phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
-  ];
+const sign = (c: Painter, mark: Mark) =>
+  mark === 'pass' ? c.green('✓') : mark === 'fail' ? c.red('✗') : mark === 'warn' ? c.yellow('~') : mark === 'none' ? c.dim('–') : c.dim('·');
+
+// ---------------------------------------------------------------- lint
+
+/** The header, one row per file with findings, and what was checked. */
+function lintBlock(lint: LintResult, options: ReportOptions, c: Painter): string[] {
+  const out = ['', `${c.bold('Lint')}  ${c.dim(shown(lint.skill, options))}`];
+  const rows = lint.files.map((file) => {
+    const mine = lint.problems.filter((p) => p.file === file);
+    const errors = mine.filter((p) => p.severity === 'error').length;
+    return { file, errors, warnings: mine.length - errors };
+  });
+  // Problems about a file that does not exist (a missing SKILL.md) get a row of their own.
+  for (const p of lint.problems) {
+    if (!rows.some((r) => r.file === p.file)) rows.push({ file: p.file, errors: p.severity === 'error' ? 1 : 0, warnings: p.severity === 'warning' ? 1 : 0 });
+  }
+  // A row for each file with a finding; clean files are only counted.
+  const found = rows.filter((r) => r.errors || r.warnings);
+  const clean = rows.length - found.length;
+  const w = Math.max(24, ...found.map((r) => r.file.length)) + 2;
+  if (found.length) out.push(c.dim(`    ${pad('FILE', w)}${padStart('ERRORS', 8)}${padStart('WARNINGS', 10)}`));
+  for (const r of found) {
+    out.push(`  ${sign(c, r.errors ? 'fail' : 'warn')} ${pad(r.file, w)}${padStart(String(r.errors), 8)}${padStart(String(r.warnings), 10)}`);
+  }
+  if (clean) out.push(`  ${sign(c, 'pass')} ${found.length ? `${plural(clean, 'other file')} clean` : `${plural(clean, 'file')}, all clean`}`);
+  const s = lint.summary;
+  const notes = [
+    plural(s.units, 'unit'),
+    s.typeChecked ? `${plural(s.typeChecked, 'example')} type-checked with TypeScript ${s.typescript}` : '',
+    s.notParsed ? `${s.notParsed} did not parse, so their types were not checked` : '',
+    s.commandChecked ? `${plural(s.commandChecked, 'example')} run through a command` : '',
+    s.noCheck ? `${s.noCheck} marked no-check` : '',
+    s.notConfigured ? `${s.notConfigured} ts/js not type-checked: set \`examples.ts\` in skillunit.yaml` : '',
+    Object.keys(s.unchecked).length
+      ? `not checked, no command set: ${Object.entries(s.unchecked)
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([lang, n]) => `${n} ${lang}`)
+          .join(', ')}`
+      : '',
+    s.off.length ? `off: ${s.off.join(', ')}` : '',
+  ].filter(Boolean);
+  out.push(c.dim(`  ${notes.join(' · ')}`));
+  return out;
 }
 
-/**
- * Lint findings as one block per file: each line and message once, and at most `PER_EXAMPLE`
- * findings per example, with the rest counted under the last one shown.
- */
+/** `lint` alone: one numbered failure per file, its first finding and the others under it, then the warnings. */
+function lintFailures(report: CheckReport, options: ReportOptions, c: Painter, out: string[]): string[] {
+  const lint = report.lint!;
+  // A message of several lines, such as a command's output, goes on under the finding, indented.
+  const line = (p: Problem) => `${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`;
+  const failures = byFile(lint.problems.filter((p) => p.severity === 'error'), line).map((lines) => [lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
+  const warnings = byFile(lint.problems.filter((p) => p.severity === 'warning'), line).flat();
+  if (failures.length) {
+    out.push('', c.bold(c.red('Failures')));
+    failures.forEach((block, i) => out.push('', `  ${i + 1}) ${block[0]}`, ...block.slice(1).map((l) => `  ${l}`)));
+  }
+  if (warnings.length) out.push('', c.bold(c.yellow('Warnings')), ...warnings.map((l) => `  ${l}`));
+  return [];
+}
+
+/** Lint findings as one block per file, compacted, with the findings left out counted. */
 function byFile(problems: Problem[], line: (p: Problem) => string): string[][] {
   const files = new Map<string, Problem[]>();
   for (const p of problems) files.set(p.file, [...(files.get(p.file) ?? []), p]);
-  return [...files.values()].map((list) => {
-    const lines: string[] = [];
-    const seen = new Set<string>();
-    const shown = new Map<number, number>();
-    const hidden = new Map<number, number>();
-    const lastShown = new Map<number, number>();
-    for (const p of list) {
-      const key = `${p.line}\0${p.message}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      if (p.example !== undefined) {
-        const n = shown.get(p.example) ?? 0;
-        if (n >= PER_EXAMPLE) {
-          hidden.set(p.example, (hidden.get(p.example) ?? 0) + 1);
-          continue;
-        }
-        shown.set(p.example, n + 1);
-        lastShown.set(p.example, lines.length);
+  return [...files.values()].map((list) => compact(list).flatMap(({ problem, more }) => [line(problem), ...(more ? [`  +${more} more in this example`] : [])]));
+}
+
+// ---------------------------------------------------------------- by unit
+
+/** The tree, its summary, and what has no place in it. Returns the index of what failed. */
+function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: string[]): string[] {
+  const tree = unitTree(report);
+  const { proof, test } = report;
+  const at = (file: string) => skillFile(tree.skill, file, options);
+
+  // ---------------------------------------------------------------- the header
+  const header: string[] = [];
+  if (proof && !proof.configured) header.push('proof not configured');
+  else if (proof) header.push(`proof ${proof.reports.length ? proof.reports.map((r) => at(r)).join(', ') : 'no report'}`);
+  if (test) {
+    const model = test.specs.find((s) => s.model)?.model;
+    const asked = [test.provider, model].filter(Boolean).join(' · ');
+    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : asked;
+    const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
+    header.push(`test ${label}${since}`);
+  }
+  out.push('', `${c.bold('Units')}  ${c.dim(header.join(' · '))}`);
+
+  // In a dry run, the size of each request, which nothing else shows.
+  if (test?.dryRun && test.specs.length) {
+    const names = test.specs.map((s) => shown(s.spec, options));
+    const w = Math.max(24, ...names.map((n) => n.length)) + 2;
+    out.push(c.dim(`    ${pad('SPEC', w)}${padStart('TESTS', 7)}${padStart('TOKENS', 9)}`));
+    test.specs.forEach((spec, i) => {
+      const tokens = spec.estimatedTokens ? `~${spec.estimatedTokens.toLocaleString('en-US')}` : '-';
+      out.push(`  ${sign(c, spec.error ? 'fail' : 'pass')} ${pad(names[i]!, w)}${padStart(String(spec.verdicts.length), 7)}${padStart(tokens, 9)}`);
+    });
+  }
+
+  // ---------------------------------------------------------------- the tree
+  const failed: string[] = [];
+  const show = (line: Line, indent: number, path: string[]) => {
+    const d = describe(line, report, options, c);
+    out.push(`${' '.repeat(indent)}${pad(layerOf(line), 7)}${sign(c, line.mark)}${d.text ? ` ${d.text}` : ''}`);
+    for (const detail of d.details.flatMap((x) => x.split('\n'))) out.push(`${' '.repeat(indent + 9)}${detail}`);
+    if (line.mark === 'fail') failed.push([...path, d.short].join(' › '));
+  };
+  const idOf = (u: UnitNode) => (u.mark === 'fail' ? c.red(u.id) : u.mark === 'warn' ? c.yellow(u.id) : c.green(u.id));
+
+  if (options.compact) compactTree(tree, report, c, out, at, show, idOf);
+  else {
+    for (const file of tree.files) {
+      const path = at(file.file);
+      out.push('', `  ${c.bold(path)}`);
+      for (const line of file.lines) show(line, 4, [path]);
+      for (const u of file.units) {
+        out.push(u.coverage === 'none' ? `    ${c.yellow(`${u.id}  ${u.kind}  not covered`)}` : `    ${idOf(u)}  ${c.dim(u.kind)}`);
+        for (const line of u.lines) show(line, 6, [path, u.id]);
       }
-      lines.push(line(p));
     }
-    // From the end, so the indexes still point at the right lines.
-    const notes = [...hidden].map(([example, n]) => ({ at: lastShown.get(example)!, text: `  +${n} more in this example` }));
-    for (const note of notes.sort((a, b) => b.at - a.at)) lines.splice(note.at + 1, 0, note.text);
-    return lines;
-  });
+  }
+  if (tree.otherFiles) out.push('', c.dim(`  ${plural(tree.otherFiles, 'other file')}, no unit`));
+
+  // ---------------------------------------------------------------- the summary
+  const notes: string[] = [];
+  if (tree.coverage) {
+    const n = tree.coverage;
+    const units = n.both + n.proof + n.test + n.none;
+    notes.push(`${plural(units, 'unit')} · ${n.both} proof and test · ${n.proof} proof only · ${n.test} test only · ${n.none} not covered`);
+  }
+  if (proof?.configured) {
+    const s = proof.summary;
+    notes.push(
+      [
+        `proved ${s.proved} of ${plural(s.units, 'unit')}${s.failed ? `, ${s.failed} failed` : ''}`,
+        `${plural(s.fences, 'block')} from tests${s.written ? `, ${s.written} written` : s.differ ? `, ${s.differ} out of date` : ''}`,
+        plural(s.tagged, 'tagged test'),
+        `${plural(proof.lock.listed, 'unit')} in the lock`,
+      ].join(' · '),
+    );
+  }
+  if (test) {
+    const s = test.summary;
+    notes.push(
+      [
+        plural(s.tests, 'test'),
+        s.skipped ? `${plural(s.skipped, 'spec')} left out by --changed` : '',
+        s.borderline ? `${s.borderline} borderline: within ${test.thresholds.margin} of the threshold` : '',
+        test.dryRun || s.tests === 0 ? '' : `${s.usage.input_tokens.toLocaleString('en-US')} in / ${s.usage.output_tokens.toLocaleString('en-US')} out tokens`,
+      ]
+        .filter(Boolean)
+        .join(' · '),
+    );
+  }
+  out.push('', ...notes.map((n) => c.dim(`  ${n}`)));
+  const change = proof?.configured ? lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options)) : null;
+  if (change) out.push(`  ${change}`);
+
+  if (tree.elsewhere.length) {
+    out.push('', c.bold('Elsewhere'));
+    for (const line of tree.elsewhere) show(line, 2, []);
+  }
+  return failed;
+}
+
+/** One row per unit: its id, kind, proof state and tests passed of total, with what failed under it. */
+function compactTree(
+  tree: UnitTree,
+  report: CheckReport,
+  c: Painter,
+  out: string[],
+  at: (file: string) => string,
+  show: (line: Line, indent: number, path: string[]) => void,
+  idOf: (u: UnitNode) => string,
+) {
+  const w = Math.max(1, ...tree.files.flatMap((f) => f.units.map((u) => u.id.length))) + 2;
+  const dry = report.test?.dryRun;
+  const testsOf = (t: { passed: number; total: number } | undefined) => (!t ? '–' : dry ? `${t.total} ready` : `${t.passed}/${t.total}`);
+  const row = (mark: Mark, id: string, kind: string, proofState: string, tests: string) =>
+    `    ${sign(c, mark)} ${pad(id, w)}${pad(c.dim(kind), 10)}${tree.layers.proof ? pad(proofState, 10) : ''}${tree.layers.test ? tests : ''}`.trimEnd();
+  const worst = (lines: Line[]): Mark => (lines.some((l) => l.mark === 'fail') ? 'fail' : lines.some((l) => l.mark === 'warn') ? 'warn' : 'pass');
+
+  for (const file of tree.files) {
+    const path = at(file.file);
+    out.push('', `  ${c.bold(path)}`);
+    if (file.lines.length) {
+      const verdicts = file.lines.filter((l) => l.kind === 'verdict');
+      const tests = verdicts.length ? { passed: verdicts.filter((l) => l.verdict.pass).length, total: verdicts.length } : undefined;
+      out.push(row(worst(file.lines), '-', '', '', testsOf(tests)));
+      for (const line of file.lines) if (line.mark === 'fail') show(line, 8, [path]);
+    }
+    for (const u of file.units) {
+      const p = u.proof;
+      const state = !p ? '–' : p.tests.length || p.state !== 'unproved' ? p.state : '–';
+      out.push(row(u.mark, idOf(u), u.kind, state, testsOf(u.tests)));
+      for (const line of u.lines) if (line.mark === 'fail') show(line, 8, [path, u.id]);
+    }
+  }
+}
+
+/** A line's text after its mark, the details under it, and how the index of failures names it. */
+function describe(line: Line, report: CheckReport, options: ReportOptions, c: Painter): { text: string; details: string[]; short: string } {
+  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  switch (line.kind) {
+    case 'lint':
+    case 'proof': {
+      const place = where(skill, line.problem, options);
+      const [first, ...rest] = brief(line.problem.message).split('\n');
+      const more = line.kind === 'lint' && line.more ? [c.dim(`+${line.more} more in this example`)] : [];
+      return { text: `${place}  ${first}`, details: [...rest, ...more], short: `${line.kind} ${place}` };
+    }
+    case 'tagged': {
+      const title = line.test.title.replace(/\s*\[skill:[^\]]*\]/g, '').trim();
+      return { text: title, details: line.problem ? [brief(line.problem.message)] : [], short: title };
+    }
+    case 'verdict': {
+      const v = line.verdict;
+      const place = `${shown(line.spec.spec, options)}:${v.line ?? 1}  ${v.id}`;
+      const note = line.unknownUnit ? [c.yellow(`unit: ${v.unit} names no unit of the skill`)] : [];
+      const details = !v.pass ? testFailure(v, report) : v.borderline ? [`${decidingNumber(v, report)} · borderline: the next run may fail it`] : [];
+      return { text: `${place}  ${answer(v, report)}`, details: [...note, ...details], short: place };
+    }
+    case 'spec': {
+      const place = `${shown(line.spec.spec, options)}  could not run`;
+      return { text: place, details: [line.spec.error ?? ''], short: place };
+    }
+    case 'missing':
+      return { text: '', details: [], short: '' };
+  }
+}
+
+/** The answer and the number that decided it: `stop 0.92`, or `yes P(yes) 0.76` for a yes/no test. */
+function answer(v: Verdict, report: CheckReport): string {
+  if (report.test?.dryRun) return 'ready';
+  if (v.refused) return 'refused';
+  return `${v.answer} ${v.probabilities ? '' : 'P(yes) '}${v.confidence.toFixed(2)}`;
+}
+
+function testFailure(v: SpecReport['verdicts'][number], report: CheckReport): string[] {
+  const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
+  return [
+    `scenario:  ${v.scenario}`,
+    `question:  ${v.question}`,
+    `expected:  ${v.expect}`,
+    ...(v.refused ? [`got:       nothing: the model refused to answer`] : [`got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`, `           ${distribution(v)}`]),
+    ...(v.variants ? [`phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
+  ];
 }
 
 /** `TS2304 512 · TS2322 40`: the type problems by code, the most frequent first. */

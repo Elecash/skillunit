@@ -3,11 +3,19 @@ import { DEFAULT_THRESHOLDS } from '../config.js';
 import type { LintResult } from '../lint/types.js';
 import type { ProofResult } from '../proof/layer.js';
 import type { Report } from '../test/runner.js';
-import { buildReport, render, REPORTERS, type CheckReport } from './index.js';
+import { buildReport, render, REPORTERS, type CheckReport, type ReportUnit } from './index.js';
 
 /** One report with every kind of finding, in a repository at /repo with the skill in skills/demo. */
 const cwd = '/repo';
 const skill = '/repo/skills/demo';
+
+/** The units of the skill, as the CLI lists them in every report. */
+const units: ReportUnit[] = [
+  { id: 'pick-a-client', kind: 'decision', file: 'SKILL.md', line: 12 },
+  { id: 'await-every-request', kind: 'rule', file: 'SKILL.md', line: 30 },
+  { id: 'retry-idempotent-only', kind: 'rule', file: 'features/retries.md', line: 20 },
+  { id: 'retry-delay', kind: 'fact', file: 'features/retries.md', line: 40 },
+];
 
 const lint: LintResult = {
   skill,
@@ -70,6 +78,7 @@ const test: Report = {
           weak: true,
           borderline: true,
           line: 19,
+          unit: 'retry-delay',
         },
         {
           ...verdict,
@@ -81,6 +90,7 @@ const test: Report = {
           probabilities: { none: 0.66, explain: 0.34, tool: 0 },
           pass: false,
           line: 30,
+          unit: 'no-such-unit',
           variants: [0.34, 0.41, 0.72],
         },
       ],
@@ -97,10 +107,10 @@ const test: Report = {
       error: 'no heading "Gone" in SKILL.md',
     },
   ],
-  summary: { tests: 4, passed: 2, borderline: 2, skipped: 1, usage: { input_tokens: 2000, output_tokens: 200 } },
+  summary: { tests: 4, passed: 2, borderline: 2, skipped: 0, usage: { input_tokens: 2000, output_tokens: 200 } },
 };
 
-const full: CheckReport = buildReport('check', { lint, test });
+const full: CheckReport = buildReport('check', { units, lint, test });
 const options = { cwd, color: false };
 
 describe('reporters', () => {
@@ -116,6 +126,7 @@ describe('reporters', () => {
 
   it('table and github: a clean check', () => {
     const clean = buildReport('check', {
+      units,
       lint: { ...lint, ok: true, problems: [] },
       test: { ...test, ok: true, specs: [{ ...test.specs[0]!, verdicts: test.specs[0]!.verdicts.slice(0, 2) }], summary: { ...test.summary, tests: 2, passed: 2, borderline: 1, skipped: 0 } },
     });
@@ -168,12 +179,14 @@ describe('reporters', () => {
   it('table: a skill outside the current folder is named once, and its findings start from it', () => {
     const out = render(full, 'table', { cwd: '/elsewhere/project', color: false });
     expect(out).toContain('Lint  /repo/skills/demo');
-    expect(out).toContain('1) features/retries.md:24  retry-idempotent-only');
+    expect(out).toContain('  features/retries.md\n');
+    expect(out).toContain('      lint   ✗ features/retries.md:24  breaks `retry-idempotent-only`');
     expect(out).not.toContain('../');
   });
 
   it('table: a dry run', () => {
     const dry = buildReport('test', {
+      units,
       test: {
         ...test,
         ok: true,
@@ -189,7 +202,7 @@ describe('reporters', () => {
     const refused = { ...verdict, id: 'post-retry', expect: 'stop', answer: '(refused)', confidence: 0, expectedProb: 0, pass: false, refused: true as const, line: 3 };
     const report = buildReport('test', { test: { ...test, ok: false, specs: [{ ...test.specs[0]!, verdicts: [refused] }] } });
     const table = render(report, 'table', options);
-    expect(table).toContain('   got:       nothing: the model refused to answer\n');
+    expect(table).toContain('\n             got:       nothing: the model refused to answer\n');
     expect(table).not.toContain('P(yes)');
     expect(render(report, 'junit', options)).toContain('expected stop; the model refused to answer');
     expect(render(report, 'github', options)).toContain('::error file=skills/demo/specs/retries.yaml,line=3,title=SkillUnit test%3A post-retry::expected stop; the model refused to answer%0A');
@@ -198,18 +211,94 @@ describe('reporters', () => {
 
   it('table: test --changed with nothing to run', () => {
     const none = buildReport('test', { test: { ...test, ok: true, specs: [], summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, usage: { input_tokens: 0, output_tokens: 0 } } } });
-    expect(render(none, 'table', options)).toBe('\nTest  nothing to run\n  0 tests · 7 specs left out by --changed\n\nOK  test 0/0 passed\n');
+    expect(render(none, 'table', options)).toBe('\nUnits  test nothing to run\n\n  0 tests · 7 specs left out by --changed\n\nOK  test 0/0 passed\n');
   });
 
   it('table: test --changed names its base', () => {
     const changed = buildReport('test', { test: { ...test, ok: true, specs: [], changed: { ref: 'origin/main', commit: '0e3adc4f00000000' } } });
-    expect(render(changed, 'table', options).split('\n')[1]).toBe('Test  nothing to run · changed since origin/main (0e3adc4)');
+    expect(render(changed, 'table', options).split('\n')[1]).toBe('Units  test nothing to run · changed since origin/main (0e3adc4)');
   });
 
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
     expect(json).toMatchObject({ schema: 5, command: 'check', ok: false });
     expect(json.test.specs[0].verdicts[1].borderline).toBe(true);
+    expect(json.units).toEqual(units);
+  });
+
+  describe('table: the report by unit', () => {
+    const out = render(full, 'table', options);
+
+    it('names each failing line once at the end, as file › unit › line, after which only the status line comes', () => {
+      const tail = out.slice(out.indexOf('\nFailed\n'));
+      expect(tail).toBe(
+        [
+          '\nFailed',
+          '  skills/demo/features/retries.md › skills/demo/specs/retries.yaml:30  user-asks-for-mutations',
+          '  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24',
+          '  skills/demo/features/retries.md › retry-delay › skills/demo/specs/retries.yaml:19  exact-command',
+          '  skills/demo/specs/broken.yaml  could not run',
+          '',
+          'FAILED  lint 1 error, 1 warning · test 2/4 passed (1 spec could not run, 2 borderline)',
+          '',
+        ].join('\n'),
+      );
+      expect(out).not.toMatch(/^(Failures|Borderline|Warnings)$/m);
+    });
+
+    it('shows the details of a failure under its line, and the number of a borderline pass', () => {
+      expect(out).toContain(
+        [
+          '    test   ~ skills/demo/specs/retries.yaml:12  get-retry  yes P(yes) 0.76',
+          '             P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it',
+        ].join('\n'),
+      );
+      expect(out).toContain(
+        [
+          '      test   ✗ skills/demo/specs/retries.yaml:19  exact-command  exact 0.44',
+          '               scenario:  The user asks to retry a POST.',
+          '               question:  What does the skill say?',
+          '               expected:  exact',
+          '               got:       exact · probability 0.44, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it',
+          '                          exact 44% · none 40% · loose 16%',
+        ].join('\n'),
+      );
+      expect(out).toContain('2 borderline: within 0.13 of the threshold');
+    });
+
+    it('notes a `unit:` that names no unit of the skill, under the test', () => {
+      expect(out).toContain('user-asks-for-mutations  none 0.66\n             unit: no-such-unit names no unit of the skill\n             scenario:');
+    });
+
+    it('carries the state in the mark, so the output reads the same without colour', () => {
+      expect(out).toContain('    test   ~ skills/demo/specs/retries.yaml:12  get-retry');
+      expect(out).toContain('    pick-a-client  decision\n');
+    });
+
+    it('--compact: one row per unit, with what failed under it', () => {
+      const proofOf = (id: string, state: 'proved' | 'unproved', title?: string) => ({
+        id,
+        file: units.find((u) => u.id === id)!.file,
+        line: 1,
+        state,
+        listed: state === 'proved',
+        tests: title ? [{ report: 'r.xml', line: 1, title, status: 'passed' as const }] : [],
+        fences: [],
+      });
+      const proof: ProofResult = {
+        configured: true,
+        ok: true,
+        skill,
+        reports: ['../../reports/junit.xml'],
+        write: false,
+        lock: { file: '../../skillunit.lock', exists: true, listed: 1, added: [], dropped: [], forgot: [], written: false },
+        units: [proofOf('pick-a-client', 'unproved'), proofOf('await-every-request', 'unproved'), proofOf('retry-idempotent-only', 'proved', 'only GET [skill:retry-idempotent-only]'), proofOf('retry-delay', 'unproved')],
+        problems: [],
+        summary: { units: 4, proved: 1, failed: 0, unproved: 3, tagged: 1, fences: 0, differ: 0, written: 0 },
+      };
+      const report = buildReport('check', { units, lint, proof, test });
+      expect(render(report, 'table', { ...options, compact: true })).toMatchSnapshot();
+    });
   });
 
   describe('names that nothing declares', () => {
@@ -266,7 +355,7 @@ describe('reporters', () => {
       ],
       summary: { units: 4, proved: 1, failed: 2, unproved: 1, tagged: 2, fences: 1, differ: 1, written: 0 },
     };
-    const withProof = buildReport('proof', { proof });
+    const withProof = buildReport('proof', { units, proof });
 
     for (const reporter of REPORTERS) {
       it(`${reporter}: proved, failed and unproved units, with every kind of finding`, () => {
@@ -304,9 +393,10 @@ describe('reporters', () => {
     });
 
     it('table: says when check ran with no proof key', () => {
-      const report = buildReport('check', { lint: { ...lint, ok: true, problems: [] }, proof: { configured: false, ok: true } });
+      const report = buildReport('check', { units, lint: { ...lint, ok: true, problems: [] }, proof: { configured: false, ok: true } });
       const text = render(report, 'table', options);
-      expect(text).toContain('Proof  not configured: no `proof` key in skillunit.yaml');
+      expect(text).toContain('Units  proof not configured\n');
+      expect(text).not.toContain('proof  ');
       expect(text.trim().split('\n').at(-1)).toBe('OK  lint ok · proof not configured');
       expect(render(report, 'github', options)).toBe('OK  lint ok · proof not configured\n');
       expect(JSON.parse(render(report, 'json', options)).proof).toEqual({ configured: false, ok: true });

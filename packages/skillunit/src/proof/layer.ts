@@ -129,6 +129,9 @@ export interface ProofSkipped {
   ok: true;
 }
 
+/** How the finding about a failed tagged test starts, so a reporter can show it under that test. */
+export const failedTestPrefix = (title: string) => `the test "${title}" (`;
+
 /** Slack on the start of a run read from a timestamp with no zone, which may be local time. */
 const UNZONED_SLACK_MS = 14 * 60 * 60 * 1000;
 
@@ -265,7 +268,7 @@ export function proof(options: ProofOptions): ProofResult {
       results.push({ id: unit.id, file: unit.file, line: unit.line, state: 'unproved', listed: isListed, tests: [], fences: [] });
       continue;
     }
-    for (const t of failed) at(`the test ${quoteTitle(t)} (${fromProject(resolve(skillDir, t.report))}:${t.line}) failed${t.message ? `: ${t.message}` : ''}. It proves this unit, so the unit may no longer say what the code does`);
+    for (const t of failed) at(`${failedTestPrefix(title(t))}${fromProject(resolve(skillDir, t.report))}:${t.line}) failed${t.message ? `: ${t.message}` : ''}. It proves this unit, so the unit may no longer say what the code does`);
     if (!failed.length && !passed.length) {
       const skipped = `every test tagged \`[skill:${unit.id}]\` was skipped (${tests.map(quoteTitle).join(', ')})`;
       if (isListed) {

@@ -12,6 +12,46 @@ It checks a skill in three layers:
 - **Proof** reads the project's own test run. A test whose title carries `[skill:<id>]` proves that instruction, and when the test fails, proof names the instruction. A test can also produce an instruction's example, which SkillUnit copies into the skill, so the example is code that ran.
 - **Test** asks a decision model closed questions about the skill. A test fails when the text does not settle the answer: a sentence contradicts a rule, or a rule is too vague to follow.
 
+`skillunit check` runs the three and prints each unit of the skill with what each layer found about it. On [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch), with `--dry-run`, which sends the tests nowhere and needs no key, cut to two of its six files:
+
+```
+Lint  skill
+  ✓ 6 files, all clean
+  12 units · 19 examples type-checked with TypeScript 5.6.3
+
+Units  proof reports/junit.xml · test dry run: nothing sent
+
+  skill/SKILL.md
+    test   · specs/skill.yaml:13  which-file-for-retries  ready
+    await-every-request  rule
+      proof  ✓ src/tinyfetch.test.ts › tinyfetch > resolves to the parsed body, so the caller awaits it
+      test   · specs/skill.yaml:4  await-the-call  ready
+
+  skill/features/retries.md
+    retry-defaults  fact
+      proof  ✓ src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time
+      test   · specs/retries.yaml:51  retry-delay-default  ready
+    what-is-retried  fact
+      proof  ✓ src/tinyfetch.test.ts › tinyfetch > retries network errors and 5xx, not 4xx or a timeout
+      test   –
+    retry-idempotent-only  rule
+      proof  –
+      test   · specs/retries.yaml:4  post-no-retry  ready
+      test   · specs/retries.yaml:15  patch-no-retry  ready
+      test   · specs/retries.yaml:26  retry-methods  ready
+      test   · specs/retries.yaml:36  put-may-retry  ready
+      test   · specs/retries.yaml:45  get-may-retry  ready
+  …
+
+  12 units · 6 proof and test · 3 proof only · 3 test only · 0 not covered
+  proved 9 of 12 units · 4 blocks from tests · 9 tagged tests · 9 units in the lock
+  16 tests
+
+OK  lint ok · proof ok · test dry run ok, 16 tests ready
+```
+
+A `–` is a layer with nothing on that unit. A unit with neither proof nor a test reads `not covered`.
+
 What it costs to run:
 
 - **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill. The decision model answers a spec, a file of tests, in under a second, however many tests it holds: 58 tests in 8 specs take about 1.5 seconds on TypeSafe and 3 on OpenAI.
@@ -165,10 +205,13 @@ In `src/retry.ts`:
 +export const DEFAULT_RETRY_DELAY = 500;
 ```
 
-The test fails, and proof names the unit it proves:
+The test fails, and proof shows it under the unit it proves:
 
 ```
-1) skill/features/retries.md:24  retry-defaults  the test "src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time [skill:retry-defaults]" (reports/junit.xml:20) failed: expected 500 to be 300 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
+  skill/features/retries.md
+    retry-defaults  fact
+      proof  ✗ src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time
+               the test "src/tinyfetch.test.ts › tinyfetch > does not retry by default, and waits 300 ms, then twice as long each time [skill:retry-defaults]" (reports/junit.xml:20) failed: expected 500 to be 300 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
 ```
 
 A test can also produce an example. A block flagged `proof=<id>` after its language holds the lines between `#region skill:<id>` and `#endregion` in a test, or a file the test wrote. `skillunit proof --write` copies them into the skill, and proof fails when the block and the test no longer agree.
@@ -184,17 +227,20 @@ A spec is a YAML list of closed questions about one file of the skill. A decisio
 +The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a PATCH, but the new sentence pulls it down to 39%, so the test fails:
+The model still picks `no-retry` for a POST, but the new sentence pulls it down to 47%, under the threshold, so the test fails. The PATCH test passes at 54%, close enough to the threshold to be marked borderline:
 
 ```
-2) specs/retries.yaml:15  patch-no-retry
-   skill:     skill/features/retries.md   unit: retry-idempotent-only
-   scenario:  A stock count is decreased with `tf.patch`, and the network drops now and then.
-   question:  Should the agent pass `retry` to that call?
-   expected:  no-retry
-   got:       no-retry · probability 0.39, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
-              no-retry 39% · none 33% · retry 28%
-   phrasings: 0.43  0.39 (probability of "no-retry" for each; the median decides)
+  skill/features/retries.md
+    retry-idempotent-only  rule
+      test   ✗ specs/retries.yaml:4  post-no-retry  no-retry 0.47
+               scenario:  A payment is sent with `tf.post` to an API that sometimes answers 503.
+               question:  Should the agent pass `retry` to that call?
+               expected:  no-retry
+               got:       no-retry · probability 0.47, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                          no-retry 47% · none 30% · retry 23%
+               phrasings: 0.56  0.47 (probability of "no-retry" for each; the median decides)
+      test   ~ specs/retries.yaml:15  patch-no-retry  no-retry 0.54
+               probability 0.54, threshold 0.50 · borderline: the next run may fail it
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -239,20 +285,35 @@ In `skill/features/retries.md`, change the `Right` example of `retry-idempotent-
 
 ### A default changed
 
-In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`. The fact `default-timeout` says a request waits 10 seconds, and a test asserts it. Run `npx vitest run`, which fails that test, then `npx skillunit proof`:
+In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`. The fact `default-timeout` says a request waits 10 seconds, and a test asserts it. Run `npx vitest run`, which fails that test, then `npx skillunit proof`. It ends with:
 
 ```
-1) skill/features/timeouts.md:38  default-timeout  the test "src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing [skill:default-timeout]" (reports/junit.xml:22) failed: expected 5000 to be 10000 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
+  skill/features/timeouts.md
+    default-timeout  fact
+      proof  ✗ src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing
+               the test "src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing [skill:default-timeout]" (reports/junit.xml:22) failed: expected 5000 to be 10000 // Object.is equality. It proves this unit, so the unit may no longer say what the code does
+    never-disable-timeout  rule
+      proof  –
+
+  proved 8 of 12 units, 1 failed · 4 blocks from tests · 9 tagged tests · 9 units in the lock
+
+Failed
+  skill/features/timeouts.md › default-timeout › src/tinyfetch.test.ts › tinyfetch > times out after 10 seconds when the code sets nothing
+
+FAILED  proof 1 error, 0 warnings
 ```
 
 If 5 seconds is the new default, edit the `Value` of `default-timeout` and the test's assertion together, run the tests again, and proof passes.
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry` and `patch-no-retry`:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), then run `npx skillunit test`. It fails `post-no-retry`, and `patch-no-retry` passes close to its threshold. The output ends with:
 
 ```
-FAILED  test 14/16 passed (3 borderline)
+Failed
+  skill/features/retries.md › retry-idempotent-only › specs/retries.yaml:4  post-no-retry
+
+FAILED  test 15/16 passed (2 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.

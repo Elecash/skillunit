@@ -3,8 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
-import { CLI } from './app.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { App, CLI } from './app.js';
+
+afterAll(() => App.removeAll());
 
 const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
 
@@ -96,5 +98,31 @@ describe('the decision model provider', () => {
     const provider = inProject('test', '--config', 'module.yaml', '--provider', 'typesafe', '--model', 'jev-latest');
     expect(provider.stderr).toContain('TYPESAFE_API_KEY is not set');
     expect(inProject('test', '--config', 'module.yaml', '--provider', 'typesafe', '--dry-run').status).toBe(0);
+  });
+});
+
+describe('the table reporter by unit', () => {
+  let app: App;
+  let ids: string[];
+  beforeAll(() => {
+    app = App.copy('table');
+    app.test();
+    ids = (app.run('check', '--dry-run').report.units as { id: string }[]).map((u) => u.id);
+  }, 120_000);
+  const table = (...args: string[]) => {
+    const result = spawnSync(process.execPath, [CLI, 'check', '--dry-run', ...args], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout;
+  };
+
+  it('names every unit of tinyfetch once, in the order of its files', () => {
+    expect(ids).toHaveLength(12);
+    const heads = [...table().matchAll(/^ {4}(\S+) {2}(?:rule|decision|fact)$/gm)].map((m) => m[1]);
+    expect(heads).toEqual(ids);
+  });
+
+  it('--compact: one row per unit', () => {
+    const rows = [...table('--compact').matchAll(/^ {4}[✓✗~] (\S+) +(?:rule|decision|fact) /gm)].map((m) => m[1]);
+    expect(rows).toEqual(ids);
   });
 });

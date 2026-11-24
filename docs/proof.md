@@ -180,7 +180,9 @@ example file or a region that no block uses, and about an example file older tha
 in the reports, which a test did not write this time.
 
 Every reporter shows the units proved, failed and unproved, the blocks that come from tests, and
-what `--write` or `--forget` did to the lock. `skillunit check` runs the layer after lint,
+what `--write` or `--forget` did to the lock. The `table` reporter puts each tagged test under the
+unit it proves, with its title and whether it passed, and `proof  –` under a unit no test is
+tagged for. `skillunit check` runs the layer after lint,
 `--dry-run` included: it needs no key.
 
 ## Wiring a test run
