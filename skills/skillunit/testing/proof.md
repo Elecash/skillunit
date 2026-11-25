@@ -2,7 +2,7 @@
 
 How to declare a unit in the test that checks it, so the skill is built from the code and changes when the code does.
 
-A unit that a test can check is declared in that test with `unit()` from `skillunit/vitest`, or `createUnit` from `skillunit/unit` for another runner. `source` in `skillunit.yaml` is the folder people write; `skill` is built from it. In the source, `{{unit:<id>}}` alone on a line is where a unit from a test goes, and `{{value:<id>.<name>}}` is a value a test lists in `values`. A unit no test can check, such as advice, is written in the source by hand.
+A unit that a test can check is declared in that test with `unit()` from `skillunit/vitest`, or `createUnit` from `skillunit/unit` for another runner. `source` in `skillunit.yaml` is the folder people write; `skill` is built from it. In the source, `{{unit:<id>}}` alone on a line is where a unit from a test goes, and `{{value:<id>.<name>}}` is a value a test lists in `values`. A unit no test can check, such as advice, is declared with `unit()` and no body: it is built like any unit, and the report reads `declared, no test`. A unit heading written in the source is an error.
 
 | Spec key | Kind | Becomes |
 | --- | --- | --- |
@@ -10,8 +10,10 @@ A unit that a test can check is declared in that test with `unit()` from `skillu
 | `do` | rule | `Do:` |
 | `value`, or `u.value(text)` in the body | fact | `Value:` |
 | `decide`, `paths: [{ path, when }]` | decision | `Decide:` and its paths |
-| `unknown`, `evenWhen`, `check` | as in a unit by hand | `Unknown:`, `Even when:`, `Check:` |
+| `unknown`, `evenWhen`, `check` | fact; rule or decision; any kind | `Unknown:`, `Even when:`, `Check:` |
 | `values: { name: value }` | any kind | `{{value:<id>.<name>}}` in the source |
+| `examples: [{ lang, text }]`, or `u.example(lang, text)` in the body | rule or fact | a block under `Right:` or the `Value:` |
+| `ask` | any kind | questions for the decision model about the file that holds the unit |
 
 `npx skillunit proof` runs `proof.run`, builds the skill and compares it with the `skill` folder; `npx skillunit proof --write` writes it. Each finding about a line of the skill names the file that line comes from: the test of a unit, or the source.
 
@@ -23,7 +25,7 @@ When: a unit states what the code does: a default, which inputs it takes, what i
 
 Do: declare the unit with `unit()` around the test that asserts what it states, put `{{unit:<id>}}` in the source where the unit goes, run `npx skillunit proof --write`, and commit the test, the source and the built skill together.
 
-Even when: a test on the same topic already exists; wrap it only if it asserts what the unit says. A unit no test can check, such as advice, stays in the source, written by hand.
+Even when: a test on the same topic already exists; wrap it only if it asserts what the unit says. A unit no test can check, such as advice, is declared with `unit()` and no body.
 
 Right:
 
@@ -87,6 +89,6 @@ Even when: skipping the test would make the test run pass; the slot then has no 
 
 When: `npx skillunit proof` reports a `{{unit:<id>}}` that no test left.
 
-Do: bring back the test that declared it; remove the slot only when the unit is no longer meant to be in the skill, or write the unit by hand in its place when it became advice.
+Do: bring back the test that declared it; remove the slot only when the unit is no longer meant to be in the skill, or declare the unit with no body when it became advice.
 
 Even when: removing the slot would make the check pass at once; a test that is lost by mistake is what the slot is there to catch.

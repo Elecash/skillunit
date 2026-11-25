@@ -17,7 +17,7 @@ describe('exit 2 with a JSON reporter', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toMatch(/^skillunit: /);
       const out = JSON.parse(result.stdout);
-      expect(out).toMatchObject({ schema: 5, command: args[0], ok: false, error: { exit: 2 } });
+      expect(out).toMatchObject({ schema: 6, command: args[0], ok: false, error: { exit: 2 } });
       expect(result.stderr).toContain(out.error.message);
     }
   });
@@ -61,11 +61,16 @@ describe('a report through a pipe', () => {
 describe('the decision model provider', () => {
   // Outside any git repository, so no .env above it supplies a key.
   const project = mkdtempSync(join(tmpdir(), 'skillunit-provider-'));
-  writeFileSync(join(project, 'SKILL.md'), '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n');
-  mkdirSync(join(project, 'specs'));
-  writeFileSync(join(project, 'specs', 'a.yaml'), 'tests:\n  - id: get\n    scenario: A GET times out.\n    question: May the agent retry it?\n    expect: yes\n');
+  // A skill built from a source, whose `proof.run` declares nothing: the questions are none.
+  const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
+  for (const dir of ['skill', 'skill-src']) {
+    mkdirSync(join(project, dir));
+    writeFileSync(join(project, dir, 'SKILL.md'), skill);
+  }
+  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  writeFileSync(join(project, 'skillunit.yaml'), settings);
   writeFileSync(join(project, 'mine.mjs'), "export default { id: 'mine', limits: { perQuestionTokens: 1000, perRequestTokens: 2000 }, decide: async () => { throw new Error('not sent'); } };\n");
-  writeFileSync(join(project, 'module.yaml'), 'model: ./mine.mjs\n');
+  writeFileSync(join(project, 'module.yaml'), `${settings}model: ./mine.mjs\n`);
   afterAll(() => rmSync(project, { recursive: true, force: true }));
 
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.endsWith('_API_KEY')));

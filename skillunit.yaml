@@ -8,7 +8,8 @@ examples:
   md: { command: "node tools/check-example.mjs md {file}" }
   yaml: { command: "node tools/check-example.mjs yaml {file}" }
   sh: { command: "sh -n {file}" }
-# `skillunit proof` runs the package's tests, which declare eleven units of the skill with
-# `unit()`, and builds skills/skillunit from skills-src/skillunit.
+# `skillunit proof` runs the tests that declare the units of the skill and their questions, and
+# builds skills/skillunit from skills-src/skillunit. They are the files named `*.skill.test.ts`,
+# and three files whose units need fixtures of the tests around them; CI runs the whole suite.
 proof:
-  run: "cd packages/skillunit && npx vitest run"
+  run: "cd packages/skillunit && npx vitest run skill.test src/lint/files.test.ts src/env.test.ts src/test/runner.test.ts"

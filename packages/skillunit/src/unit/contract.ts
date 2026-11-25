@@ -95,6 +95,11 @@ export interface UnitSpec {
   values?: Record<string, UnitScalar>;
   /** Questions for the decision model about this unit: one, or a list. */
   ask?: UnitQuestion | UnitQuestion[];
+  /**
+   * A rule or a fact: blocks to show, such as a command or a config. They come before the blocks
+   * of `u.example`, and are how a unit with no body shows an example in a language its file is not.
+   */
+  examples?: UnitExample[];
 }
 
 /**
@@ -195,7 +200,9 @@ export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 /** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
 export const NONE = 'none';
 
-const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values', 'ask'] as const;
+const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values', 'ask', 'examples'] as const;
+/** A fence language: what `u.example` and `examples` take. */
+export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
 const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
 /** The file a question about prose reads when it names none. */
 export const DEFAULT_SKILL_FILE = 'SKILL.md';
@@ -258,6 +265,16 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
       if (!['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'number' && !Number.isFinite(v))) {
         fail(`the value \`${name}\` must be text, a finite number or a boolean; got ${JSON.stringify(v) ?? String(v)}`);
       }
+    }
+  }
+  if (s.examples !== undefined) {
+    if (kind === 'decision') fail(`a decision shows its examples in its paths, from the regions \`skill:${id as string}.<path>\`; \`examples\` is for a rule or a fact`);
+    if (!Array.isArray(s.examples)) fail("`examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`");
+    for (const x of s.examples as unknown[]) {
+      const { lang, text, ...rest } = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+      if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) fail(`each example has a fence language in \`lang\`, such as \`sh\` or \`yaml\`; got ${JSON.stringify(lang)}`);
+      if (typeof text !== 'string') fail(`the \`${lang as string}\` example needs its text in \`text\``);
+      if (Object.keys(rest).length) fail(`an example has an unknown key \`${Object.keys(rest)[0]}\` (allowed: lang, text)`);
     }
   }
   if (s.ask !== undefined) checkQuestions(id as string, s.ask);

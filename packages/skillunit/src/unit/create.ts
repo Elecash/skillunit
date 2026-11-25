@@ -16,7 +16,7 @@
  * This module imports nothing from Node at load time: a runner that cannot write files passes
  * its own `write`, and the default one is loaded only when a unit is written.
  */
-import { checkAsk, checkQuestions, checkSpec, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
+import { checkAsk, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
 
 /** What the body of a unit gets, besides the runner's own context. */
 export interface UnitContext {
@@ -133,7 +133,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
             throw problem;
           }
           let value = spec.value;
-          const examples: UnitExample[] = [];
+          const examples: UnitExample[] = (spec.examples ?? []).map((x) => ({ lang: x.lang, text: x.text }));
           if (body) {
             const u: UnitContext = {
               value(text) {
@@ -143,7 +143,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               },
               example(lang, text) {
                 if (kind === 'decision') throw new Error(`unit \`${id}\`: a decision shows its examples in its paths, from the regions \`skill:${id}.<path>\`; \`u.example\` is for a rule or a fact`);
-                if (typeof lang !== 'string' || !/^[A-Za-z0-9_+.-]+$/.test(lang)) throw new Error(`unit \`${id}\`: \`u.example\` takes a fence language first, such as \`text\` or \`json\`; got ${JSON.stringify(lang)}`);
+                if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) throw new Error(`unit \`${id}\`: \`u.example\` takes a fence language first, such as \`text\` or \`json\`; got ${JSON.stringify(lang)}`);
                 if (typeof text !== 'string') throw new Error(`unit \`${id}\`: \`u.example\` takes the block's text as a string`);
                 examples.push({ lang, text });
               },

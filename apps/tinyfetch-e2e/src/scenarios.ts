@@ -48,6 +48,8 @@ async function prettier(app: App, files: string[], proseWrap: 'preserve' | 'alwa
 
 /** The tests of tinyfetch, which declare units of its skill. */
 const TEST = 'src/tinyfetch.test.ts';
+/** The units that no test proves, declared with no body, and a question about prose. */
+const DECLARED = 'src/tinyfetch.skill.test.ts';
 
 const SOURCE_FILES = ['skill-src/SKILL.md', ...['clients', 'errors', 'requests', 'retries', 'timeouts'].map((f) => `skill-src/features/${f}.md`)];
 
@@ -176,12 +178,23 @@ export const scenarios: Scenario[] = [
     // asks about every method, passed at 0.63 to 0.73.
     expect: { failing: ['post-no-retry'], mayFail: ['patch-no-retry', 'retry-methods'] },
   },
+  // A unit with no body is declared in code like any other: its sentence changes there, and the
+  // skill follows only after a build.
+  {
+    name: 'ambiguous rule, not rebuilt',
+    change: "weaken the wording of a unit with no body, and leave the skill",
+    apply(app) {
+      app.edit(DECLARED, "do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',", "do: 'think about whether `retry` suits the method before you enable it.',");
+      app.commit('Soften the retry rule');
+    },
+    expect: { proof: ['retry-idempotent-only'] },
+  },
   {
     name: 'ambiguous rule',
-    change: "weaken a rule's wording",
+    change: "weaken the wording of a unit with no body, then `skillunit proof --write`",
     model: 'required',
     apply(app) {
-      app.edit('skill-src/features/retries.md', 'Do: enable `retry` only for GET, HEAD, PUT and DELETE.', 'Do: think about whether `retry` suits the method before you enable it.');
+      app.edit(DECLARED, "do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',", "do: 'think about whether `retry` suits the method before you enable it.',");
       app.build();
       app.commit('Soften the retry rule');
     },
@@ -189,17 +202,39 @@ export const scenarios: Scenario[] = [
     expect: { failing: ['put-may-retry', 'retry-methods'], mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   {
-    name: 'unit added with no test',
-    change: 'add a fact that no test proves',
+    name: 'unit declared with no body',
+    change: 'declare a fact that no test proves, and put its slot in the source',
     apply(app) {
-      const unit =
-        '\n### fact: timeout-error-names-its-limit\n\nWhen: code reads a `TimeoutError`.\n\nValue: `error.timeout` is the limit in milliseconds that the request went over.\n';
-      app.write('skill-src/features/timeouts.md', app.read('skill-src/features/timeouts.md') + unit);
+      const unit = "\nunit('timeout-error-names-its-limit', {\n  when: 'code reads a `TimeoutError`.',\n  value: '`error.timeout` is the limit in milliseconds that the request went over.',\n});\n";
+      app.write(DECLARED, app.read(DECLARED) + unit);
+      app.edit('skill-src/features/timeouts.md', '{{unit:never-disable-timeout}}\n', '{{unit:never-disable-timeout}}\n\n{{unit:timeout-error-names-its-limit}}\n');
       app.build();
       app.commit('Add a unit about TimeoutError');
     },
-    // A unit written by hand is counted, not reported.
+    // A unit no test proves is counted, not reported.
     expect: {},
+  },
+  {
+    name: 'unit heading in the source',
+    change: 'write a unit in the source, as `### rule:` with its labels',
+    apply(app) {
+      const unit = '\n### rule: log-failed-requests\n\nWhen: code logs a failed tinyfetch request.\n\nDo: log the method, the URL and `error.status` together.\n';
+      app.write('skill-src/features/errors.md', app.read('skill-src/features/errors.md') + unit);
+      app.commit('Add a unit to the source');
+    },
+    // Units are declared with `unit()`; the source holds where they go.
+    expect: { proof: ['log-failed-requests'] },
+  },
+  {
+    name: 'question with no right option',
+    change: 'rename the option that the `expect` of a question names',
+    apply(app) {
+      app.edit(TEST, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
+      app.commit('Rename an option');
+    },
+    // The test of the unit fails, so neither the unit nor its two values in the options table are
+    // built, and the run does not exit with 0.
+    expect: { proof: ['retry-defaults', 'retry-defaults', 'retry-defaults', '../skillunit.yaml'] },
   },
   ...(['preserve', 'always', 'never'] as const).map(
     (proseWrap): Scenario => ({
@@ -214,22 +249,6 @@ export const scenarios: Scenario[] = [
       expect: {},
     }),
   ),
-  {
-    name: 'formatter that joins lines',
-    change: 'write a unit with its labels on consecutive lines, then run Prettier with proseWrap always',
-    async apply(app) {
-      const compact =
-        '\n### rule: log-failed-requests\nWhen: code logs a failed tinyfetch request.\nDo: log the method, the URL and `error.status` together.\n';
-      app.write('skill-src/features/errors.md', app.read('skill-src/features/errors.md') + compact);
-      await prettier(app, ['skill-src/features/errors.md'], 'always');
-      app.build();
-      app.commit('Add a unit, format');
-    },
-    expect: {
-      // `When:` and `Do:` share a line, so the rule has no `Do` of its own any more.
-      lint: ['structure skill/features/errors.md log-failed-requests', 'structure skill/features/errors.md log-failed-requests'],
-    },
-  },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
   // stops reporting what the README shows. The contradicting sentence is the scenario
   // `contradicting prose` above.
@@ -246,11 +265,8 @@ export const scenarios: Scenario[] = [
     name: 'README 2: Right example that breaks its rule',
     change: 'turn the `Right` example of `retry-idempotent-only` into a retried POST',
     apply(app) {
-      app.edit(
-        'skill-src/features/retries.md',
-        'Right:\n\n```ts\nawait tf.get("https://api.example.com/users", { retry: 3 });\n```',
-        'Right:\n\n```ts\nawait tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });\n```',
-      );
+      // The example is the region of the unit, where it is declared.
+      app.edit(DECLARED, "await tf.get('https://api.example.com/users', { retry: 3 });", "await tf.post('https://api.example.com/orders', { item: 42 }, { retry: 3 });");
       app.build();
       app.commit('Retry a POST in the Right example');
     },
@@ -268,9 +284,12 @@ export const scenarios: Scenario[] = [
     // The `Value` of the unit, and the row of the options table that shows the default.
     expect: { proof: ['default-timeout', 'features/timeouts.md'] },
   },
+  // With a key, the question about the default is asked too: its options are built from the
+  // same constant, so it passes with no edit.
   {
     name: 'README 4: default changed, skill rebuilt',
     change: 'the same change, then `skillunit proof --write`',
+    model: 'optional',
     apply(app) {
       app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
       app.build();

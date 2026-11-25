@@ -88,7 +88,6 @@ export function checkRecord(raw: unknown): string | undefined {
   if (!Array.isArray(examples) || examples.some((x) => !x || typeof (x as UnitExample).lang !== 'string' || !(x as UnitExample).lang || typeof (x as UnitExample).text !== 'string')) {
     return '`examples` must be a list of `{ "lang": …, "text": … }`';
   }
-  if (body === false && examples.length) return 'a unit with no body has no `examples`; its example comes from a region `skill:<id>` in its file';
   if (found === 'decision' && examples.length) return 'a decision shows its examples in its paths, from the regions `skill:<id>.<path>`, and has no `examples`';
   return undefined;
 }

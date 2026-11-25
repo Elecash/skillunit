@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { format } from 'prettier';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codeSpans, parseCheck, parseFile, parseSkill } from './parse.js';
+import { messages, parse } from './testing.js';
 import type { Fence, InlineCode } from './types.js';
-import { unit } from '../vitest.js';
 
 const F = '```';
 
@@ -103,8 +103,6 @@ Decide:
 Even when: the second request is added later.
 `;
 
-const parse = (text: string, file = 'features/retries.md') => parseFile(text, file);
-const messages = (text: string) => parse(text).errors.map((e) => `${e.line}: ${e.message}`);
 /** 1-based line of the first line of `text` that contains `needle`. */
 const lineOf = (text: string, needle: string) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
 
@@ -411,15 +409,6 @@ Decide:
 });
 
 describe('Check', () => {
-  unit('check-regex-in-a-code-span', { when: "a rule's mistake can be matched by a regex.", do: 'add `Check: forbid` with the regex inside backticks, followed by `in` and the fence languages it applies to.', check: 'forbid `/Check: forbid \\//` in md' }, (u) => {
-    u.example('md', 'Check: forbid `/\\.(post|patch)\\([^)]*retry/` in ts');
-    expect(messages('### rule: r\nCheck: forbid /post.*retry/ in ts\n')).toEqual([
-      '2: put the regex of a `Check` in backticks, as in ``forbid `/regex/` in ts``: outside a code span, Markdown reads `*` and `_` as emphasis and a formatter rewrites them',
-    ]);
-    expect(parseCheck('forbid `/a/i` in ts, TSX', 3)).toMatchObject({ mode: 'forbid', langs: ['ts', 'tsx'], line: 3 });
-    expect(parseCheck('forbid `/a/` in python, Bash, typescript', 1)).toMatchObject({ langs: ['py', 'sh', 'ts'] });
-    expect(parseCheck('forbid ``/a`b/`` in ts', 1)).toMatchObject({ regex: /a`b/ });
-  });
 
   it('reports require, the flags g and y, a bad regex and a bad layout', () => {
     expect(parseCheck('require `/a/` in ts', 1)).toBe('`require` is not supported; v1 of `Check` has only `forbid`');
@@ -440,14 +429,6 @@ describe('Check', () => {
 });
 
 describe('labels and lists', () => {
-  unit('blank-line-after-a-list', { when: 'a label follows a list, such as the items of `Right` or the paths of `Decide`.', do: 'leave a blank line between the last item and the label.' }, () => {
-    const file = parse('### decision: d\nDecide:\n- **a** — x\nEven when: y\n');
-    expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual([
-      '4: leave a blank line between the list and `Even when:`; without it, Markdown reads the label as part of the last list item',
-    ]);
-    expect(file.units[0]!.evenWhen).toBe('y');
-    expect(file.units[0]!.decide[0]!.condition).toBe('x');
-  });
 
   it('reports a label indented into a list item, as a formatter leaves it, without joining it', () => {
     const file = parse('### decision: d\nDecide:\n- **a** — x\n  Even when: y\n  Right:\n- `z`\n');

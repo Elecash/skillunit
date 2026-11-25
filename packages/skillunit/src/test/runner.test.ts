@@ -35,7 +35,23 @@ const no: TestCase = { ...yes, expect: 'no' };
 const th = DEFAULT_THRESHOLDS;
 
 describe('buildRequest', () => {
-  unit('none-is-built-in', { when: 'the agent wants an option that means "other", "none of these" or "the skill does not say".', do: 'leave it out: SkillUnit adds `none` to every choice test.' }, () => {
+  unit('none-is-built-in', {
+      when: 'the agent wants an option that means "other", "none of these" or "the skill does not say".',
+      do: 'leave it out: SkillUnit adds `none` to every question with options.',
+      ask: {
+        id: 'define-other',
+        scenario: [
+          'The agent wants an option for "a command that is not in the list".',
+          'The agent wants an option meaning "the skill does not say".',
+        ],
+        question: 'What should the agent do with that option?',
+        options: {
+          add: 'Add it to the options of the question',
+          leave: 'Leave it out',
+        },
+        expect: 'leave',
+      },
+    }, () => {
     const request = buildRequest('skill text', [{ ...choice, scenarios: ['One.', 'Two.'] }, yes], 'A tiny HTTP client.');
     expect(request.questions.map((q) => q.id)).toEqual(['pick#1', 'pick#2', 'allowed']);
     expect(request.questions[0]).toEqual({
@@ -255,7 +271,25 @@ describe('runAll', () => {
     expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
   });
 
-  unit('dry-run-without-key', { when: 'there is no API key, and the user asked for tests.', do: 'write the specs anyway, run `npx skillunit check --dry-run`, and tell the user the tests were not sent to the model.', evenWhen: 'the specs look obviously right; a test that was never sent has not passed.' }, async (u) => {
+  unit('dry-run-without-key', {
+      when: 'there is no API key, and the user asked for tests.',
+      do: 'write the questions anyway, run `npx skillunit check --dry-run`, and tell the user they were not sent to the model.',
+      evenWhen: 'the questions look obviously right; a question that was never sent has not passed.',
+      ask: {
+        id: 'no-key-yet',
+        scenario: [
+          'The user asks for SkillUnit tests for their skill, and TYPESAFE_API_KEY is not set anywhere.',
+          'The agent is about to test a skill, but there is no .env file and no API key in the environment.',
+        ],
+        question: 'What should the agent do?',
+        options: {
+          dry: 'Write the questions, run `check --dry-run`, and tell the user they were not sent',
+          ask: 'Stop and wait until the user provides a key before writing anything',
+          skip: 'Write the questions and report them as passing',
+        },
+        expect: 'dry',
+      },
+    }, async (u) => {
     u.example('sh', 'npx skillunit check --dry-run');
     const config = project();
     const { model, calls } = stub(() => new Error('must not be called'));

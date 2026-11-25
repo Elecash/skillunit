@@ -1,6 +1,7 @@
 // A `unit()` is a test that declares a unit of the skill: its sentence is built here, from the
 // code where the code has the value, and `skillunit proof` puts it where `skill-src` has
-// `{{unit:<id>}}`. A `#region skill:<id>` in its body is the unit's example. See docs/proof.md.
+// `{{unit:<id>}}`. A `#region skill:<id>` in its body is the unit's example, and its `ask` holds
+// the questions for the decision model, with options built from the code too. See docs/proof.md.
 import { unit } from 'skillunit/vitest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HttpError, isHttpError, tf, TimeoutError } from './index.js';
@@ -58,6 +59,16 @@ describe('tinyfetch', () => {
     {
       when: 'the code calls a tinyfetch method.',
       do: '`await` the call, or return its promise: every method returns a promise of the parsed body.',
+      ask: {
+        id: 'await-the-call',
+        scenario: 'The code needs the name of user 1 from the API and logs it.',
+        question: 'How should it get the name?',
+        options: {
+          await: 'Await `tf.get(...)`, then read `name` from the result',
+          direct: 'Read `.name` straight off the `tf.get(...)` call',
+        },
+        expect: 'await',
+      },
     },
     async () => {
       serve({ body: { name: 'Ada' } });
@@ -90,6 +101,16 @@ describe('tinyfetch', () => {
       when: 'a request needs query parameters.',
       do: 'pass them in the `query` option, which encodes each value.',
       check: 'forbid `/\\.(get|head|post|put|patch|delete)(<[^>]*>)?\\(\\s*["\'][^"\']*\\?/` in ts',
+      ask: {
+        id: 'query-parameters',
+        scenario: 'The code lists users page by page and must send the page number and a search term typed by the user.',
+        question: 'How should it pass them?',
+        options: {
+          option: 'In the `query` option of the call',
+          'by-hand': 'Appended to the path as `?page=...&q=...`',
+        },
+        expect: 'option',
+      },
     },
     async () => {
       serve({ body: [] });
@@ -108,6 +129,16 @@ describe('tinyfetch', () => {
       when: 'a request sends data.',
       do: 'pass the object itself as the body; tinyfetch serializes it and sets `content-type`.',
       check: 'forbid `/JSON\\.stringify/` in ts',
+      ask: {
+        id: 'send-an-object',
+        scenario: 'The code creates a user from a form and has the user as a plain object.',
+        question: 'What should it pass as the body of `tf.post`?',
+        options: {
+          object: 'The object itself',
+          string: 'The object passed through `JSON.stringify` first',
+        },
+        expect: 'object',
+      },
     },
     async () => {
       serve({ status: 201, body: { id: 2 } });
@@ -145,6 +176,17 @@ describe('tinyfetch', () => {
     {
       when: 'code catches an error from a tinyfetch call and reads its status.',
       do: 'test the error with `isHttpError(error)` before reading `status` or `body`.',
+      ask: {
+        id: 'read-status',
+        scenario: 'The code must show "not found" when the API answers 404, and catches the error of `tf.get`.',
+        question: 'What should it do before reading `error.status`?',
+        options: {
+          narrow: 'Check the error with `isHttpError(error)`',
+          cast: 'Cast the error to `{ status: number }`',
+          nothing: 'Read `error.status` straight away',
+        },
+        expect: 'narrow',
+      },
     },
     async () => {
       serve({ status: 404, body: { error: 'not found' } });
@@ -188,6 +230,17 @@ describe('tinyfetch', () => {
       when: 'a request sets no `retry`, or no `retryDelay`.',
       value: `\`retry\` is ${DEFAULT_RETRY}, ${DEFAULT_RETRY === 0 ? 'so a failed request is not repeated' : `so a failed request is repeated up to ${DEFAULT_RETRY} times`}; \`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, doubled before each next one.`,
       values: { retry: DEFAULT_RETRY, 'retry-delay': DEFAULT_RETRY_DELAY },
+      ask: {
+        id: 'retry-delay-default',
+        scenario: 'The agent sets `retry` and leaves `retryDelay` out.',
+        question: 'How long does tinyfetch wait before the first new attempt?',
+        options: {
+          right: `${DEFAULT_RETRY_DELAY} ms`,
+          ms1000: '1 second',
+          'none-wait': 'It retries at once',
+        },
+        expect: 'right',
+      },
     },
     async () => {
       vi.useFakeTimers();
@@ -219,6 +272,29 @@ describe('tinyfetch', () => {
       value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${underscored(DEFAULT_TIMEOUT)}\`), for every method.`,
       unknown: 'tinyfetch has no separate connect timeout; say so instead of inventing one.',
       values: { seconds: DEFAULT_TIMEOUT / 1000, ms: underscored(DEFAULT_TIMEOUT) },
+      ask: [
+        {
+          scenario: 'The user asks how long a tinyfetch request waits before it gives up, when the code sets nothing.',
+          question: 'What should the agent answer?',
+          options: {
+            right: `${DEFAULT_TIMEOUT / 1000} seconds`,
+            longer: `${(3 * DEFAULT_TIMEOUT) / 1000} seconds`,
+            forever: 'It waits until the server answers',
+          },
+          expect: 'right',
+        },
+        {
+          id: 'connect-timeout',
+          scenario: 'The user asks which option sets the connect timeout of a tinyfetch request.',
+          question: 'What should the agent answer?',
+          options: {
+            timeout: 'The `timeout` option',
+            connect: 'A `connectTimeout` option',
+            'none-exists': 'tinyfetch has no separate connect timeout',
+          },
+          expect: 'none-exists',
+        },
+      ],
     },
     async () => {
       vi.useFakeTimers();

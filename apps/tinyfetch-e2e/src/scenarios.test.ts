@@ -5,17 +5,18 @@ import { scenarios, type Expected } from './scenarios.js';
 afterAll(() => App.removeAll());
 
 /** What SkillUnit reported, in the form the scenarios list it. */
-function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail' | 'oneFails'>> & { specErrors: string[] } {
+function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail' | 'oneFails'>> & { testErrors: string[] } {
   const problems: any[] = report.lint?.problems ?? [];
   const show = (p: any) => [p.rule, `skill/${p.file}`, p.unit ?? '-', /TS\d+/.exec(p.message)?.[0]].filter(Boolean).join(' ');
-  const verdicts: any[] = (report.test?.specs ?? []).flatMap((s: any) => s.verdicts);
+  const verdicts: any[] = (report.test?.requests ?? []).flatMap((r: any) => r.verdicts);
   return {
     lint: problems.filter((p) => p.severity === 'error').map(show).sort(),
     lintWarnings: problems.filter((p) => p.severity === 'warning').map(show).sort(),
     proof: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'error').map((p: any) => p.unit ?? p.file).sort(),
     proofWarnings: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'warning').map((p: any) => p.unit ?? p.file).sort(),
     failing: report.test?.dryRun ? [] : verdicts.filter((v) => !v.pass).map((v) => v.id).sort(),
-    specErrors: (report.test?.specs ?? []).filter((s: any) => s.error).map((s: any) => `${s.spec}: ${s.error}`),
+    // A request that could not run, and a question that could not be asked.
+    testErrors: [...(report.test?.requests ?? []).filter((r: any) => r.error).map((r: any) => `${r.file}: ${r.error}`), ...(report.test?.problems ?? []).map((p: any) => p.message)],
   };
 }
 
@@ -33,7 +34,7 @@ describe('tinyfetch scenarios', () => {
       const want = scenario.expect;
       const allowed = new Set([...(want.failing ?? []), ...(want.mayFail ?? []), ...(want.oneFails ?? [])]);
 
-      expect(seen.specErrors).toEqual([]);
+      expect(seen.testErrors).toEqual([]);
       if (real && want.oneFails) expect(seen.failing.some((id) => want.oneFails!.includes(id)), `one of ${want.oneFails.join(', ')} fails`).toBe(true);
       expect({
         lint: seen.lint,
