@@ -146,10 +146,11 @@ about a template language can show `{{ user.name }}`.
 
 1. empty the `proof.units` folder of its records;
 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, and go on whatever it
-   exits with, since a failing test is what proof is there to report;
+   exits with, so a failing test is reported on the unit it declares;
 3. read the units, fill the source, and run `proof.format` on each built Markdown file;
-4. compare the result with the `skill` folder, and fail on the first line of each block that
-   differs.
+4. compare the result with the `skill` folder, and fail on each block of lines that differs.
+   A block is reported on its first line that differs in more than layout, so a table whose
+   columns the formatter padded again is reported on the row whose value changed.
 
 `skillunit proof --write` writes the `skill` folder instead of comparing. `--no-run` skips steps
 1 and 2 and uses the units that are there, for a pipeline that ran the tests in an earlier step.
@@ -165,9 +166,14 @@ It is an error when:
 - a slot appears twice;
 - the `skill` folder holds a file the source does not build. `--write` reports it and does not
   delete it;
-- `proof.run` left no unit at all and exited with an error. The message shows the last lines of
-  its output;
-- a line of the skill folder is not what the build gives.
+- `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, and says the
+  command, how it ended and the last lines of its output, where the runner names the test that
+  failed. When the run left no unit at all, it says that too, in the same error. A test that
+  declares a unit and fails is reported twice: on its unit, with the assertion's message, and
+  by the run;
+- a line of the skill folder is not what the build gives. The message says to run
+  `skillunit proof --write`, which is all a change to the code needs, and that the skill folder is
+  built, so a change to its text is made where the line comes from.
 
 A file whose build failed is neither compared nor written, so its one problem is reported once.
 
@@ -180,8 +186,9 @@ which file to edit instead.
 ```text
 proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has
          `Value: 5 seconds ('timeout: 5000'), for every method.`, the skill has
-         `Value: 10 seconds ('timeout: 10000'), for every method.`. The skill is built: edit
-         the file this line comes from, then run `skillunit proof --write`
+         `Value: 10 seconds ('timeout: 10000'), for every method.`. Run `skillunit proof --write`
+         to update the skill. To change this text, change where it comes from: the skill folder
+         is built.
          from the test of `default-timeout`, src/tinyfetch.test.ts:215
 ```
 

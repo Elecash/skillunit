@@ -26,7 +26,8 @@ jobs:
 - The default shallow clone is enough. Only `check --changed` reads git history: with it, add
   `with: { fetch-depth: 0 }` to the checkout step.
 - With `source` and `proof.run` in `skillunit.yaml`, `check` runs the project's tests itself and
-  goes on when they fail, so a failing test is reported on the unit it declares. A project that
+  goes on when they fail, so a failing test is reported on the unit it declares, then fails: a
+  run that did not exit with 0 is an error, with the end of its output. A project that
   runs its tests in a step of its own runs `check --no-run` after it, with `if: always()` on the
   `check` step so a red test step does not skip it.
 - CI never writes the skill folder. A change that moves a value the skill states fails the check

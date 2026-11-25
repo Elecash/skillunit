@@ -20,11 +20,13 @@ describe('the proof of tinyfetch', () => {
     expect(check.code).toBe(1);
     const unit = errors(check).find((p) => p.unit === 'default-timeout');
     expect(unit.message).toBe(
-      "this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`",
+      "this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.",
     );
     expect(unit.origin).toEqual({ kind: 'test', file: `../${TEST}`, line: lineOf(app.read(TEST), "'default-timeout',") - 1, unit: 'default-timeout' });
+    // The table's columns are padded again; the row with the value is the one reported.
     const table = errors(check).find((p) => !p.unit);
-    expect(table).toMatchObject({ file: 'features/timeouts.md', origin: { kind: 'source', file: '../skill-src/features/timeouts.md' } });
+    expect(table).toMatchObject({ file: 'features/timeouts.md', line: lineOf(app.read('skill/features/timeouts.md'), '| `timeout`'), origin: { kind: 'source', file: '../skill-src/features/timeouts.md' } });
+    expect(table.message).toMatch(/^this line is not what the build gives: the build has `\| 'timeout' +\| number \(ms\) \| '5_000' /);
 
     const write = app.run('proof', '--write');
     expect(write.code).toBe(0);
@@ -41,10 +43,12 @@ describe('the proof of tinyfetch', () => {
     expect(finding).toMatchObject({ unit: 'default-timeout', origin: { kind: 'test', file: `../${TEST}` } });
   });
 
-  it('a body that fails: the slot has no unit, and the finding carries the assertion', () => {
+  it('a body that fails: the slot has no unit, the finding carries the assertion, and the run fails too', () => {
     const app = App.copy('failing-body');
     app.edit(TEST, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
-    const [finding] = errors(app.run('proof'));
+    const found = errors(app.run('proof'));
+    expect(found.map((p) => p.file).sort()).toEqual(['../skill-src/features/requests.md', '../skillunit.yaml']);
+    const finding = found.find((p) => p.unit === 'body-as-object');
     expect(finding.file).toBe('../skill-src/features/requests.md');
     expect(finding.message).toMatch(/^the test of `body-as-object` \(src\/tinyfetch\.test\.ts:\d+\) failed, so it left no unit: expected \{ method: 'POST', .* to match object /);
   });
@@ -63,7 +67,9 @@ describe('the proof of tinyfetch', () => {
     expect(proof.code).toBe(1);
     expect(proof.report.proof.run).toMatchObject({ command: 'no-such-test-runner run', status: 127 });
     const settings = errors(proof).find((p) => p.file === '../skillunit.yaml');
-    expect(settings.message).toMatch(/^`proof\.run` exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-test-runner/s);
+    expect(settings.message).toMatch(/^`proof\.run` \(`no-such-test-runner run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-test-runner/s);
+    // One error for the run, not two.
+    expect(errors(proof).filter((p) => p.file === '../skillunit.yaml')).toHaveLength(1);
     expect(errors(proof).filter((p) => p.message.startsWith('no test left the unit')).map((p) => p.unit).sort()).toEqual([
       'await-every-request',
       'body-as-object',
@@ -75,6 +81,18 @@ describe('the proof of tinyfetch', () => {
       'what-a-failed-request-throws',
       'what-is-retried',
     ]);
+  });
+
+  it('an ordinary test that fails: check fails on proof.run, names the test, and every unit still comes from its test', () => {
+    const app = App.copy('red-run');
+    app.edit(TEST, "  it('cancels with the caller signal'", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  it('cancels with the caller signal'");
+    const check = app.run('check', '--dry-run');
+    expect(check.code).toBe(1);
+    const found = errors(check);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ file: '../skillunit.yaml', line: lineOf(app.read('skillunit.yaml'), 'run:') });
+    expect(found[0].message).toMatch(/^`proof\.run` \(`npx vitest run`\) exited with 1: a test failed, or the run did\. The end of its output:\n.*fails on purpose/s);
+    expect(check.report.proof.units.filter((u: any) => u.from === 'test').every((u: any) => u.state === 'passed')).toBe(true);
   });
 
   it('--no-run uses the units an earlier run left', () => {

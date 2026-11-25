@@ -480,7 +480,7 @@ FAILED  lint 1 error, 1 warning · proof ok · test 2/4 passed (1 spec could not
 `;
 
 exports[`reporters > the proof layer > github: units from tests and by hand, with every kind of finding 1`] = `
-"::error file=skills/demo/features/retries.md,line=22,title=SkillUnit proof%3A retry-idempotent-only::this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`%0Afrom the test of \`retry-idempotent-only\`, src/retry.test.ts:12
+"::error file=skills/demo/features/retries.md,line=22,title=SkillUnit proof%3A retry-idempotent-only::this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.%0Afrom the test of \`retry-idempotent-only\`, src/retry.test.ts:12
 ::error file=skills-src/demo/features/retries.md,line=30,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
 ::error file=skills-src/demo/SKILL.md,line=28,title=SkillUnit proof%3A await-every-request::no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
 ::warning file=skillunit.yaml,line=3,title=SkillUnit proof::\`proof.format\` failed on the build of SKILL.md
@@ -607,7 +607,7 @@ exports[`reporters > the proof layer > json: units from tests and by hand, with 
         "unit": "retry-idempotent-only",
         "severity": "error",
         "rule": "proof",
-        "message": "this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`",
+        "message": "this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.",
         "origin": {
           "kind": "test",
           "file": "../../src/retry.test.ts",
@@ -666,7 +666,7 @@ exports[`reporters > the proof layer > junit: units from tests and by hand, with
         <property name="state" value="passed"/>
         <property name="origin" value="src/retry.test.ts:12"/>
       </properties>
-      <failure message="skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`">skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`
+      <failure message="skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.">skills/demo/features/retries.md:22  retry-idempotent-only  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.
 from the test of \`retry-idempotent-only\`, src/retry.test.ts:12</failure>
     </testcase>
     <testcase name="retry-delay" classname="proof.skills/demo/features/retries.md">
@@ -713,7 +713,7 @@ Units  proof ran \`npx vitest run\` in 4.2 s, exit 1
   skills/demo/features/retries.md
     retry-idempotent-only  rule
       proof  ✓ from a test src/retry.test.ts:12
-      proof  ✗ skills/demo/features/retries.md:22  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. The skill is built: edit the file this line comes from, then run \`skillunit proof --write\`
+      proof  ✗ skills/demo/features/retries.md:22  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.
                from the test of \`retry-idempotent-only\`, src/retry.test.ts:12
     retry-delay  fact
       proof  ✗ skills-src/demo/features/retries.md:30  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000

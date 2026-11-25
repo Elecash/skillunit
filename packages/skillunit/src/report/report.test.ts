@@ -360,7 +360,7 @@ describe('reporters', () => {
           unit: 'retry-idempotent-only',
           severity: 'error',
           rule: 'proof',
-          message: 'this line is not what the build gives: the build has `Do: retry GET only.`, the skill has `Do: retry anything.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`',
+          message: 'this line is not what the build gives: the build has `Do: retry GET only.`, the skill has `Do: retry anything.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.',
           origin: { kind: 'test', file: '../../src/retry.test.ts', line: 12, unit: 'retry-idempotent-only' },
         },
         { file: '../../skills-src/demo/features/retries.md', line: 30, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test of `retry-delay` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000' },

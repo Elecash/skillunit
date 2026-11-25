@@ -223,7 +223,7 @@ describe('a skill folder edited by hand', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('Value: 10 seconds', 'Value: 30 seconds'));
     expect(errors(run(root))).toEqual([
-      "SKILL.md:23 default-timeout error: this line is not what the build gives: the build has `Value: 10 seconds ('timeout: 10000'), for every method.`, the skill has `Value: 30 seconds ('timeout: 10000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write` [test ../tests/a.test.ts:10]",
+      "SKILL.md:23 default-timeout error: this line is not what the build gives: the build has `Value: 10 seconds ('timeout: 10000'), for every method.`, the skill has `Value: 30 seconds ('timeout: 10000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built. [test ../tests/a.test.ts:10]",
     ]);
   });
 
@@ -237,14 +237,14 @@ describe('a skill folder edited by hand', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits', 'Every request waits'));
     expect(errors(run(root))).toEqual([
-      'SKILL.md:3 - error: this line is not what the build gives: the build has `A request waits 10 seconds.`, the skill has `Every request waits 10 seconds.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write` [source ../skill-src/SKILL.md:3]',
+      'SKILL.md:3 - error: this line is not what the build gives: the build has `A request waits 10 seconds.`, the skill has `Every request waits 10 seconds.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built. [source ../skill-src/SKILL.md:3]',
     ]);
   });
 
   it('a line added inside a block of a region: the finding names the test', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('if (isHttpError(error)) return null;\n', 'if (isHttpError(error)) return null;\nconsole.log(error);\n'));
-    expect(errors(run(root))[0]).toMatch(/^SKILL\.md:42 check-status error: .* the skill has `console\.log\(error\);`\. The skill is built: .* \[test \.\.\/tests\/a\.test\.ts:2\]$/);
+    expect(errors(run(root))[0]).toMatch(/^SKILL\.md:42 check-status error: .* the skill has `console\.log\(error\);`\. Run `skillunit proof --write` to update the skill\. .* \[test \.\.\/tests\/a\.test\.ts:2\]$/);
   });
 
   it('a file that is not Markdown', () => {
@@ -380,27 +380,53 @@ process.exit(${code});
     expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
   });
 
-  it('goes on when the command fails and still left units: a failing test is what proof reports', () => {
+  it('a run that exits with 1 and left every unit: one error, on `proof.run`, with the end of its output', () => {
     const root = project({ ...GOOD, 'run.mjs': script(1) });
     const r = run(root, { run: 'node run.mjs' }, { write: true });
-    expect(r.problems.map(show)).toEqual([]);
-    expect(r.run).toMatchObject({ status: 1 });
+    expect(errors(r)).toEqual(['../skillunit.yaml:3 - error: `proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did. The end of its output:\nran the tests']);
+    expect(r.ok).toBe(false);
+    // The build goes on: every unit is there, from its test.
+    expect(r.units.filter((u) => u.from === 'test').map((u) => u.state)).toEqual(['passed', 'passed', 'passed']);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
   });
 
-  it('a command that left no unit and failed: the end of its output', () => {
+  it('a run that exits with 1 and left a failed unit: the unit and the run are both reported', () => {
+    const failing = `${script(1).replace("process.exit(1);", '')}writeFileSync('tmp/skill-units/check-status.0002.json', ${JSON.stringify(failed('check-status', 20, 'expected 500 to be 404'))});\nprocess.exit(1);\n`;
+    const root = project({ ...GOOD, 'run.mjs': failing });
+    const r = run(root, { run: 'node run.mjs' }, { write: true });
+    expect(errors(r).map((e) => e.replace(/: .*/s, ''))).toEqual(['../skill-src/SKILL.md:21 check-status error', '../skillunit.yaml:3 - error']);
+    expect(errors(r)[0]).toContain('expected 500 to be 404');
+    expect(errors(r)[1]).toContain('`proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did');
+  });
+
+  it('a run that exits with 0 adds nothing', () => {
+    const root = project({ ...GOOD, 'run.mjs': script(0) });
+    expect(run(root, { run: 'node run.mjs' }, { write: true }).problems.map(show)).toEqual([]);
+  });
+
+  it('a command that left no unit and failed: one error, with the end of its output', () => {
     const root = project({ ...GOOD, 'skillunit.yaml': 'skill: ./skill\nsource: ./skill-src\nproof:\n  run: "no-such-command-here --run"\n' });
     const r = run(root, { run: 'no-such-command-here --run' });
-    const finding = r.problems.find((p) => p.file === '../skillunit.yaml')!;
-    expect(finding.line).toBe(4);
-    expect(finding.message).toMatch(/^`proof\.run` exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-command-here.*not found/s);
+    const findings = r.problems.filter((p) => p.file === '../skillunit.yaml');
+    expect(findings).toHaveLength(1);
+    expect(findings[0]!.line).toBe(4);
+    expect(findings[0]!.message).toMatch(/^`proof\.run` \(`no-such-command-here --run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-command-here.*not found/s);
     expect(errors(r)).toContain('../skill-src/SKILL.md:19 default-timeout error: no test left the unit `default-timeout`: the tests did not run; see `proof.run`');
   });
 
-  it('--no-run uses the units that are there', () => {
+  it('a run that does not finish says so', () => {
+    const root = project({ ...GOOD, 'run.mjs': `${script(0).replace('process.exit(0);', "process.kill(process.pid, 'SIGTERM');")}` });
+    const message = errors(run(root, { run: 'node run.mjs' }))[0]!;
+    expect(message).toMatch(/`proof\.run` \(`node run\.mjs`\) (did not finish \(SIGTERM\)|exited with 143): a test failed, or the run did/);
+  });
+
+  it('--no-run uses the units that are there, and a run that does not happen cannot fail', () => {
     const root = project({ ...GOOD });
     const r = run(root, { run: 'exit 3' }, { noRun: true, write: true });
     expect(r.problems.map(show)).toEqual([]);
     expect(r.run).toEqual({ skipped: 'no-run' });
+    expect(run(root, {}, { write: true }).run).toEqual({ skipped: 'not-set' });
+    expect(run(root, {}, { write: true }).ok).toBe(true);
   });
 });
 

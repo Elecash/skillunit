@@ -82,7 +82,8 @@ export const scenarios: Scenario[] = [
       app.edit('src/index.ts', 'export { create, tf,', 'export { createClient, tf,');
       app.commit('Rename create to createClient');
     },
-    expect: { lint: ['types skill/features/clients.md - TS2305'] },
+    // The test that calls `tf.create` fails too, so the run does.
+    expect: { lint: ['types skill/features/clients.md - TS2305'], proof: ['../skillunit.yaml'] },
   },
   {
     name: 'stale example',
@@ -107,8 +108,8 @@ export const scenarios: Scenario[] = [
     },
     expect: {
       lint: ['types skill/features/requests.md - TS1005', 'types skill/features/requests.md query-in-options TS2353'],
-      // The test that proves `query-in-options` fails without the option.
-      proof: ['query-in-options'],
+      // The test that declares `query-in-options` fails without the option, and so does the run.
+      proof: ['query-in-options', '../skillunit.yaml'],
     },
   },
   {
@@ -324,7 +325,17 @@ export const scenarios: Scenario[] = [
       app.edit(TEST, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
       app.commit('Expect Bob');
     },
-    expect: { proof: ['body-as-object'] },
+    // The slot of the unit, and the run, which did not exit with 0.
+    expect: { proof: ['body-as-object', '../skillunit.yaml'] },
+  },
+  {
+    name: 'proof 10: an ordinary test fails',
+    change: 'add a test that declares no unit and fails',
+    apply(app) {
+      app.edit(TEST, "  it('cancels with the caller signal'", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  it('cancels with the caller signal'");
+      app.commit('A failing test');
+    },
+    expect: { proof: ['../skillunit.yaml'] },
   },
   {
     name: 'proof 6: a unit declared with no slot',

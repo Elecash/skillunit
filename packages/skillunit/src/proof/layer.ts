@@ -109,8 +109,11 @@ export interface ProofSkipped {
 /** Where a line of the skill folder comes from: `file` from the skill folder. */
 export type OriginLookup = (file: string, line: number) => Origin | undefined;
 
-/** How many lines of the output of `proof.run` a finding shows. */
-const TAIL = 20;
+/**
+ * How many lines of the output of `proof.run` a finding shows: enough for a runner's list of the
+ * tests that failed, which comes before the details of each failure.
+ */
+const TAIL = 30;
 
 export function proof(options: ProofOptions): ProofResult {
   return runProof(options).result;
@@ -131,6 +134,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   // ---------------------------------------------------------------- 1, 2: the tests
   let run: RunReport;
   let tail = '';
+  /** How the run ended when it did not exit with 0: `exited with 1`, `did not run: …`, `did not finish (SIGTERM)`. */
+  let ended: string | null = null;
   if (!cfg.run) run = { skipped: 'not-set' };
   else if (options.noRun) run = { skipped: 'no-run' };
   else {
@@ -138,16 +143,21 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     const started = Date.now();
     const done = spawnSync(cfg.run, { shell: true, cwd: cfg.cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
     run = { command: cfg.run, status: done.status, ms: Date.now() - started };
+    if (done.error) ended = `did not run: ${done.error.message}`;
+    else if (done.status === null) ended = `did not finish (${done.signal ?? 'stopped'})`;
+    else if (done.status !== 0) ended = `exited with ${done.status}`;
     tail = lastLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`, TAIL);
   }
 
   // ---------------------------------------------------------------- 3: the build
   const records = readRecords(cfg.units, cfg.cwd);
   for (const p of records.problems) add(fromSkill(p.path), 1, p.message);
-  const ranAndFailed = 'command' in run && run.status !== 0;
-  if (ranAndFailed && !records.units.length) {
-    const code = 'command' in run && run.status !== null ? `exited with ${run.status}` : 'did not run';
-    add(settings.file, settings.line('run'), `\`proof.run\` ${code} and left no unit in \`${units}\`${tail ? `. The end of its output:\n${tail}` : ''}`);
+  // A run that did not exit with 0 fails the proof, whatever units it left: a failing test is a
+  // failure, whether or not it declares a unit. A unit whose test failed is reported on its slot too.
+  const ranAndFailed = ended !== null;
+  if (ended !== null) {
+    const what = records.units.length ? `\`proof.run\` (\`${cfg.run}\`) ${ended}: a test failed, or the run did` : `\`proof.run\` (\`${cfg.run}\`) ${ended} and left no unit in \`${units}\``;
+    add(settings.file, settings.line('run'), `${what}${tail ? `. The end of its output:\n${tail}` : ''}`);
   }
   const missingReason =
     'skipped' in run
@@ -220,8 +230,9 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     for (const d of found.slice(0, MAX_DIFFERENCES)) {
       const from = origin(f.file, d.line);
       const unit = from?.kind === 'test' ? from.unit : undefined;
-      const edit = from ? '. The skill is built: edit the file this line comes from, then run `skillunit proof --write`' : '. Run `skillunit proof --write`';
-      add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected, 'nothing here')}, the skill has ${shownLine(d.actual, 'nothing here')}${edit}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
+      // Whether the code moved or someone edited the skill folder, `--write` comes first: it is
+      // all a change to the code needs, and the second sentence covers an edit by hand.
+      add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected, 'nothing here')}, the skill has ${shownLine(d.actual, 'nothing here')}. ${WRITE_ADVICE}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
     }
     if (found.length > MAX_DIFFERENCES) add(f.file, found[MAX_DIFFERENCES]!.line, `and ${found.length - MAX_DIFFERENCES} more blocks that differ from the build. Run \`skillunit proof --write\``);
   }
@@ -334,6 +345,9 @@ function lastLines(text: string, n: number): string {
     .slice(-n)
     .join('\n');
 }
+
+/** What to do about a line of the skill folder that is not what the build gives. */
+const WRITE_ADVICE = 'Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.';
 
 /** Blocks that differ reported per file; the rest are counted. */
 const MAX_DIFFERENCES = 10;

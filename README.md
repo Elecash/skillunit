@@ -221,7 +221,7 @@ The tests pass, since they assert what the constant says. The built skill now sa
   skill/features/timeouts.md
     default-timeout  fact
       proof  ✓ from a test src/tinyfetch.test.ts:215
-      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`
+      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
                from the test of `default-timeout`, src/tinyfetch.test.ts:215
 ```
 
@@ -299,11 +299,11 @@ In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`, and change no
 
 ```
   skill/features/timeouts.md
-    proof  ✗ skill/features/timeouts.md:13  this line is not what the build gives: …
-             from the source, skill-src/features/timeouts.md:13
+    proof  ✗ skill/features/timeouts.md:15  this line is not what the build gives: the build has `| 'timeout' | number (ms) | '5_000' | …`, the skill has `| 'timeout' | number (ms) | '10_000' | …`. …
+             from the source, skill-src/features/timeouts.md:15
     default-timeout  fact
       proof  ✓ from a test src/tinyfetch.test.ts:215
-      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. The skill is built: edit the file this line comes from, then run `skillunit proof --write`
+      proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
                from the test of `default-timeout`, src/tinyfetch.test.ts:215
     never-disable-timeout  rule
       proof  – by hand
@@ -311,13 +311,13 @@ In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`, and change no
   12 units · 9 from tests · 3 by hand · 3 values in prose · 1 file out of date
 
 Failed
-  skill/features/timeouts.md › proof skill/features/timeouts.md:13
+  skill/features/timeouts.md › proof skill/features/timeouts.md:15
   skill/features/timeouts.md › default-timeout › proof skill/features/timeouts.md:42
 
 FAILED  proof 2 errors, 0 warnings
 ```
 
-The first finding is the options table, whose `Default` column comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes.
+The first finding is the row of the options table whose `Default` comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes.
 
 ### A sentence that contradicts a rule
 

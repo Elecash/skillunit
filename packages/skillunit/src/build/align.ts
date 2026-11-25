@@ -42,27 +42,57 @@ export function alignLines(from: string[], to: string[]): number[] {
   return out;
 }
 
-/** A run of lines where two texts differ: the first line of it in each, `line` counted in `actual` from 1. */
+/** A run of lines where two texts differ: the line reported for it in each, `line` counted in `actual` from 1. */
 export interface Difference {
   line: number;
-  /** The first line of the run in `expected`, or undefined when `actual` only has more lines there. */
+  /** The line in `expected`, or undefined when `actual` only has more lines there. */
   expected: string | undefined;
-  /** The first line of the run in `actual`, or undefined when it lacks lines `expected` has. */
+  /** The line in `actual`, or undefined when it lacks lines `expected` has. */
   actual: string | undefined;
 }
 
-/** Each run of lines where `actual` is not `expected`, in order: the lines both share, in order, match. */
+/**
+ * Each run of lines where `actual` is not `expected`, in order: the lines both share, in order,
+ * match. A run is reported on its first line that differs in more than layout, so a table whose
+ * columns a formatter padded again is reported on the row whose value changed, not on its header;
+ * when every line of the run differs only in layout, on its first line.
+ */
 export function differences(expected: string[], actual: string[]): Difference[] {
   const pairs = lcs(expected, actual);
   const out: Difference[] = [];
   let a = 0;
   let b = 0;
   for (const [i, j] of [...pairs, [expected.length, actual.length] as [number, number]]) {
-    if (i > a || j > b) out.push({ line: Math.min(b, Math.max(actual.length - 1, 0)) + 1, expected: i > a ? expected[a] : undefined, actual: j > b ? actual[b] : undefined });
+    if (i > a || j > b) {
+      const size = Math.max(i - a, j - b);
+      let k = 0;
+      while (k < size && layoutOnly(a + k < i ? expected[a + k] : undefined, b + k < j ? actual[b + k] : undefined)) k++;
+      if (k === size) k = 0;
+      out.push({
+        line: Math.min(b + k, Math.max(actual.length - 1, 0)) + 1,
+        expected: a + k < i ? expected[a + k] : undefined,
+        actual: b + k < j ? actual[b + k] : undefined,
+      });
+    }
     a = i + 1;
     b = j + 1;
   }
   return out;
+}
+
+/** The separator row of a Markdown table: `|`, `-`, `:` and spaces, with at least one `-`. */
+const SEPARATOR = /^[\s|:-]*-[\s|:-]*$/;
+
+/**
+ * Two lines that differ only in layout: equal once runs of spaces count as one, or both the
+ * separator row of a table with the same number of columns.
+ */
+export function layoutOnly(x: string | undefined, y: string | undefined): boolean {
+  if (x === undefined || y === undefined) return false;
+  const flat = (s: string) => s.replace(/\s+/g, ' ').trim();
+  if (flat(x) === flat(y)) return true;
+  const columns = (s: string) => s.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').length;
+  return SEPARATOR.test(x) && SEPARATOR.test(y) && columns(x) === columns(y);
 }
 
 /** The pairs of indexes of a longest common subsequence of lines, in order. */
