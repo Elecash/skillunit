@@ -12,6 +12,5 @@
     "noEmit": true,
     "paths": { "tinyfetch": ["./src/index.ts"] }
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.test.ts"]
+  "include": ["src"]
 }
