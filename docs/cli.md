@@ -32,7 +32,7 @@ that folder with no `--config`.
 | `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
 | `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
 | `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
-| `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
+| `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md): `--yes` 0.5 or more and `--no` under 0.5, so a yes/no question passes only on the answer it expects |
 | `--write` | proof | write the build to the skill folder instead of comparing |
 
 A command rejects an option it does not take.
@@ -117,8 +117,10 @@ also runs lint and proof in full.
   where it is declared. A verdict has `declared`, the test file and line of its question, and
   `unit` when it is about one; its `confidence` is the number that decided it: the probability of
   the option the reader picked, or P(yes). A verdict the model refused to answer has
-  `refused: true`. In `proof.units`, `from` is `test` for a unit a test proves and `declared` for
-  one with no body.
+  `refused: true`. A choice verdict whose top probability two options or more share has `tied`,
+  those options; a tie never passes. A question with several phrasings has `variants`, the
+  probability of the expected answer in each, and `variantsPass`, whether each passed. In
+  `proof.units`, `from` is `test` for a unit a test proves and `declared` for one with no body.
   Each lint problem has `file`, `line`, `unit` when the line belongs to one, `severity`, `rule`
   and `message`, plus `code`, such as `TS2322`, and `example`, the line where the example
   starts, when the type-check found it. `lint.summary`
@@ -179,5 +181,5 @@ one run to the next. Others give the same numbers for the same request, but a sm
 wording or to the order of a question's options moves them. A verdict is borderline when the number that decided it is
 within `thresholds.margin` (default 0.13) of its threshold: the probability of the option a choice
 test picked, or P(yes) of a yes/no test. A wrong choice is borderline when the expected option is that close
-behind the top one. A borderline pass still passes, and every reporter marks it, so the text can
+behind the top one, and a tie for the top that includes the expected option is borderline too. A borderline pass still passes, and every reporter marks it, so the text can
 be made more direct, or the question given more phrasings, before a run fails at random.

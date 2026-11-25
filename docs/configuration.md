@@ -13,8 +13,8 @@ context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 model: { provider: typesafe, name: jev-latest }   # or provider: openai, or a module: ./my-model.mjs
 thresholds:
   choice: 0.5                # lowest probability of the expected option that passes a choice test
-  yes: 0.7                   # lowest P(yes) that passes an expected "yes"
-  no: 0.3                    # highest P(yes) that passes an expected "no"
+  yes: 0.7                   # lowest P(yes) that passes an expected "yes": 0.5 or more
+  no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
   margin: 0.13               # how close to a threshold a verdict is marked borderline
 examples:
   ts: { tsconfig: ./tsconfig.json }                 # ts, tsx, js and jsx, with the project's tsc
@@ -40,9 +40,12 @@ proof:
   a module (see below). Without `name`, the provider's default model. A bare name such as
   `model: jev-latest` is an error. `--provider` and `--model` override it.
 - `thresholds`: what a test needs to pass, and `margin`, how close to a threshold a verdict is
-  marked borderline. The default margin, 0.13, covers the largest move measured: across five runs
-  of SkillUnit's own questions and tinyfetch's on `typesafe` with no change, a question whose
-  answer stayed the same moved by 0.12 at most.
+  marked borderline. `yes` is 0.5 or more and `no` is under 0.5, so a yes/no question passes only
+  when the model leans to the answer it expects, and no answer passes both a question that
+  expects yes and one that expects no; SkillUnit refuses other values. The default margin, 0.13,
+  covers the largest move measured: across five runs of SkillUnit's own questions and
+  tinyfetch's on `typesafe` with no change, a question whose answer stayed the same moved by 0.12
+  at most.
   `openai` gives the same numbers for the same request every run, so there a borderline verdict
   is one that a small change to the wording or to the order of the options may flip.
 - `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,

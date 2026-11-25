@@ -60,7 +60,7 @@ unit(
 | `question` | required | What the reader is asked about the situation. |
 | `options` | optional | `label: description` pairs, or a list of labels. Without options the question is yes or no. |
 | `expect` | required | An option label or `none`; `yes` or `no` for a question without options. |
-| `with` | optional | Other files of the skill the reader gets too: a path, a list, or `all`. See below. |
+| `with` | optional | Other files of the skill the reader gets too: a path inside the skill folder, a list of them, or `all`. See below. |
 | `section` | optional | Headings of the file to send instead of the whole file. |
 
 A question of a unit is about the file of the skill folder that holds the unit: SkillUnit finds
@@ -122,20 +122,25 @@ ask('which-file-for-retries', {
 });
 ```
 
-`file` is the built file the question is about, from the skill folder; it defaults to
-`SKILL.md`. The id is the first argument. The other fields are those of a question in a unit.
+`file` is the built file the question is about, from the skill folder and inside it; it defaults
+to `SKILL.md`. The id is the first argument. The other fields are those of a question in a unit.
 
 ## How a question is judged
 
-A choice question passes when the reader ranks `expect` first, with a probability of 0.5 or
-more. A yes/no question passes when P(yes) is at least 0.7 for an expected `yes`, or at most 0.3
-for an expected `no`. The right answer under its threshold counts as a failure; the report says
-"right answer, under the threshold". A verdict close to its threshold, pass or fail, is marked
-borderline: see the [command line](cli.md#borderline-verdicts).
+A choice question passes when the reader ranks `expect` first, alone, with a probability of 0.5
+or more. When two options or more share the top probability, the question fails, even if
+`expect` is one of them: only the order the provider lists them in could pick one. The report
+names them, as "a tie of stop and none". A yes/no question passes when P(yes) is at least 0.7
+for an expected `yes`, or at most 0.3 for an expected `no`. The right answer under its threshold
+counts as a failure; the report says "right answer, under the threshold". A verdict close to its
+threshold, pass or fail, is marked borderline: see the [command line](cli.md#borderline-verdicts).
+The [thresholds](configuration.md) change these numbers.
 
-With several phrasings, each one is asked separately. SkillUnit ranks them by the probability of
-the expected answer and takes the median, so one odd phrasing cannot decide the question but half
-of them can.
+With several phrasings, each one is asked separately, and the question passes when most of them
+pass: both of two, two of three, three of four. One odd phrasing cannot decide it. The report
+shows one phrasing: the median, once they are ranked with the failing ones first and then by the
+probability of the expected answer. Its `phrasings` line gives that probability for each, and
+whether each passed.
 
 `section` takes a heading of any level. SkillUnit sends that heading and everything under it, up
 to the next heading of the same or a higher level, exactly as written. A section of one to three
@@ -171,8 +176,10 @@ ask('rules-reach-the-agent', {
 });
 ```
 
-Paths are relative to the skill folder, and each file is sent whole. `with: 'all'` sends every
-other `.md` file in the skill folder.
+Paths are relative to the skill folder and stay inside it, and each file is sent whole. A path
+that leaves the folder, such as `../README.md`, fails the test of the question: the agent reads
+the skill, so the reader gets nothing else. `with: 'all'` sends every other `.md` file in the
+skill folder.
 
 List the files an agent opens in the situations the questions describe, not every file.
 TypeSafe's accuracy falls as the state grows with text unrelated to the question
