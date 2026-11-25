@@ -1,3 +1,17 @@
+## 0.4.0 (2026-11-25)
+
+### 🚀 Features
+
+- ⚠️  remove yaml in favor of tests ([#10](https://github.com/Elecash/skillunit/pull/10))
+
+### ⚠️  Breaking Changes
+
+- remove yaml in favor of tests  ([#10](https://github.com/Elecash/skillunit/pull/10))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.3.0 (2026-11-25)
 
 ### 🚀 Features
