@@ -1,3 +1,17 @@
+## 0.3.0 (2026-11-25)
+
+### 🚀 Features
+
+- ⚠️  generate skills from tests ([#9](https://github.com/Elecash/skillunit/pull/9))
+
+### ⚠️  Breaking Changes
+
+- generate skills from tests  ([#9](https://github.com/Elecash/skillunit/pull/9))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.2.2 (2026-11-24)
 
 ### 🚀 Features
