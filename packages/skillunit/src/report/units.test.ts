@@ -26,22 +26,31 @@ const lint = (problems: Problem[] = []): LintResult => ({
   summary: { files: 4, units: units.length, typeChecked: 0, notParsed: 0, commandChecked: 0, unchecked: {}, noCheck: 0, notConfigured: 0, off: [], undeclared: [] },
 });
 
-const unitProof = (id: string, status?: 'passed' | 'failed' | 'skipped'): UnitProof => {
+const unitProof = (id: string, state: UnitProof['state'] = 'hand'): UnitProof => {
   const u = units.find((x) => x.id === id)!;
-  const tests = status ? [{ report: '../reports/junit.xml', line: 3, title: `src/a.test.ts › ${id} [skill:${id}]`, status }] : [];
-  return { id, file: u.file, line: u.line, state: status === 'passed' ? 'proved' : status === 'failed' ? 'failed' : 'unproved', listed: status === 'passed', tests, fences: [] };
+  return {
+    id,
+    kind: state === 'passed' || state === 'hand' ? u.kind : null,
+    from: state === 'hand' ? 'hand' : 'test',
+    state,
+    file: u.file,
+    line: u.line,
+    source: { file: `../skill-src/${u.file}`, line: u.line },
+    ...(state === 'hand' || state === 'missing' ? {} : { test: { file: '../src/a.test.ts', line: 3 } }),
+  };
 };
 
 const proof = (overrides: Partial<ProofResult> = {}): ProofResult => ({
   configured: true,
   ok: true,
   skill,
-  reports: ['../reports/junit.xml'],
+  source: '/repo/skill-src',
   write: false,
-  lock: { file: '../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], written: false },
+  run: { command: 'npx vitest run', status: 0, ms: 1000 },
   units: [unitProof('await-every-request', 'passed'), unitProof('retry-defaults', 'passed'), unitProof('what-is-retried', 'passed'), unitProof('retry-idempotent-only'), unitProof('never-disable-timeout')],
+  files: [],
   problems: [],
-  summary: { units: 5, proved: 3, failed: 0, unproved: 2, tagged: 3, fences: 0, differ: 0, written: 0 },
+  summary: { units: 5, fromTests: 3, byHand: 2, failed: 0, missing: 0, values: 0, files: 4, differ: 0, written: 0, extra: 0 },
   ...overrides,
 });
 
@@ -102,8 +111,8 @@ const brief = (l: Line): string => {
     case 'lint':
     case 'proof':
       return `${l.kind} ${l.mark} ${l.problem.file}:${l.problem.line}${l.kind === 'lint' && l.more ? ` +${l.more}` : ''}`;
-    case 'tagged':
-      return `tagged ${l.mark} ${l.test.title}${l.problem ? ' (with its finding)' : ''}`;
+    case 'origin':
+      return `origin ${l.mark} ${l.unit.from}`;
     case 'verdict':
       return `test ${l.mark} ${l.verdict.id}${l.unknownUnit ? ' (unknown unit)' : ''}`;
     case 'spec':
@@ -118,17 +127,17 @@ describe('the report by unit', () => {
   const whole = unitTree(report('check', { lint: lint(), proof: proof(), test: test(specs()) }));
 
   it('puts proof and tests under their unit, proof first', () => {
-    expect(lines(unit(whole, 'await-every-request').lines)).toEqual(['tagged pass src/a.test.ts › await-every-request [skill:await-every-request]', 'test pass await-the-call']);
+    expect(lines(unit(whole, 'await-every-request').lines)).toEqual(['origin pass test', 'test pass await-the-call']);
     expect(unit(whole, 'await-every-request').coverage).toBe('both');
   });
 
   it('marks a unit with proof only, tests only, or neither', () => {
-    expect(lines(unit(whole, 'what-is-retried').lines)).toEqual(['tagged pass src/a.test.ts › what-is-retried [skill:what-is-retried]', 'test none']);
+    expect(lines(unit(whole, 'what-is-retried').lines)).toEqual(['origin pass test', 'test none']);
     expect(unit(whole, 'what-is-retried').coverage).toBe('proof');
-    expect(lines(unit(whole, 'retry-idempotent-only').lines)).toEqual(['proof none', 'test pass post-no-retry']);
+    expect(lines(unit(whole, 'retry-idempotent-only').lines)).toEqual(['origin none hand', 'test pass post-no-retry']);
     expect(unit(whole, 'retry-idempotent-only').coverage).toBe('test');
     const neither = unit(whole, 'never-disable-timeout');
-    expect(lines(neither.lines)).toEqual(['proof none', 'test none']);
+    expect(lines(neither.lines)).toEqual(['origin none hand', 'test none']);
     expect(neither).toMatchObject({ coverage: 'none', mark: 'warn' });
     expect(whole.coverage).toEqual({ both: 2, proof: 1, test: 1, none: 1 });
   });
@@ -164,7 +173,7 @@ describe('the report by unit', () => {
       { file: 'features/clients.md', line: 3, severity: 'error', rule: 'index', message: 'link does not resolve' },
     ];
     const tree = unitTree(report('check', { lint: lint(problems), proof: proof(), test: test(specs()) }));
-    expect(lines(unit(tree, 'retry-idempotent-only').lines)).toEqual(['lint fail features/retries.md:27', 'proof none', 'test pass post-no-retry']);
+    expect(lines(unit(tree, 'retry-idempotent-only').lines)).toEqual(['lint fail features/retries.md:27', 'origin none hand', 'test pass post-no-retry']);
     expect(unit(tree, 'retry-idempotent-only').mark).toBe('fail');
     expect(lines(file(tree, 'features/retries.md')!.lines)).toEqual(['lint warn features/retries.md:1']);
     expect(file(tree, 'features/clients.md')).toMatchObject({ units: [], lines: [expect.objectContaining({ kind: 'lint', mark: 'fail' })] });
@@ -183,31 +192,32 @@ describe('the report by unit', () => {
     expect(lines(unit(tree, 'retry-defaults').lines)).toEqual(['lint fail features/retries.md:7', 'lint fail features/retries.md:8', 'lint fail features/retries.md:9 +2']);
   });
 
-  it('sends a finding about the lock, the settings or a report, and a spec that could not run, elsewhere', () => {
+  it('sends a finding about the settings or a record, and a spec that could not run, elsewhere', () => {
     const problems: Problem[] = [
-      { file: '../skillunit.lock', line: 2, severity: 'error', rule: 'proof', message: 'lists `gone`' },
-      { file: 'skillunit.yaml', line: 1, severity: 'error', rule: 'proof', message: 'no report' },
+      { file: '../tmp/skill-units/a.json', line: 1, severity: 'error', rule: 'proof', message: 'not valid JSON' },
+      { file: 'skillunit.yaml', line: 1, severity: 'error', rule: 'proof', message: 'proof.run left no unit' },
     ];
     const broken = spec('broken', 'SKILL.md', [], { error: 'no heading "Gone" in SKILL.md' });
     const tree = unitTree(report('check', { lint: lint(), proof: proof({ ok: false, problems }), test: test([...specs(), broken]) }));
-    expect(lines(tree.elsewhere)).toEqual(['proof fail ../skillunit.lock:2', 'proof fail skillunit.yaml:1', 'spec fail /repo/specs/broken.yaml']);
+    expect(lines(tree.elsewhere)).toEqual(['proof fail ../tmp/skill-units/a.json:1', 'proof fail skillunit.yaml:1', 'spec fail /repo/specs/broken.yaml']);
   });
 
-  it('shows a failed tagged test with the finding its failure gave, and other proof findings of the unit after it', () => {
-    const failed = { ...unitProof('retry-defaults', 'failed') };
-    const title = failed.tests[0]!.title;
+  it('puts a finding about a unit under it, even when it is in the source or a test file', () => {
     const problems: Problem[] = [
-      { file: 'features/retries.md', line: 5, unit: 'retry-defaults', severity: 'error', rule: 'proof', message: `the test "${title}" (reports/junit.xml:3) failed: expected 300` },
-      { file: 'features/retries.md', line: 9, unit: 'retry-defaults', severity: 'error', rule: 'proof', message: 'this block is not what the test gives' },
+      { file: '../skill-src/features/retries.md', line: 5, unit: 'retry-defaults', severity: 'error', rule: 'proof', message: 'the test of `retry-defaults` failed: expected 300' },
+      { file: '../src/a.test.ts', line: 9, unit: 'what-is-retried', severity: 'error', rule: 'proof', message: 'no file of `source` has its slot' },
     ];
-    const tree = unitTree(report('proof', { proof: proof({ ok: false, units: [failed], problems }) }));
-    expect(lines(unit(tree, 'retry-defaults').lines)).toEqual([`tagged fail ${title} (with its finding)`, 'proof fail features/retries.md:9']);
+    const tree = unitTree(report('proof', { proof: proof({ ok: false, units: [unitProof('retry-defaults', 'failed'), unitProof('what-is-retried', 'passed')], problems }) }));
+    expect(lines(unit(tree, 'retry-defaults').lines)).toEqual(['proof fail ../skill-src/features/retries.md:5']);
+    expect(unit(tree, 'retry-defaults').mark).toBe('fail');
+    expect(lines(unit(tree, 'what-is-retried').lines)).toEqual(['origin pass test', 'proof fail ../src/a.test.ts:9']);
+    expect(tree.elsewhere).toEqual([]);
   });
 
-  it('marks a skipped tagged test as a warning, and its unit', () => {
-    const tree = unitTree(report('proof', { proof: proof({ units: [unitProof('retry-defaults', 'skipped')] }) }));
-    expect(lines(unit(tree, 'retry-defaults').lines)).toEqual(['tagged warn src/a.test.ts › retry-defaults [skill:retry-defaults]']);
-    expect(unit(tree, 'retry-defaults').mark).toBe('warn');
+  it('a unit by hand is not covered by proof', () => {
+    const tree = unitTree(report('check', { lint: lint(), proof: proof(), test: test([]) }));
+    expect(unit(tree, 'never-disable-timeout')).toMatchObject({ coverage: 'none' });
+    expect(lines(unit(tree, 'never-disable-timeout').lines)).toEqual(['origin none hand', 'test none']);
   });
 
   it('marks the tests of a dry run as ready', () => {
@@ -228,12 +238,12 @@ describe('the report by unit', () => {
     // check --changed: proof ran over the whole skill, so every unit with a proof line stays.
     const check = unitTree(report('check', { lint: lint(), proof: proof(), test: test(retries, { changed: { ref: 'main', commit: 'abc' } }) }));
     expect(check.files.flatMap((f) => f.units.map((u) => u.id))).toEqual(['await-every-request', 'retry-defaults', 'what-is-retried', 'retry-idempotent-only']);
-    expect(lines(unit(check, 'retry-defaults').lines)).toEqual(['tagged pass src/a.test.ts › retry-defaults [skill:retry-defaults]']);
+    expect(lines(unit(check, 'retry-defaults').lines)).toEqual(['origin pass test']);
   });
 
-  it('with no `proof` key, has no proof lines', () => {
+  it('with no `source`, has no proof lines', () => {
     const tree = unitTree(report('check', { lint: lint(), proof: { configured: false, ok: true }, test: test(specs()) }));
     expect(tree.layers).toEqual({ lint: true, proof: false, test: true });
-    expect(tree.files.flatMap((f) => f.units).flatMap((u) => u.lines).some((l) => l.kind === 'tagged' || l.kind === 'missing' && l.layer === 'proof')).toBe(false);
+    expect(tree.files.flatMap((f) => f.units).flatMap((u) => u.lines).some((l) => l.kind === 'origin' || (l.kind === 'missing' && l.layer === 'proof'))).toBe(false);
   });
 });

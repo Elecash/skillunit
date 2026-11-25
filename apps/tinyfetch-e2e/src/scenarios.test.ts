@@ -27,7 +27,6 @@ describe('tinyfetch scenarios', () => {
     it.skipIf(skip)(`${scenario.name}: ${scenario.change}`, async () => {
       const app = App.copy(scenario.name.replace(/\W+/g, '-'));
       await scenario.apply(app);
-      app.test();
       const real = scenario.model !== undefined && key !== undefined;
       const run = app.run('check', ...(real ? [] : ['--dry-run']));
       const seen = observe(run.report);

@@ -1,8 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
-import { readExamples } from './examples.js';
+import { describe, expect, it } from 'vitest';
 import { collectRegions, dedent, findRegions } from './regions.js';
 
 // The markers are built from parts, so this file holds no region of its own when a project
@@ -98,44 +94,5 @@ describe('dedent', () => {
 
   it('drops blank lines at the ends, empties lines of only spaces, and keeps trailing spaces of code', () => {
     expect(dedent(['', '   ', '    a(); ', '  ', '    b();', '', ''])).toBe('a(); \n\nb();');
-  });
-});
-
-const roots: string[] = [];
-afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
-
-describe('the examples folder', () => {
-  it('reads <id>.<extension> as the text of <id>, the id keeping its own dots', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'skillunit-examples-'));
-    roots.push(dir);
-    writeFileSync(join(dir, 'retry-defaults.json'), '{\n  "retry": 0\n}\n');
-    writeFileSync(join(dir, 'retry-defaults.custom-delay.txt'), 'delay: 500');
-    writeFileSync(join(dir, '.gitkeep'), '');
-    mkdirSync(join(dir, 'nested'));
-    writeFileSync(join(dir, 'nested', 'x.json'), '1');
-    const { missing, examples, problems } = readExamples(dir);
-    expect(missing).toBe(false);
-    expect(problems).toEqual([]);
-    expect([...examples.values()].map((e) => [e.id, e.name, e.text])).toEqual([
-      ['retry-defaults.custom-delay', 'retry-defaults.custom-delay.txt', 'delay: 500'],
-      ['retry-defaults', 'retry-defaults.json', '{\n  "retry": 0\n}\n'],
-    ]);
-    expect(examples.get('retry-defaults')!.mtimeMs).toBeGreaterThan(0);
-  });
-
-  it('reports a file with no extension and two files for one id', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'skillunit-examples-'));
-    roots.push(dir);
-    writeFileSync(join(dir, 'a.json'), '1');
-    writeFileSync(join(dir, 'a.txt'), '1');
-    writeFileSync(join(dir, 'README'), '');
-    expect(readExamples(dir).problems.map((p) => `${p.name}: ${p.message}`)).toEqual([
-      'README: `README` has no extension; an example file is `<id>.<extension>`, such as `README.json`',
-      'a.txt: `a.txt` and `a.json` are both examples of `a`; keep one',
-    ]);
-  });
-
-  it('says when the folder does not exist', () => {
-    expect(readExamples(join(tmpdir(), 'skillunit-no-such-folder'))).toMatchObject({ missing: true, problems: [] });
   });
 });

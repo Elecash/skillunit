@@ -1,11 +1,11 @@
 /**
  * The report by unit: the three layers joined on the unit id. Each file of the skill, then each
- * unit in it, then what each layer found about that unit: its lint findings, the tests tagged
- * for it, and the model tests that name it with `unit:`. The table reporter prints this; the
+ * unit in it, then what each layer found about that unit: its lint findings, what the proof
+ * found about it and where it comes from, and the model tests that name it with `unit:`. The table reporter prints this; the
  * join is apart from the text so it can be tested without it.
  */
 import type { Problem } from '../lint/types.js';
-import { failedTestPrefix, type ProofTest, type UnitProof } from '../proof/layer.js';
+import type { UnitProof } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { SpecReport } from '../test/runner.js';
 import type { UnitKind } from '../units/types.js';
@@ -23,9 +23,9 @@ export type Mark = 'pass' | 'fail' | 'warn' | 'none' | 'ready';
 export type Line =
   /** `more`: findings of the same example left out after this one. */
   | { kind: 'lint'; mark: Mark; problem: Problem; more: number }
-  /** A tagged test, and the finding its failure gave, if any. */
-  | { kind: 'tagged'; mark: Mark; test: ProofTest; problem?: Problem }
-  /** Any other proof finding. */
+  /** Where a unit of a built skill comes from: a test that passed, or the source. */
+  | { kind: 'origin'; mark: Mark; unit: UnitProof }
+  /** A proof finding. */
   | { kind: 'proof'; mark: Mark; problem: Problem }
   /** `unknownUnit`: the test's `unit:` names no unit of the skill. */
   | { kind: 'verdict'; mark: Mark; spec: SpecReport; verdict: Verdict; unknownUnit: boolean }
@@ -37,9 +37,9 @@ export type Line =
 export type Layer = 'lint' | 'proof' | 'test';
 
 export const layerOf = (line: Line): Layer =>
-  line.kind === 'lint' ? 'lint' : line.kind === 'tagged' || line.kind === 'proof' ? 'proof' : line.kind === 'missing' ? line.layer : 'test';
+  line.kind === 'lint' ? 'lint' : line.kind === 'origin' || line.kind === 'proof' ? 'proof' : line.kind === 'missing' ? line.layer : 'test';
 
-/** Which layers cover a unit: tagged tests, model tests, both or neither. */
+/** Which layers cover a unit: a test that builds it, model tests, both or neither. */
 export type Coverage = 'both' | 'proof' | 'test' | 'none';
 
 export interface UnitNode {
@@ -77,9 +77,9 @@ export interface UnitTree {
   files: FileNode[];
   /** Files lint read that have no node, or null when lint did not run or the run is partial. */
   otherFiles: number | null;
-  /** What has no place in the skill: findings about the settings, the lock or a report, and specs that could not run. */
+  /** What has no place in the skill: findings about the settings, the source or a test file, and specs that could not run. */
   elsewhere: Line[];
-  /** Units by coverage, when both layers ran over the whole skill (`check` with a `proof` key, without `--changed`). */
+  /** Units by coverage, when both layers ran over the whole skill (`check` with a `source`, without `--changed`). */
   coverage: Record<Coverage, number> | null;
 }
 
@@ -114,7 +114,7 @@ export function unitTree(report: CheckReport): UnitTree {
   /** The unit a finding names, in the finding's file when two units share the id. */
   const unitOf = (id: string | undefined, file?: string) => (id === undefined ? undefined : (all.find((u) => u.id === id && u.file === file) ?? byId.get(id)));
   const elsewhere: Line[] = [];
-  /** A finding about a file that is not Markdown of the skill: the settings, the lock, a report, a source file. */
+  /** A finding about a file that is not Markdown of the skill: the settings, a record, a test file, a file of the source. */
   const outside = (p: Problem) => p.file.startsWith('../') || !p.file.endsWith('.md');
   const severity = (p: Problem): Mark => (p.severity === 'error' ? 'fail' : 'warn');
 
@@ -130,22 +130,19 @@ export function unitTree(report: CheckReport): UnitTree {
 
   // ---------------------------------------------------------------- proof
   if (proof) {
-    const used = new Set<Problem>();
     for (const u of proof.units) {
       const node = unitOf(u.id, u.file);
       if (!node) continue;
       node.proof = u;
-      for (const t of u.tests) {
-        const problem = t.status === 'failed' ? proof.problems.find((p) => !used.has(p) && p.unit === u.id && p.message.startsWith(failedTestPrefix(t.title))) : undefined;
-        if (problem) used.add(problem);
-        node.lines.push({ kind: 'tagged', mark: t.status === 'passed' ? 'pass' : t.status === 'failed' ? 'fail' : 'warn', test: t, ...(problem ? { problem } : {}) });
-      }
+      if (u.state === 'passed' || u.state === 'hand') node.lines.push({ kind: 'origin', mark: u.state === 'passed' ? 'pass' : 'none', unit: u });
     }
     for (const p of proof.problems) {
-      if (used.has(p)) continue;
       const line: Line = { kind: 'proof', mark: severity(p), problem: p };
-      if (outside(p)) elsewhere.push(line);
-      else (unitOf(p.unit, p.file)?.lines ?? fileNode(p.file).lines).push(line);
+      // A finding about a unit goes under it, even when it is in the source or a test file.
+      const node = unitOf(p.unit, p.file);
+      if (node) node.lines.push(line);
+      else if (outside(p)) elsewhere.push(line);
+      else fileNode(p.file).lines.push(line);
     }
     for (const node of all) if (!node.lines.some((l) => layerOf(l) === 'proof')) node.lines.push({ kind: 'missing', mark: 'none', layer: 'proof' });
   }
@@ -174,9 +171,9 @@ export function unitTree(report: CheckReport): UnitTree {
   const coverage: Record<Coverage, number> | null = covered ? { both: 0, proof: 0, test: 0, none: 0 } : null;
   for (const node of all) {
     if (coverage) {
-      const tagged = (node.proof?.tests.length ?? 0) > 0;
+      const built = node.proof?.from === 'test';
       const tested = (node.tests?.total ?? 0) > 0;
-      node.coverage = tagged && tested ? 'both' : tagged ? 'proof' : tested ? 'test' : 'none';
+      node.coverage = built && tested ? 'both' : built ? 'proof' : tested ? 'test' : 'none';
       coverage[node.coverage]++;
     }
     const marks = node.lines.map((l) => l.mark);
@@ -184,7 +181,8 @@ export function unitTree(report: CheckReport): UnitTree {
   }
 
   // ---------------------------------------------------------------- what is shown
-  const real = (lines: Line[]) => lines.some((l) => l.kind !== 'missing');
+  // `by hand` says nothing a partial run needs to show.
+  const real = (lines: Line[]) => lines.some((l) => l.kind !== 'missing' && !(l.kind === 'origin' && l.unit.from === 'hand'));
   const shown = [...files.values()]
     .map((f) => ({ ...f, units: partial ? f.units.filter((u) => real(u.lines)) : f.units }))
     .filter((f) => f.lines.length || f.units.length)

@@ -5,6 +5,7 @@ import { format } from 'prettier';
 import { afterEach, describe, expect, it } from 'vitest';
 import { codeSpans, parseCheck, parseFile, parseSkill } from './parse.js';
 import type { Fence, InlineCode } from './types.js';
+import { unit } from '../vitest.js';
 
 const F = '```';
 
@@ -399,7 +400,7 @@ Decide:
   it('reports a fence under a label that takes no code', () => {
     const f = parse(`### rule: r\n\nDo: y\n\n${F}ts\nx\n${F}\n`);
     expect(f.fences[0]!.owner).toEqual({ kind: 'misplaced', unit: 'r', label: 'Do' });
-    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right` or `Decide`, not under `Do`']);
+    expect(f.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Decide` or the `Value` of a fact, not under `Do`']);
   });
 
   it('reports a fence under Decide that is not inside an item', () => {
@@ -410,11 +411,13 @@ Decide:
 });
 
 describe('Check', () => {
-  it('accepts only a regex in a code span, and says to add the backticks [skill:check-regex-in-a-code-span]', () => {
+  unit('check-regex-in-a-code-span', { when: "a rule's mistake can be matched by a regex.", do: 'add `Check: forbid` with the regex inside backticks, followed by `in` and the fence languages it applies to.', check: 'forbid `/Check: forbid \\//` in md' }, (u) => {
+    u.example('md', 'Check: forbid `/\\.(post|patch)\\([^)]*retry/` in ts');
     expect(messages('### rule: r\nCheck: forbid /post.*retry/ in ts\n')).toEqual([
       '2: put the regex of a `Check` in backticks, as in ``forbid `/regex/` in ts``: outside a code span, Markdown reads `*` and `_` as emphasis and a formatter rewrites them',
     ]);
     expect(parseCheck('forbid `/a/i` in ts, TSX', 3)).toMatchObject({ mode: 'forbid', langs: ['ts', 'tsx'], line: 3 });
+    expect(parseCheck('forbid `/a/` in python, Bash, typescript', 1)).toMatchObject({ langs: ['py', 'sh', 'ts'] });
     expect(parseCheck('forbid ``/a`b/`` in ts', 1)).toMatchObject({ regex: /a`b/ });
   });
 
@@ -437,7 +440,7 @@ describe('Check', () => {
 });
 
 describe('labels and lists', () => {
-  it('reports a label right under a list item, and still reads it as a label [skill:blank-line-after-a-list]', () => {
+  unit('blank-line-after-a-list', { when: 'a label follows a list, such as the items of `Right` or the paths of `Decide`.', do: 'leave a blank line between the last item and the label.' }, () => {
     const file = parse('### decision: d\nDecide:\n- **a** — x\nEven when: y\n');
     expect(file.errors.map((e) => `${e.line}: ${e.message}`)).toEqual([
       '4: leave a blank line between the list and `Even when:`; without it, Markdown reads the label as part of the last list item',
@@ -566,67 +569,44 @@ describe('language names', () => {
   });
 });
 
-describe('proof', () => {
-  /** A rule with a proved Right fence, a decision with a proved fence in each path, and a flag-less fence. */
-  const PROVED = `# T
+describe('blocks under the Value of a fact', () => {
+  const FACT = `## Rules
 
-${F}ts proof=outside
-const a = 1;
+### fact: what-is-retried
+
+When: a request with \`retry\` fails.
+
+Value: network errors and 5xx responses are retried.
+
+${F}text
+network error  retried
+404            not retried
 ${F}
 
-## Rules
+Unknown: say what the code does.
 
-### rule: check-status
+### rule: r
 
-When: a request failed.
+When: a.
 
-Do: test the error with \`isHttpError\`.
+Do: b.
 
-Right:
+Value: c.
 
-${F}ts proof=check-status
-isHttpError(error);
+${F}ts
+x;
 ${F}
-
-### decision: pick-a-client
-
-When: more than one request.
-
-Decide:
-
-- **shared** — same base URL.
-
-  ${F}ts title="a.ts" proof=pick-a-client.shared
-  const api = tf.create({});
-  ${F}
-
-- **direct** — one request.
-
-  ${F}ts proof='pick-a-client.direct'
-  tf.get('/a');
-  ${F}
-
-  ${F}ts
-  tf.get('/b');
-  ${F}
 `;
-  const file = parse(PROVED);
+  const file = parse(FACT);
 
-  it('keeps the id of a proof= flag on the fence, and the flag among its flags', () => {
-    expect(file.errors).toEqual([]);
-    const right = file.fences.find((f) => f.owner.kind === 'right')!;
-    expect(right).toMatchObject({ lang: 'ts', flags: ['proof=check-status'], proof: 'check-status' });
-    expect(file.fences[0]).toMatchObject({ proof: 'outside', owner: { kind: 'reference' } });
+  it('belong to the fact, and the labels after them still read', () => {
+    const [fact] = file.units;
+    expect(fact!.valueFences.map((f) => [f.lang, f.owner])).toEqual([['text', { kind: 'value', unit: 'what-is-retried' }]]);
+    expect(fact!.unknown).toBe('say what the code does.');
   });
 
-  it('collects the flagged fences of a unit, those in list items included, with quotes taken off', () => {
-    const [rule, decision] = file.units;
-    expect(rule!.proofs.map((f) => f.proof)).toEqual(['check-status']);
-    expect(decision!.proofs.map((f) => [f.proof, f.owner])).toEqual([
-      ['pick-a-client.shared', { kind: 'decide', unit: 'pick-a-client', path: 'shared' }],
-      ['pick-a-client.direct', { kind: 'decide', unit: 'pick-a-client', path: 'direct' }],
-    ]);
-    expect(file.fences.filter((f) => f.proof === undefined)).toHaveLength(1);
+  it('are misplaced in a unit that is not a fact', () => {
+    expect(file.errors.map((e) => e.message)).toEqual(['fenced blocks go under `Right`, `Decide` or the `Value` of a fact, not under `Value`']);
   });
 
   it('reads Proof as a paragraph that is not a label', () => {

@@ -10,10 +10,10 @@ import { tf } from "tinyfetch";
 
 ## Options
 
-| Option       | Type        | Meaning                                              |
-| ------------ | ----------- | ---------------------------------------------------- |
-| `retry`      | number      | extra attempts after the first one                   |
-| `retryDelay` | number (ms) | wait before the first new attempt, doubled each time |
+| Option       | Type        | Default | Meaning                                              |
+| ------------ | ----------- | ------- | ---------------------------------------------------- |
+| `retry`      | number      | 0       | extra attempts after the first one                   |
+| `retryDelay` | number (ms) | 300     | wait before the first new attempt, doubled each time |
 
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });

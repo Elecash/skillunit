@@ -5,7 +5,7 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { gotLine, lockChange, shown } from './text.js';
+import { buildChange, gotLine, shown, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 interface Case {
@@ -24,7 +24,7 @@ interface Suite {
 
 export function junit(report: CheckReport, options: ReportOptions): string {
   const suites: Suite[] = [];
-  const line = (skill: string, p: Problem) => `${shown(join(skill, p.file), options)}:${p.line}  ${p.unit ?? '-'}  ${p.message}`;
+  const line = (skill: string, p: Problem) => `${shown(join(skill, p.file), options)}:${p.line}  ${p.unit ?? '-'}  ${withOrigin(skill, p, options)}`;
 
   if (report.lint) {
     const { lint } = report;
@@ -46,7 +46,8 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   if (report.proof?.configured) {
     const { proof } = report;
     const cases: Case[] = proof.units.map((u) => {
-      const c: Case = { name: u.id, classname: `proof.${shown(join(proof.skill, u.file), options)}`, properties: { state: u.state } };
+      const from = u.test ? `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}` : `${shown(join(proof.skill, u.source.file), options)}:${u.source.line}`;
+      const c: Case = { name: u.id, classname: `proof.${shown(join(proof.skill, u.file), options)}`, properties: { from: u.from, state: u.state, origin: from } };
       const mine = proof.problems.filter((p) => p.unit === u.id);
       const errors = mine.filter((p) => p.severity === 'error');
       const warnings = mine.filter((p) => p.severity === 'warning');
@@ -54,16 +55,15 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       if (warnings.length) c.out = warnings.map((p) => `warning: ${line(proof.skill, p)}`).join('\n');
       return c;
     });
-    // Findings about no unit: a report, a test file, an example file, the settings.
+    // Findings about no unit: a file of the skill or the source, a record, the settings.
     for (const p of proof.problems.filter((p) => !p.unit)) {
       const c: Case = { name: `${shown(join(proof.skill, p.file), options)}:${p.line}`, classname: 'proof' };
       if (p.severity === 'error') c.failure = line(proof.skill, p);
       else c.out = `warning: ${line(proof.skill, p)}`;
       cases.push(c);
     }
-    const lockFile = shown(join(proof.skill, proof.lock.file), options);
-    const change = lockChange(proof.lock, lockFile);
-    if (change) cases.push({ name: lockFile, classname: 'proof', out: change });
+    const change = buildChange(proof, options);
+    if (change) cases.push({ name: shown(proof.skill, options), classname: 'proof', out: change });
     suites.push({ name: 'proof', cases });
   }
 
@@ -73,7 +73,8 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       const cases: Case[] = spec.verdicts.map((v) => {
         const c: Case = { name: v.id, classname: name };
         const got = gotLine(v, report);
-        if (!v.pass) c.failure = `${got}\nscenario: ${v.scenario}\nquestion: ${v.question}`;
+        const origin = unitOrigin(report, v.unit, options);
+        if (!v.pass) c.failure = `${got}\nscenario: ${v.scenario}\nquestion: ${v.question}${origin ? `\n${origin}` : ''}`;
         if (v.borderline) {
           c.properties = { borderline: 'true' };
           if (v.pass) c.out = `borderline: ${got}`;

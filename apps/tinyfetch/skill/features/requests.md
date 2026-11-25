@@ -44,7 +44,7 @@ Do: pass them in the `query` option, which encodes each value.
 
 Right:
 
-```ts proof=query-in-options
+```ts
 await tf.get("https://api.example.com/users", {
   query: { page: 2, sort: "name" },
 });
@@ -60,7 +60,7 @@ Do: pass the object itself as the body; tinyfetch serializes it and sets `conten
 
 Right:
 
-```ts proof=body-as-object
+```ts
 await tf.post("https://api.example.com/users", { name: "Ada" });
 ```
 

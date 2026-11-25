@@ -9,6 +9,7 @@ import { changedSelection } from './changed.js';
 import { runAll } from './runner.js';
 import { loadSpec } from './spec.js';
 import type { TestCase } from './spec.js';
+import { unit } from '../vitest.js';
 
 /**
  * The only stand-in for a decision model: it answers what a test tells it to, for the cases a
@@ -35,7 +36,7 @@ const no: TestCase = { ...yes, expect: 'no' };
 const th = DEFAULT_THRESHOLDS;
 
 describe('buildRequest', () => {
-  it('adds none to every choice question, asks each phrasing on its own, and frames once [skill:none-is-built-in]', () => {
+  unit('none-is-built-in', { when: 'the agent wants an option that means "other", "none of these" or "the skill does not say".', do: 'leave it out: SkillUnit adds `none` to every choice test.' }, () => {
     const request = buildRequest('skill text', [{ ...choice, scenarios: ['One.', 'Two.'] }, yes], 'A tiny HTTP client.');
     expect(request.questions.map((q) => q.id)).toEqual(['pick#1', 'pick#2', 'allowed']);
     expect(request.questions[0]).toEqual({
@@ -205,6 +206,20 @@ describe('runAll', () => {
     expect((await runAll(config, enough.model, { dryRun: true })).ok).toBe(true);
   });
 
+  it('refuses, on a dry run too, a test whose `unit:` names no unit of the skill', async () => {
+    const config = project({ 'a.yaml': 'tests:\n  - id: t\n    unit: never-disable-timeout\n    scenario: s\n    question: q?\n    expect: no\n' });
+    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: keep-a-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
+    const { model, calls } = stub(() => new Error('must not be called'));
+    for (const dryRun of [true, false]) {
+      const report = await runAll(config, model, { dryRun });
+      expect(report.ok).toBe(false);
+      expect(report.specs[0]!.error).toBe('`unit: never-disable-timeout` (test t, line 2) names no unit of the skill: was the unit renamed or removed? Point `unit:` at the unit\'s id, or take it out');
+    }
+    expect(calls).toHaveLength(0);
+    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: never-disable-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
+    expect((await runAll(config, model, { dryRun: true })).ok).toBe(true);
+  });
+
   it('runs a spec where the model refused one question, and fails only that test', async () => {
     const config = project({ 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n  - id: u\n    scenario: s\n    question: r?\n    expect: no\n' });
     const { model } = stub(() => ({ t: { refused: true }, u: { probabilities: { yes: 0.1, no: 0.9 } } }));
@@ -213,7 +228,8 @@ describe('runAll', () => {
     expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
   });
 
-  it('sends nothing on a dry run, but still checks the limits [skill:dry-run-without-key]', async () => {
+  unit('dry-run-without-key', { when: 'there is no API key, and the user asked for tests.', do: 'write the specs anyway, run `npx skillunit check --dry-run`, and tell the user the tests were not sent to the model.', evenWhen: 'the specs look obviously right; a test that was never sent has not passed.' }, async (u) => {
+    u.example('sh', 'npx skillunit check --dry-run');
     const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
     const { model, calls } = stub(() => new Error('must not be called'));
     const report = await runAll(config, model, { dryRun: true });

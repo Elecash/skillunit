@@ -3,8 +3,8 @@
 ```
 skillunit check [options]           lint, proof and test: what CI runs
 skillunit lint [skill] [options]    the skill's format, examples, Check rules and links
-skillunit proof [skill] [options]   units the project's tests prove, from their JUnit report, and
-                                    whether each block flagged proof=<id> holds what its test produced
+skillunit proof [options]           run the project's tests, build the skill from `source` and the
+                                    units the tests declare, and compare it with the skill folder
 skillunit test [specs...] [options] ask a decision model the spec tests about the skill
 skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
 ```
@@ -22,14 +22,14 @@ Run `skillunit init skills/my-skill` from the project root. It writes `skillunit
 | `--reporter <name>` | all | `table` (the default), `json`, `junit` or `github` |
 | `--json` | all | the same as `--reporter json` |
 | `--compact` | proof, test, check | with the `table` reporter, one row per unit; the other reporters ignore it |
+| `--no-run` | proof, check | do not run `proof.run`; build from the units the tests already left |
 | `--dry-run` | test, check | check that specs load, headings exist and requests fit; send nothing |
 | `--changed` | test, check | test only what changed in git since `--base` |
 | `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
 | `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
 | `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md) |
-| `--write` | proof | copy each example a test produced into its block, add the units the tests prove to `skillunit.lock`, then check |
-| `--forget <ids>` | proof | take these units off `skillunit.lock`, then check; ids separated by commas, or the option more than once |
+| `--write` | proof | write the build to the skill folder instead of comparing |
 
 A command rejects an option it does not take.
 
@@ -43,25 +43,25 @@ the main branch after the branch point do not count.
 
 ## Proof
 
-`skillunit proof` reads the JUnit XML report of a test run, the examples the tests wrote and the
-regions of the test files, as `proof` in `skillunit.yaml` says, and compares them with
-`skillunit.lock`. It reports the units proved, failed and unproved. It fails on a tagged test
-that failed, on a unit the lock lists and no test proves, on a proved unit the lock does not
-list, on a block flagged `proof=<id>` that differs from what its test produced, and on the other
-cases [Proof](proof.md#what-it-reports) lists. It never runs the tests: run them before it.
-Without a `proof` key it exits 2, and `check` skips the layer and says so.
+`skillunit proof` empties `proof.units` of its records, runs `proof.run`, builds the skill from
+`source` and the units the tests left, formats it with `proof.format`, and compares it with the
+skill folder. It reports, for each unit, where it comes from: a test, with its file and line, or
+the source, by hand. It fails on a slot whose test failed or left no unit, on a line of the skill
+folder that is not what the build gives, and on the other cases
+[Proof](proof.md#building-and-checking) lists. Each finding about a line of the skill says which
+file that line comes from. Without `source` it exits 2, and `check` skips the layer and says so.
 
-`--write` copies every example into its block and adds the units the tests prove to the lock.
-`--forget a,b` takes units off the lock, all of them or none, for units no longer meant to be
-proved. Both then run the check. Commit the lock with the change.
+`--write` writes the build to the skill folder; commit it with the change. `--no-run` builds from
+the units already in `proof.units`, for a pipeline that ran the tests in an earlier step.
+`check` runs the proof before lint and the model tests, `--dry-run` included, since it needs no
+key.
 
 ## Exit codes
 
 - `0`: every check passed. Lint warnings and borderline verdicts do not fail a run.
 - `1`: a check failed.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
-  for a run that needs one, a `tsc` that rejects the tsconfig, `proof` with no `proof` key, or
-  `--forget` with `--write`.
+  for a run that needs one, a `tsc` that rejects the tsconfig, or `proof` with no `source`.
 
 Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
 an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so

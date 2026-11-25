@@ -30,6 +30,11 @@ describe('init', () => {
     expect(config.specs).toEqual([join(root, 'specs')]);
     expect(config.configDir).toBe(root);
     expect(config.examples?.ts).toBeUndefined();
+    // Building the skill from the tests is there to turn on, commented out.
+    expect(config.source).toBeUndefined();
+    const text = readFileSync(join(root, 'skillunit.yaml'), 'utf8');
+    expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run" }\n');
+    expect(readFileSync(join(root, 'specs', 'example.yaml'), 'utf8')).toContain('# unit: some-unit-id    # the unit this test is about: the report shows the test under it\n');
   });
 
   it('turns on the type-check when the project has a tsconfig.json', () => {

@@ -3,6 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { envFiles, loadEnv } from './env.js';
+import { PROVIDER_NAMES, PROVIDERS } from './models/index.js';
+import { unit } from './vitest.js';
+
+/** The environment variables of the providers that ship with SkillUnit. */
+const KEYS = PROVIDER_NAMES.flatMap((n) => [...PROVIDERS[n].env]);
+/** `a`, `a or b`, `a, b or c`. */
+const or = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
@@ -22,7 +29,13 @@ function layout() {
 }
 
 describe('.env files', () => {
-  it('reads the folder of the config, then each parent up to the git root, and no further [skill:key-outside-the-repo]', () => {
+  unit('key-outside-the-repo', {
+      when: "the test layer needs the decision model's API key.",
+      // The variables come from the providers that ship, so a new one shows up in the skill.
+      do: `put the key of the provider in \`skillunit.yaml\`, ${or(KEYS.map((v) => `\`${v}\``))}, in the environment (a secret in CI), or in a \`.env\` file that git ignores, next to \`skillunit.yaml\` or at the root of the repository.`,
+      check: `forbid \`/(${KEYS.map((v) => v.replace(/_API_KEY$/, '')).join('|')})_API_KEY:\\s*\\S/\` in yaml`,
+    }, (u) => {
+    u.example('sh', 'echo "TYPESAFE_API_KEY=your-key" >> .env');
     const { repo } = layout();
     expect(envFiles(join(repo, 'apps', 'app'))).toEqual([join(repo, 'apps', 'app', '.env'), join(repo, '.env')]);
     expect(envFiles(join(repo, 'apps', 'other'))).toEqual([join(repo, '.env')]);

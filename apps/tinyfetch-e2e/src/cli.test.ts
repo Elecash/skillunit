@@ -106,7 +106,6 @@ describe('the table reporter by unit', () => {
   let ids: string[];
   beforeAll(() => {
     app = App.copy('table');
-    app.test();
     ids = (app.run('check', '--dry-run').report.units as { id: string }[]).map((u) => u.id);
   }, 120_000);
   const table = (...args: string[]) => {

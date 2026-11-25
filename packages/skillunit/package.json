@@ -32,9 +32,13 @@
     "skillunit": "bin/skillunit.js"
   },
   "exports": {
-    "./proof": {
-      "types": "./dist/proof/helper.d.ts",
-      "default": "./dist/proof/helper.js"
+    "./vitest": {
+      "types": "./dist/vitest.d.ts",
+      "default": "./dist/vitest.js"
+    },
+    "./unit": {
+      "types": "./dist/unit/index.d.ts",
+      "default": "./dist/unit/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -80,10 +84,14 @@
     "yaml": "^2.6.0"
   },
   "peerDependencies": {
-    "typescript": ">=5"
+    "typescript": ">=5",
+    "vitest": ">=5"
   },
   "peerDependenciesMeta": {
     "typescript": {
+      "optional": true
+    },
+    "vitest": {
       "optional": true
     }
   },

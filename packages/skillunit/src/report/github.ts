@@ -5,31 +5,36 @@
  */
 import { join } from 'node:path';
 import type { Problem } from '../lint/types.js';
-import { gotLine, lockChange, shown, statusLine, undeclaredNames } from './text.js';
+import { buildChange, gotLine, proofSummary, shown, statusLine, undeclaredNames, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function github(report: CheckReport, options: ReportOptions): string {
+  // Annotation paths start at the repository's root, the way GitHub names a file of the
+  // repository, even when the command ran in a subfolder. Messages keep paths from `cwd`.
+  const at = { ...options, cwd: options.root ?? options.cwd };
   const out: string[] = [];
   const annotate = (level: 'error' | 'warning', file: string, line: number, title: string, message: string) =>
     out.push(`::${level} file=${prop(file)},line=${line},title=${prop(title)}::${data(message)}`);
   const problem = (layer: string, skill: string, p: Problem) =>
-    annotate(p.severity, shown(join(skill, p.file), options), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, p.message);
+    annotate(p.severity, shown(join(skill, p.file), at), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, withOrigin(skill, p, options));
 
   if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
   if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     for (const spec of report.test.specs) {
-      const file = shown(spec.spec, options);
+      const file = shown(spec.spec, at);
       if (spec.error) annotate('error', file, 1, 'SkillUnit test', `could not run: ${spec.error}`);
       for (const v of spec.verdicts) {
         const got = gotLine(v, report);
-        if (!v.pass) annotate('error', file, v.line ?? 1, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}`);
+        const origin = unitOrigin(report, v.unit, options);
+        if (!v.pass) annotate('error', file, v.line ?? 1, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
         else if (v.borderline) annotate('warning', file, v.line ?? 1, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
     }
   }
   const { proof } = report;
-  const change = proof?.configured ? lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options)) : null;
+  const change = proof?.configured ? buildChange(proof, options) : null;
+  if (proof?.configured) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
   if (change) out.push(`::notice title=SkillUnit proof::${data(change)}`);
   const names = report.lint ? undeclaredNames(report.lint.summary) : null;
   if (names) out.push(`::notice title=SkillUnit lint::${data(`${names[0]}. ${names[1]}`)}`);

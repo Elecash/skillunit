@@ -9,7 +9,7 @@ export function ownerUnit(owner: FenceOwner): string | undefined {
 /** Fences that are examples an agent may copy: they must compile and follow every `Check`. */
 export function isExample(fence: Fence): boolean {
   const kind = fence.owner.kind;
-  return kind === 'reference' || kind === 'right' || kind === 'decide';
+  return kind === 'reference' || kind === 'right' || kind === 'decide' || kind === 'value';
 }
 
 export const isNoCheck = (fence: Fence) => fence.flags.includes('no-check');

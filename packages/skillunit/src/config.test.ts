@@ -20,7 +20,16 @@ describe('examples', () => {
       ts: { tsconfig: join(dir, 'tsconfig.json') },
       commands: { py: 'python3 -m py_compile {file}' },
       cwd: dir,
+      place: { file: join(dir, 'skillunit.yaml'), lines: { ts: 2, py: 3 } },
     });
+  });
+
+  it('reads the other names of a language by its short one, and refuses both', () => {
+    const config = load('examples:\n  python: { command: "p {file}" }\n  bash: { command: "b {file}" }\n  YML: { command: "y {file}" }\n  typescript: { tsconfig: ./tsconfig.json }\n');
+    expect(config.examples!.commands).toEqual({ py: 'p {file}', sh: 'b {file}', yaml: 'y {file}' });
+    expect(config.examples!.ts).toEqual({ tsconfig: join(dir, 'tsconfig.json') });
+    expect(() => load('examples:\n  py: { command: "p {file}" }\n  python: { command: "q {file}" }\n')).toThrow(/`examples.py` and `examples.python` are one language; keep one/);
+    expect(() => load('examples:\n  shell: { command: "s {file}" }\n  sh: { command: "t {file}" }\n')).toThrow(/`examples.shell` and `examples.sh` are one language/);
   });
 
   it('has no examples when the key is absent', () => {
@@ -53,7 +62,7 @@ describe('model', () => {
 
 describe('keys', () => {
   it('rejects a key it does not know, and names the ones it does', () => {
-    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, specs, context, model, thresholds, examples, lint, proof\)/);
+    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, source, specs, context, model, thresholds, examples, lint, proof\)/);
   });
 });
 
@@ -64,7 +73,7 @@ describe('lint', () => {
   });
 
   it('rejects a rule it does not know, and names the ones it does', () => {
-    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, command, index, length, fence, proof\)/);
+    expect(() => load('lint: { off: [lenght] }\n')).toThrow(/unknown rule `lenght` \(rules: parse, structure, setup, check, types, command, index, length, fence\)/);
     expect(() => load('lint: { on: [index] }\n')).toThrow(/unknown key `lint.on`/);
   });
 });

@@ -10,10 +10,10 @@ SkillUnit checks that an agent skill still says what the code it describes does.
 | Layer | Command | What it finds | Needs the API key |
 | --- | --- | --- | --- |
 | lint | `npx skillunit lint` | a malformed unit, an example that does not compile or breaks a rule, a broken link | no |
-| proof | `npx skillunit proof` | a unit whose test failed, a block that differs from the example its test produced, a unit no test proves | no |
+| proof | `npx skillunit proof` | a unit whose test failed or is gone, a line of the built skill that is not what the code and its tests give | no |
 | test | `npx skillunit test` | text that does not settle a decision: closed questions to a decision model, from YAML specs | yes |
 
-`npx skillunit check` runs all three; it is what CI runs. Proof reads the JUnit report of the project's test run, so the tests run before it. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
+`npx skillunit check` runs all three; it is what CI runs. Proof runs the project's tests through `proof.run` and builds the skill from `source` and the units the tests declare. With `--dry-run`, the test layer checks that the specs load and fit, and sends nothing.
 
 The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key belongs to its provider: `TYPESAFE_API_KEY` for `typesafe`, the default, and `OPENAI_API_KEY` for `openai` (`model: { provider: openai }`). SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
 
@@ -27,7 +27,7 @@ The settings live in `skillunit.yaml`, next to the skill or at the root of the p
 | Decide which specs a skill needs | [testing/plan.md](testing/plan.md) |
 | Write a test: scenario, question, options, the spec format | [testing/tests.md](testing/tests.md) |
 | Run the checks, read a report, act on a failure | [testing/results.md](testing/results.md) |
-| Prove a unit with a test of the code: the `[skill:<id>]` tag, an example a test produces, `skillunit.lock` | [testing/proof.md](testing/proof.md) |
+| Declare a unit in a test of the code, with `unit()`, and build the skill from its source | [testing/proof.md](testing/proof.md) |
 
 ## Rules
 
@@ -79,7 +79,7 @@ Decide: which layer to run.
 
 - **lint** — the skill's files changed: `npx skillunit lint`.
 
-- **proof** — the code changed, or its tests did: run the tests, then `npx skillunit proof`, which names the units whose tests fail.
+- **proof** — the code changed, or its tests did: `npx skillunit proof`, which runs the tests and names each unit the change moved.
 
 - **test** — what a unit says changed, or its specs did: `npx skillunit test`, or `npx skillunit test --changed` for only the specs those changes touch.
 

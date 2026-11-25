@@ -1,79 +1,77 @@
 file: testing/proof.md
 
 tests:
-  - id: tag-the-test
-    unit: tag-the-test-that-asserts-it
-    scenario: The skill says requests time out after 10 seconds by default, and the project has a test that asserts the default timeout is 10,000 ms.
+  - id: declare-in-the-test
+    unit: declare-in-the-test-that-checks-it
+    scenario: The skill says requests time out after 10 seconds by default, and the project has a test that asserts the default timeout.
     question: How should the agent tie the unit to that test?
     options:
-      tag: Put `[skill:<unit id>]` in the title of that test
+      unit: Declare the unit with `unit()` around that test, and put `{{unit:<id>}}` in the source
       comment: Name the test file in a sentence of the unit
-      lock: Add the unit's id to `skillunit.lock` by hand
-    expect: tag
-
-  - id: after-tagging
-    unit: tag-the-test-that-asserts-it
-    scenario: The agent has just put `[skill:retry-defaults]` in the title of a test that asserts the default retry delay.
-    question: What should the agent do before it commits the test?
-    options:
-      write: Run the tests and `npx skillunit proof --write`, and commit `skillunit.lock` with the test
-      commit: Commit the test alone, since the tag is in its title
-    expect: write
+      both: Keep the unit in the source and copy its sentence into the test's title
+    expect: unit
 
   - id: advice-unit
-    unit: tag-the-test-that-asserts-it
+    unit: declare-in-the-test-that-checks-it
     scenario: A unit advises using one client per API. No test of the library can check that, and the project has a test of how a client is created.
-    question: Which test should carry the unit's tag?
+    question: Where should the agent write the unit?
     options:
-      no-test: No test; the unit stays unproved
-      client-test: The test of how a client is created
-    expect: no-test
+      source: In the source, by hand
+      client-test: In a `unit()` around the test of how a client is created
+    expect: source
+
+  - id: value-from-the-code
+    unit: build-the-sentence-from-the-code
+    scenario: The agent declares the fact `default-timeout` in a test. The code exports `DEFAULT_TIMEOUT = 10_000`.
+    question: How should the agent write the value of the fact?
+    options:
+      built: "`${DEFAULT_TIMEOUT / 1000} seconds`, built from the constant"
+      literal: "`10 seconds`, typed into the sentence"
+    expect: built
 
   - id: example-is-a-value
-    unit: region-or-file
-    scenario: A unit's example is the JSON configuration that a TypeScript test builds and checks.
+    unit: region-or-example
+    scenario: A unit's example is the JSON configuration that a test builds and checks in its body.
     question: How should the test hand that example to the skill?
     options:
-      file: Write it with `skillExample(id, value)` and flag the block `proof=<id>`
+      example: Pass it to `u.example('json', text)` in the body
       region: Put the JSON between `#region` and `#endregion` comments in the test
       paste: Paste the JSON into the skill by hand after the test passes
-    expect: file
+    expect: example
 
-  - id: block-differs
-    unit: write-blocks-from-tests
-    scenario: "`npx skillunit proof` reports that a block flagged `proof=query-in-options` differs from the region of its test."
+  - id: edit-the-built-skill
+    unit: edit-the-source-not-the-skill
+    scenario: The skill is built from `skill-src`. The agent finds a typo in a sentence of `skill/features/retries.md` that comes from the source.
+    question: Which file should the agent edit?
+    options:
+      source: The file of `skill-src`, then run `npx skillunit proof --write`
+      skill: "`skill/features/retries.md`, where the typo is"
+    expect: source
+
+  - id: default-moved
+    unit: rebuild-after-the-code-moved
+    scenario: The team raised the default retry delay from 300 to 500 ms on purpose. The tests pass, and `npx skillunit proof` reports that the `Value` of `retry-defaults` says 300 and the build gives 500.
     question: What should the agent do?
     options:
-      write: Run the tests, then `npx skillunit proof --write`
-      edit: Edit the block by hand until it matches the region
-      unflag: Remove `proof=` from the block
+      write: Run `npx skillunit proof --write` and commit the built skill with the change
+      edit: Edit the `Value` in the skill folder to say 500
+      test: Change the test so the build gives 300 again
     expect: write
 
   - id: test-fails
     unit: fix-the-unit-when-its-test-fails
-    scenario: The team raised the default retry delay from 300 to 500 ms on purpose, and the test tagged `[skill:retry-defaults]` now fails.
+    scenario: The team changed what a failed request throws on purpose, and the test that declares `what-a-failed-request-throws` now fails on its assertion.
     question: What should the agent do?
     options:
-      fix: Change what the unit says and what the test asserts to 500 ms
+      fix: Correct the test's assertions and any literal in its sentence, then run the proof again
       skip: Skip the test until someone updates the skill
-      untag: Remove the tag from the test
-      forget: Run `npx skillunit proof --forget retry-defaults`
     expect: fix
 
   - id: lost-by-mistake
-    unit: forget-only-what-is-no-longer-proved
-    scenario: "`npx skillunit proof` fails: `skillunit.lock` lists `retry-defaults`, and a refactor in this change deleted the test tagged for it by mistake. The unit still states the default retry delay."
+    unit: keep-the-slot-until-the-unit-goes
+    scenario: "`npx skillunit proof` fails: no test left the unit `retry-defaults`, and a refactor in this change deleted its test by mistake. The unit still states the default retry delay."
     question: What should the agent do?
     options:
-      restore: Bring back a test tagged `[skill:retry-defaults]`
-      forget: Run `npx skillunit proof --forget retry-defaults`
+      restore: Bring back the test that declares `retry-defaults`
+      remove: Remove `{{unit:retry-defaults}}` from the source
     expect: restore
-
-  - id: no-longer-proved
-    unit: forget-only-what-is-no-longer-proved
-    scenario: "The team rewrote the unit `pick-a-timeout` from a stated default into advice on which timeout to choose, and deleted its test on purpose. `npx skillunit proof` fails: `skillunit.lock` lists `pick-a-timeout`."
-    question: What should the agent do?
-    options:
-      restore: Bring back a test tagged `[skill:pick-a-timeout]`
-      forget: Run `npx skillunit proof --forget pick-a-timeout`
-    expect: forget

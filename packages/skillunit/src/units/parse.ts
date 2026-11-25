@@ -36,8 +36,24 @@ const LIST_ITEM = /^ ?[-*+]\s+(.*)$/;
 const NESTED_ITEM = /^\s{2,}[-*+]\s/;
 const DECIDE_PATH = /^\*\*([^*]+)\*\*\s+[—–-]\s+(.*)$/;
 const SETUP = /^Setup:\s*(.*)$/;
-/** Long language names, read as the short ones so the type-check and `Check … in ts` see them. */
-const LANG_ALIASES: Record<string, string> = { typescript: 'ts', javascript: 'js' };
+/**
+ * Names of one language, read as one: the fence, `examples.<lang>` and `Check … in <lang>` all
+ * use the short name, so `python` finds the command set for `py`.
+ */
+const LANG_ALIASES: Record<string, string> = { typescript: 'ts', javascript: 'js', python: 'py', bash: 'sh', shell: 'sh', yml: 'yaml' };
+
+/** The name SkillUnit reads a fence language by, lowercased: `python` is `py`, `bash` is `sh`. */
+export function canonicalLang(lang: string): string {
+  const l = lang.toLowerCase();
+  return LANG_ALIASES[l] ?? l;
+}
+
+/** The other names of a language, for messages: `py` gives `python`. */
+export function langAliases(lang: string): string[] {
+  return Object.entries(LANG_ALIASES)
+    .filter(([, short]) => short === lang)
+    .map(([long]) => long);
+}
 
 /** Parses every `.md` file under `dir`, skipping dot folders and node_modules. */
 export function parseSkill(dir: string): ParsedSkill {
@@ -249,7 +265,7 @@ class FileParser {
       right: [],
       skipped: 0,
       check: [],
-      proofs: [],
+      valueFences: [],
       text: '',
     };
     this.label = null;
@@ -349,14 +365,11 @@ class FileParser {
       file: this.file,
       line: raw.start + 1,
       endLine: raw.end + 1,
-      lang: LANG_ALIASES[lang.toLowerCase()] ?? lang.toLowerCase(),
+      lang: canonicalLang(lang),
       flags,
       code: raw.code,
       owner: { kind: 'reference' },
     };
-    const proof = proofFlag(flags);
-    if (proof !== undefined) fence.proof = proof;
-
     if (this.pendingSetup !== null) {
       this.pendingSetup = null;
       fence.owner = { kind: 'setup' };
@@ -364,7 +377,6 @@ class FileParser {
       else this.result.setup[fence.lang] ??= fence;
     } else if (this.unit) {
       fence.owner = this.unitFenceOwner(raw, fence);
-      if (fence.proof !== undefined) this.unit.proofs.push(fence);
       // A fence ends the paragraph before it; a line after it starts a new one.
       this.para = null;
       this.blank = true;
@@ -392,8 +404,12 @@ class FileParser {
       path.fences.push(fence);
       return { kind: 'decide', unit: u.id, path: path.id };
     }
+    if (this.label === 'Value' && u.kind === 'fact') {
+      u.valueFences.push(fence);
+      return { kind: 'value', unit: u.id };
+    }
     const where = this.label ? `\`${this.label}\`` : 'the unit heading';
-    return misplaced(`fenced blocks go under \`Right\` or \`Decide\`, not under ${where}`);
+    return misplaced(`fenced blocks go under \`Right\`, \`Decide\` or the \`Value\` of a fact, not under ${where}`);
   }
 
   // ---------------------------------------------------------------- lines inside a unit
@@ -552,14 +568,6 @@ class FileParser {
   }
 }
 
-/** The value of the first `proof=` flag of a fence, with quotes around it taken off. */
-export function proofFlag(flags: string[]): string | undefined {
-  const flag = flags.find((f) => f.startsWith('proof='));
-  if (flag === undefined) return undefined;
-  const value = flag.slice('proof='.length);
-  return /^(["'])(.*)\1$/.exec(value)?.[2] ?? value;
-}
-
 const CHECK_FORMAT = '`Check` reads ``forbid `/regex/` in <languages>``';
 
 /**
@@ -594,7 +602,7 @@ export function parseCheck(value: string, line: number): Check | string {
   }
   const list = langs[1]!
     .split(',')
-    .map((l) => l.trim().toLowerCase())
+    .map((l) => canonicalLang(l.trim()))
     .filter(Boolean);
   if (list.length === 0) return '`Check` needs at least one language after `in`';
   return { mode: 'forbid', regex, langs: list, line, raw: text, column: 1 };

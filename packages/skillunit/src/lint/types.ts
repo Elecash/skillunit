@@ -6,7 +6,7 @@ export type Severity = 'error' | 'warning';
  * The lint rules, by the name each problem is reported under. Any of them can be turned off with
  * `lint: { off: [...] }` in `skillunit.yaml`.
  */
-export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'command', 'index', 'length', 'fence', 'proof'] as const;
+export const LINT_RULES = ['parse', 'structure', 'setup', 'check', 'types', 'command', 'index', 'length', 'fence'] as const;
 
 /** The rule that found a problem, for filtering and for reporters. */
 export type LintRule = (typeof LINT_RULES)[number];
@@ -18,13 +18,22 @@ export interface Problem {
   /** The unit the line belongs to, if any. */
   unit?: string;
   severity: Severity;
-  rule: LintRule;
+  /** A lint rule, or `proof` for a finding of the proof layer. */
+  rule: LintRule | 'proof';
   message: string;
   /** The TypeScript code, such as `TS2322`, of a problem the type-check found. */
   code?: string;
   /** Markdown line where the example (or `Setup`) the problem is in starts. */
   example?: number;
+  /** Where the line comes from, when the skill is built from `source`: the file to edit instead. */
+  origin?: Origin;
 }
+
+/**
+ * Where a line of a built skill comes from: a test that declares a unit, or a file of `source`.
+ * `file` is from the skill folder, with `/`, as `Problem.file` is.
+ */
+export type Origin = { kind: 'test'; file: string; line: number; unit: string } | { kind: 'source'; file: string; line: number };
 
 export interface LintSummary {
   files: number;

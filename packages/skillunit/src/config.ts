@@ -16,17 +16,19 @@
  *     py: { command: "python3 -m py_compile {file}" }   # any other language
  *   lint:
  *     off: [length]              # lint rules not to report, by the name they are reported under
- *   proof:                       # units proved by the project's tests (`skillunit proof`)
- *     reports: ./reports/*.xml   # JUnit XML of the test run: a glob or a list of them
- *     examples: ./tmp/skill-proof   # where tests write examples (the default)
+ *   source: ./skill-src          # the skill as people write it; `skill` is built from it
+ *   proof:                       # how `skillunit proof` builds `skill` from `source` and the tests
+ *     run: "npx vitest run"      # the project's tests, run through the shell
+ *     units: ./tmp/skill-units   # where the tests leave their units (the default)
  *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
- *     format: "npx prettier --write {file}"   # run on a skill file after writing it
+ *     format: "npx prettier --write {file}"   # run on each built Markdown file
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parse } from 'yaml';
 import { LINT_RULES, type LintRule } from './lint/types.js';
 import { isProviderName, PROVIDER_NAMES, providerList, type ProviderName } from './models/providers.js';
+import { canonicalLang } from './units/parse.js';
 
 export interface Thresholds {
   choice: number;
@@ -55,26 +57,29 @@ export interface Config {
   configDir?: string;
   /** Absolute path of the config file, when there is one. */
   configFile?: string;
-  /** The proof layer; absent when the settings have no `proof` key. */
+  /** Absolute path of the folder people write, which `skill` is built from. Without it there is no proof layer. */
+  source?: string;
+  /** The proof layer: set, with its defaults, whenever `source` is. */
   proof?: ProofConfig;
 }
 
-/** Where the proof layer finds what the tests left. Globs start from `cwd`. */
+/** How the proof layer builds `skill` from `source` and what the tests left. Globs start from `cwd`. */
 export interface ProofConfig {
-  /** Globs of the JUnit XML reports of the test run. */
-  reports: string[];
-  /** Absolute folder where tests write examples. */
-  examples: string;
+  /** The project's tests, run through the shell from `cwd`. Without it, the units already in `units` are used. */
+  run?: string;
+  /** Absolute folder where the tests of `skillunit/vitest` and `skillunit/unit` leave their units. */
+  units: string;
   /** Globs of the test files to read `#region skill:<id>` examples from. */
   sources: string[];
-  /** A command with `{file}`, run on each skill file `--write` changes. */
+  /** A command with `{file}`, run on each built Markdown file. */
   format?: string;
   /** Folder of the config file: globs and commands start there. */
   cwd: string;
 }
 
-/** Where tests write examples when `proof.examples` is not set, from the config file's folder. */
-export const DEFAULT_PROOF_EXAMPLES = './tmp/skill-proof';
+
+/** Where tests leave units when `proof.units` is not set, from the config file's folder. */
+export const DEFAULT_PROOF_UNITS = './tmp/skill-units';
 
 /**
  * The decision model the `test` layer asks: a provider that ships with SkillUnit, with the model
@@ -91,6 +96,8 @@ export interface ExamplesConfig {
   commands: Record<string, string>;
   /** Folder the commands run in: the folder of the config file. */
   cwd: string;
+  /** The settings file, and the line of each language's key in it, for findings about a key. */
+  place?: { file: string; lines: Record<string, number> };
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, margin: 0.13 };
@@ -98,7 +105,7 @@ export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, 
 export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
+const KEYS = new Set(['skill', 'source', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -150,34 +157,44 @@ export function loadConfig(path?: string): Config {
       config.thresholds[key as keyof Thresholds] = value;
     }
   }
-  if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail);
+  if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail, file);
   if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);
-  if (raw.proof !== undefined) config.proof = readProof(raw.proof, root, fail);
+  if (raw.source !== undefined) {
+    if (typeof raw.source !== 'string' || !raw.source.trim()) throw fail('`source` must be a path: the folder the skill is built from');
+    config.source = resolve(root, raw.source);
+    const inside = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || a.startsWith(`${b}\\`);
+    if (inside(config.source, config.skill) || inside(config.skill, config.source)) {
+      throw fail('`source` and `skill` are two folders, neither inside the other: `skill` is built from `source`');
+    }
+  }
+  if (raw.proof !== undefined && config.source === undefined) throw fail('`proof` says how the skill is built from `source`; set `source` too');
+  if (config.source !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
   return config;
 }
 
-const PROOF_KEYS = ['reports', 'examples', 'sources', 'format'];
+const PROOF_KEYS = ['run', 'units', 'sources', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { reports: ./reports/junit.xml }`');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
   const raw = value as Record<string, unknown>;
   for (const key of Object.keys(raw)) {
     if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
   }
-  const globs = (key: string, required: boolean): string[] => {
+  const globs = (key: string): string[] => {
     const v = raw[key];
-    if (v === undefined || v === null) {
-      if (required) throw fail(`\`proof.${key}\` is missing: the glob of the JUnit XML reports your test run writes, such as \`./reports/junit.xml\``);
-      return [];
-    }
+    if (v === undefined || v === null) return [];
     const list = Array.isArray(v) ? v : [v];
     if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
     return list as string[];
   };
-  const out: ProofConfig = { reports: globs('reports', true), examples: resolve(root, DEFAULT_PROOF_EXAMPLES), sources: globs('sources', false), cwd: root };
-  if (raw.examples !== undefined) {
-    if (typeof raw.examples !== 'string' || !raw.examples.trim()) throw fail('`proof.examples` must be a folder');
-    out.examples = resolve(root, raw.examples);
+  const out: ProofConfig = { units: resolve(root, DEFAULT_PROOF_UNITS), sources: globs('sources'), cwd: root };
+  if (raw.run !== undefined) {
+    if (typeof raw.run !== 'string' || !raw.run.trim()) throw fail('`proof.run` must be a command, such as `npx vitest run`');
+    out.run = raw.run;
+  }
+  if (raw.units !== undefined) {
+    if (typeof raw.units !== 'string' || !raw.units.trim()) throw fail('`proof.units` must be a folder');
+    out.units = resolve(root, raw.units);
   }
   if (raw.format !== undefined) {
     if (typeof raw.format !== 'string' || !raw.format.includes('{file}')) throw fail('`proof.format` must be a command with `{file}` where the skill file goes');
@@ -217,12 +234,20 @@ function readModel(value: unknown, root: string, fail: (msg: string) => Error): 
 /** Fence languages the `ts` entry covers. */
 export const TS_LANGS = ['ts', 'tsx', 'js', 'jsx'];
 
-function readExamples(value: unknown, root: string, fail: (msg: string) => Error): ExamplesConfig {
+function readExamples(value: unknown, root: string, fail: (msg: string) => Error, file: string): ExamplesConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw fail('`examples` must be a mapping of fence language to settings');
   }
-  const out: ExamplesConfig = { commands: {}, cwd: root };
-  for (const [lang, entry] of Object.entries(value as Record<string, unknown>)) {
+  const text = readFileSync(file, 'utf8').split(/\r?\n/);
+  const out: ExamplesConfig = { commands: {}, cwd: root, place: { file, lines: {} } };
+  const seen = new Map<string, string>();
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    // `python` and `py` are one language: the key and the fence are read by the short name.
+    const lang = canonicalLang(key);
+    const first = seen.get(lang);
+    if (first !== undefined) throw fail(`\`examples.${first}\` and \`examples.${key}\` are one language; keep one`);
+    seen.set(lang, key);
+    out.place!.lines[lang] = text.findIndex((l) => new RegExp(`^\\s+["']?${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']?\\s*:`).test(l)) + 1 || 1;
     const settings = entry && typeof entry === 'object' && !Array.isArray(entry) ? (entry as Record<string, unknown>) : null;
     if (lang === 'ts') {
       if (!settings || typeof settings.tsconfig !== 'string' || Object.keys(settings).length !== 1) {
@@ -230,13 +255,13 @@ function readExamples(value: unknown, root: string, fail: (msg: string) => Error
       }
       out.ts = { tsconfig: resolve(root, settings.tsconfig) };
     } else if (TS_LANGS.includes(lang)) {
-      throw fail(`\`examples.${lang}\`: ${TS_LANGS.join(', ')} fences are all type-checked through \`examples.ts\``);
+      throw fail(`\`examples.${key}\`: ${TS_LANGS.join(', ')} fences are all type-checked through \`examples.ts\``);
     } else {
       if (!settings || typeof settings.command !== 'string' || Object.keys(settings).length !== 1) {
-        throw fail(`\`examples.${lang}\` takes one key, \`command\`, with \`{file}\` where the example's path goes`);
+        throw fail(`\`examples.${key}\` takes one key, \`command\`, with \`{file}\` where the example's path goes`);
       }
-      if (!settings.command.includes('{file}')) throw fail(`\`examples.${lang}.command\` must contain \`{file}\``);
-      out.commands[lang.toLowerCase()] = settings.command;
+      if (!settings.command.includes('{file}')) throw fail(`\`examples.${key}.command\` must contain \`{file}\``);
+      out.commands[lang] = settings.command;
     }
   }
   return out;

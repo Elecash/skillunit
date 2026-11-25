@@ -2,14 +2,14 @@
  * `skillunit lint`: parses the skill and runs every lint rule. The type-check of `ts`, `tsx`, `js`
  * and `jsx` examples happens in one `tsc` run, here.
  */
+import { relative } from 'node:path';
 import { TS_LANGS, type ExamplesConfig } from '../config.js';
-import { parseSkill, type Fence, type ParsedFile, type ParsedSkill } from '../units/index.js';
+import { langAliases, parseSkill, type Fence, type ParsedFile, type ParsedSkill } from '../units/index.js';
 import { checks } from './check.js';
 import { runCommands } from './commands.js';
 import { isExample, isNoCheck, ownerUnit, setupFor } from './examples.js';
 import { index } from './links.js';
 import { fenceFlags } from './fences.js';
-import { proofMarks } from './proof.js';
 import { setups } from './setup.js';
 import { structure } from './structure.js';
 import { runTsc, type TsBlock, type TsDiagnostic } from './tsc.js';
@@ -38,11 +38,11 @@ export function lintSkill(skill: ParsedSkill, options: LintOptions = {}): LintRe
     off: [...(options.off ?? [])],
     undeclared: [],
   };
-  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill), ...index(skill), ...fenceFlags(skill), ...proofMarks(skill)];
+  const problems: Problem[] = [...structure(skill), ...setups(skill), ...checks(skill), ...index(skill), ...fenceFlags(skill)];
   problems.push(...typeCheck(skill, options.examples, summary));
   if (options.examples) {
     const commands = runCommands(skill, options.examples);
-    problems.push(...commands.problems);
+    problems.push(...commands.problems, ...unusedCommands(skill, options.examples));
     summary.commandChecked = commands.checked;
     summary.noCheck += commands.noCheck;
   }
@@ -178,4 +178,26 @@ function withJsxHint(diagnostics: TsDiagnostic[], block: TsBlock): TsDiagnostic[
   if (first < 0 || (block.lang !== 'ts' && block.lang !== 'js') || !JSX_TAG.test(block.code)) return diagnostics;
   const fence = block.lang === 'ts' ? 'tsx' : 'jsx';
   return diagnostics.map((d, i) => (i === first ? { ...d, message: `${d.message} (this block looks like JSX, which parses only in a \`${fence}\` fence)` } : d));
+}
+
+/**
+ * A command set for a language no block of the skill is in: it never runs, and the skill may name
+ * the language another way than the key does. One warning per language, on its key.
+ */
+function unusedCommands(skill: ParsedSkill, examples: ExamplesConfig): Problem[] {
+  const used = new Set(skill.files.flatMap((f) => f.fences).map((f) => f.lang));
+  const file = examples.place ? relative(skill.root, examples.place.file).split('\\').join('/') : 'skillunit.yaml';
+  return Object.keys(examples.commands)
+    .filter((lang) => !used.has(lang))
+    .map((lang) => {
+      const names = [lang, ...langAliases(lang)].map((n) => `\`${n}\``).join(' or ');
+      const langs = [...used].filter(Boolean).sort();
+      return {
+        file,
+        line: examples.place?.lines[lang] ?? 1,
+        severity: 'warning' as const,
+        rule: 'command' as const,
+        message: `\`examples.${lang}\` is set, and no block of the skill is in ${names}, so its command never runs${langs.length ? `. The blocks are in ${langs.map((l) => `\`${l}\``).join(', ')}` : ''}`,
+      };
+    });
 }

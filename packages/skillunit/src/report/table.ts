@@ -9,9 +9,10 @@
  */
 import { join } from 'node:path';
 import type { LintResult, Problem } from '../lint/types.js';
+import type { RunReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { SpecReport } from '../test/runner.js';
-import { brief, decidingNumber, distribution, lockChange, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where } from './text.js';
+import { brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
 
@@ -84,7 +85,7 @@ function lintBlock(lint: LintResult, options: ReportOptions, c: Painter): string
 function lintFailures(report: CheckReport, options: ReportOptions, c: Painter, out: string[]): string[] {
   const lint = report.lint!;
   // A message of several lines, such as a command's output, goes on under the finding, indented.
-  const line = (p: Problem) => `${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(p.message).split('\n').join('\n        ')}`;
+  const line = (p: Problem) => `${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(withOrigin(lint.skill, p, options)).split('\n').join('\n        ')}`;
   const failures = byFile(lint.problems.filter((p) => p.severity === 'error'), line).map((lines) => [lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
   const warnings = byFile(lint.problems.filter((p) => p.severity === 'warning'), line).flat();
   if (failures.length) {
@@ -113,7 +114,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
   // ---------------------------------------------------------------- the header
   const header: string[] = [];
   if (proof && !proof.configured) header.push('proof not configured');
-  else if (proof) header.push(`proof ${proof.reports.length ? proof.reports.map((r) => at(r)).join(', ') : 'no report'}`);
+  else if (proof) header.push(`proof ${runLine(proof.run)}`);
   if (test) {
     const model = test.specs.find((s) => s.model)?.model;
     const asked = [test.provider, model].filter(Boolean).join(' · ');
@@ -165,17 +166,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     const units = n.both + n.proof + n.test + n.none;
     notes.push(`${plural(units, 'unit')} · ${n.both} proof and test · ${n.proof} proof only · ${n.test} test only · ${n.none} not covered`);
   }
-  if (proof?.configured) {
-    const s = proof.summary;
-    notes.push(
-      [
-        `proved ${s.proved} of ${plural(s.units, 'unit')}${s.failed ? `, ${s.failed} failed` : ''}`,
-        `${plural(s.fences, 'block')} from tests${s.written ? `, ${s.written} written` : s.differ ? `, ${s.differ} out of date` : ''}`,
-        plural(s.tagged, 'tagged test'),
-        `${plural(proof.lock.listed, 'unit')} in the lock`,
-      ].join(' · '),
-    );
-  }
+  if (proof?.configured) notes.push(proofSummary(proof));
   if (test) {
     const s = test.summary;
     notes.push(
@@ -190,7 +181,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     );
   }
   out.push('', ...notes.map((n) => c.dim(`  ${n}`)));
-  const change = proof?.configured ? lockChange(proof.lock, shown(join(proof.skill, proof.lock.file), options)) : null;
+  const change = proof?.configured ? buildChange(proof, options) : null;
   if (change) out.push(`  ${change}`);
 
   if (tree.elsewhere.length) {
@@ -198,6 +189,12 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     for (const line of tree.elsewhere) show(line, 2, []);
   }
   return failed;
+}
+
+/** What ran the tests, for the header: the command, how long it took and its exit code, or why nothing ran. */
+function runLine(run: RunReport): string {
+  if ('skipped' in run) return run.skipped === 'no-run' ? '--no-run: the units already left' : 'proof.run not set: the units already left';
+  return `ran \`${run.command}\` in ${(run.ms / 1000).toFixed(1)} s, exit ${run.status ?? 'none'}`;
 }
 
 /** One row per unit: its id, kind, proof state and tests passed of total, with what failed under it. */
@@ -228,7 +225,7 @@ function compactTree(
     }
     for (const u of file.units) {
       const p = u.proof;
-      const state = !p ? '–' : p.tests.length || p.state !== 'unproved' ? p.state : '–';
+      const state = !p ? '–' : p.state === 'passed' ? 'test' : p.state === 'hand' ? 'hand' : p.state;
       out.push(row(u.mark, idOf(u), u.kind, state, testsOf(u.tests)));
       for (const line of u.lines) if (line.mark === 'fail') show(line, 8, [path, u.id]);
     }
@@ -242,13 +239,14 @@ function describe(line: Line, report: CheckReport, options: ReportOptions, c: Pa
     case 'lint':
     case 'proof': {
       const place = where(skill, line.problem, options);
-      const [first, ...rest] = brief(line.problem.message).split('\n');
+      const [first, ...rest] = brief(withOrigin(skill, line.problem, options)).split('\n');
       const more = line.kind === 'lint' && line.more ? [c.dim(`+${line.more} more in this example`)] : [];
       return { text: `${place}  ${first}`, details: [...rest, ...more], short: `${line.kind} ${place}` };
     }
-    case 'tagged': {
-      const title = line.test.title.replace(/\s*\[skill:[^\]]*\]/g, '').trim();
-      return { text: title, details: line.problem ? [brief(line.problem.message)] : [], short: title };
+    case 'origin': {
+      const u = line.unit;
+      const text = u.test ? `from a test ${skillFile(skill, u.test.file, options)}:${u.test.line}` : 'by hand';
+      return { text, details: [], short: text };
     }
     case 'verdict': {
       const v = line.verdict;

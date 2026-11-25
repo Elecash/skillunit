@@ -1,15 +1,15 @@
 # SkillUnit checking its own skill. From the repository root:
 #   npm run skill:dry     lint, proof, and the specs load and fit; sends nothing
 #   npm run skill         the same, and the tests asked to TypeSafe (needs TYPESAFE_API_KEY)
-skill: ./skills/skillunit
+skill: ./skills/skillunit         # built: what agents install and read
+source: ./skills-src/skillunit    # the skill as people write it
 specs: ./specs
-context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it lints the skill's units and examples, reads which units the project's tests prove, and asks a decision model closed questions about the skill's text."
+context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it lints the skill's units and examples, builds the units a test can prove from the project's tests, and asks a decision model closed questions about the skill's text."
 examples:
   md: { command: "node tools/check-example.mjs md {file}" }
   yaml: { command: "node tools/check-example.mjs yaml {file}" }
   sh: { command: "sh -n {file}" }
-# Units proved by the package's tests: `npx nx test skillunit` writes the report, and
-# skillunit.lock lists the units they prove.
+# `skillunit proof` runs the package's tests, which declare eleven units of the skill with
+# `unit()`, and builds skills/skillunit from skills-src/skillunit.
 proof:
-  reports: ./packages/skillunit/reports/junit.xml
-  sources: ["packages/skillunit/src/**/*.test.ts"]
+  run: "cd packages/skillunit && npx vitest run"

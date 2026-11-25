@@ -276,25 +276,27 @@ describe('reporters', () => {
     });
 
     it('--compact: one row per unit, with what failed under it', () => {
-      const proofOf = (id: string, state: 'proved' | 'unproved', title?: string) => ({
+      const proofOf = (id: string, from: 'test' | 'hand'): ProofResult['units'][number] => ({
         id,
+        kind: units.find((u) => u.id === id)!.kind,
+        from,
+        state: from === 'test' ? 'passed' : 'hand',
         file: units.find((u) => u.id === id)!.file,
         line: 1,
-        state,
-        listed: state === 'proved',
-        tests: title ? [{ report: 'r.xml', line: 1, title, status: 'passed' as const }] : [],
-        fences: [],
+        source: { file: '../../skills-src/demo/SKILL.md', line: 3 },
+        ...(from === 'test' ? { test: { file: '../../src/retry.test.ts', line: 12 } } : {}),
       });
       const proof: ProofResult = {
         configured: true,
         ok: true,
         skill,
-        reports: ['../../reports/junit.xml'],
+        source: '/repo/skills-src/demo',
         write: false,
-        lock: { file: '../../skillunit.lock', exists: true, listed: 1, added: [], dropped: [], forgot: [], written: false },
-        units: [proofOf('pick-a-client', 'unproved'), proofOf('await-every-request', 'unproved'), proofOf('retry-idempotent-only', 'proved', 'only GET [skill:retry-idempotent-only]'), proofOf('retry-delay', 'unproved')],
+        run: { command: 'npx vitest run', status: 0, ms: 2300 },
+        units: [proofOf('pick-a-client', 'hand'), proofOf('await-every-request', 'hand'), proofOf('retry-idempotent-only', 'test'), proofOf('retry-delay', 'hand')],
+        files: [],
         problems: [],
-        summary: { units: 4, proved: 1, failed: 0, unproved: 3, tagged: 1, fences: 0, differ: 0, written: 0 },
+        summary: { units: 4, fromTests: 1, byHand: 3, failed: 0, missing: 0, values: 0, files: 2, differ: 0, written: 0, extra: 0 },
       };
       const report = buildReport('check', { units, lint, proof, test });
       expect(render(report, 'table', { ...options, compact: true })).toMatchSnapshot();
@@ -338,61 +340,93 @@ describe('reporters', () => {
       configured: true,
       ok: false,
       skill,
-      reports: ['../../reports/junit.xml'],
+      source: '/repo/skills-src/demo',
       write: false,
-      lock: { file: '../../skillunit.lock', exists: true, listed: 2, added: [], dropped: [], forgot: [], written: false },
+      run: { command: 'npx vitest run', status: 1, ms: 4200 },
       units: [
-        { id: 'retry-idempotent-only', file: 'features/retries.md', line: 20, state: 'proved', listed: true, tests: [{ report: '../../reports/junit.xml', line: 4, title: 'retries > only GET [skill:retry-idempotent-only]', status: 'passed' }], fences: [{ id: 'retry-idempotent-only', line: 31, from: 'region', differs: true, written: false }] },
-        { id: 'retry-delay', file: 'features/retries.md', line: 40, state: 'failed', listed: true, tests: [{ report: '../../reports/junit.xml', line: 7, title: 'retries > delay [skill:retry-delay]', status: 'failed' }], fences: [] },
-        { id: 'pick-a-client', file: 'SKILL.md', line: 12, state: 'unproved', listed: false, tests: [], fences: [] },
-        { id: 'await-every-request', file: 'SKILL.md', line: 30, state: 'failed', listed: true, tests: [], fences: [] },
+        { id: 'retry-idempotent-only', kind: 'rule', from: 'test', state: 'passed', file: 'features/retries.md', line: 20, source: { file: '../../skills-src/demo/features/retries.md', line: 20 }, test: { file: '../../src/retry.test.ts', line: 12 } },
+        { id: 'retry-delay', kind: null, from: 'test', state: 'failed', file: 'features/retries.md', line: 40, source: { file: '../../skills-src/demo/features/retries.md', line: 30 }, test: { file: '../../src/retry.test.ts', line: 40 }, error: 'expected 500 to be 1000' },
+        { id: 'pick-a-client', kind: 'decision', from: 'hand', state: 'hand', file: 'SKILL.md', line: 12, source: { file: '../../skills-src/demo/SKILL.md', line: 12 } },
+        { id: 'await-every-request', kind: null, from: 'test', state: 'missing', file: 'SKILL.md', line: 30, source: { file: '../../skills-src/demo/SKILL.md', line: 28 } },
+      ],
+      files: [
+        { file: 'SKILL.md', state: 'broken' },
+        { file: 'features/retries.md', state: 'differs' },
       ],
       problems: [
-        { file: 'features/retries.md', line: 32, unit: 'retry-idempotent-only', severity: 'error', rule: 'proof', message: 'this block is not what `src/retry.test.ts:12` gives, from line 1 of the block: the test gives `tf.get(url, { retry: 3 })`, the skill has `tf.get(url)`. Run `skillunit proof --write`' },
-        { file: 'features/retries.md', line: 40, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test "retries > delay [skill:retry-delay]" (reports/junit.xml:7) failed: expected 500 to be 1000. It proves this unit, so the unit may no longer say what the code does' },
-        { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', rule: 'proof', message: '`skillunit.lock` lists this unit as proved, and no test in the reports is tagged `[skill:await-every-request]`. Bring the test back, or run `skillunit proof --forget await-every-request` if the unit is no longer meant to be proved' },
-        { file: '../../tmp/skill-proof/gone.json', line: 1, severity: 'warning', rule: 'proof', message: 'no block has `proof=gone`, so nothing uses `gone.json`' },
+        {
+          file: 'features/retries.md',
+          line: 22,
+          unit: 'retry-idempotent-only',
+          severity: 'error',
+          rule: 'proof',
+          message: 'this line is not what the build gives: the build has `Do: retry GET only.`, the skill has `Do: retry anything.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.',
+          origin: { kind: 'test', file: '../../src/retry.test.ts', line: 12, unit: 'retry-idempotent-only' },
+        },
+        { file: '../../skills-src/demo/features/retries.md', line: 30, unit: 'retry-delay', severity: 'error', rule: 'proof', message: 'the test of `retry-delay` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000' },
+        { file: '../../skills-src/demo/SKILL.md', line: 28, unit: 'await-every-request', severity: 'error', rule: 'proof', message: 'no test left the unit `await-every-request`: its test was skipped or deleted, or did not run' },
+        { file: '../../skillunit.yaml', line: 3, severity: 'warning', rule: 'proof', message: '`proof.format` failed on the build of SKILL.md' },
       ],
-      summary: { units: 4, proved: 1, failed: 2, unproved: 1, tagged: 2, fences: 1, differ: 1, written: 0 },
+      summary: { units: 4, fromTests: 1, byHand: 1, failed: 1, missing: 1, values: 2, files: 2, differ: 1, written: 0, extra: 0 },
     };
     const withProof = buildReport('proof', { units, proof });
 
     for (const reporter of REPORTERS) {
-      it(`${reporter}: proved, failed and unproved units, with every kind of finding`, () => {
+      it(`${reporter}: units from tests and by hand, with every kind of finding`, () => {
         expect(withProof.ok).toBe(false);
         expect(render(withProof, reporter, options)).toMatchSnapshot();
       });
     }
 
+    it('every reporter says where the line of a finding comes from', () => {
+      const from = 'from the test of `retry-idempotent-only`, src/retry.test.ts:12';
+      expect(render(withProof, 'table', options)).toContain(from);
+      expect(render(withProof, 'github', options)).toContain(`%0A${from}`);
+      expect(render(withProof, 'junit', options)).toContain(from);
+      expect(JSON.parse(render(withProof, 'json', options)).proof.problems[0].origin).toEqual({ kind: 'test', file: '../../src/retry.test.ts', line: 12, unit: 'retry-idempotent-only' });
+    });
+
     it('table: the layer in the status line, after lint and before test', () => {
       const clean: ProofResult = { ...proof, ok: true, problems: [], summary: { ...proof.summary, written: 2 } };
       const report = buildReport('check', { lint: { ...lint, ok: true, problems: [] }, proof: clean, test: { ...test, ok: true, specs: [], summary: { ...test.summary, tests: 0, passed: 0, borderline: 0 } } });
-      expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, wrote 2 blocks · test 0/0 passed');
+      expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  lint ok · proof ok, wrote 2 files · test 0/0 passed');
     });
 
-    describe('what --write and --forget did to the lock', () => {
-      const written = (lock: Partial<ProofResult['lock']>) =>
-        buildReport('proof', { proof: { ...proof, ok: true, problems: [], lock: { ...proof.lock, written: true, ...lock } } });
-
-      it('every reporter says it', () => {
-        const report = written({ added: ['a', 'b'], dropped: ['c'] });
-        const line = 'Updated skillunit.lock: added 2 units (a, b), dropped 1 (c).';
-        expect(render(report, 'table', options)).toContain(`  ${line}\n`);
-        expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  proof ok, wrote the lock');
-        expect(render(report, 'github', options)).toContain(`::notice title=SkillUnit proof::${line}\n`);
-        expect(render(report, 'junit', options)).toContain(`<system-out>${line}</system-out>`);
-        expect(JSON.parse(render(report, 'json', options)).proof.lock).toMatchObject({ added: ['a', 'b'], dropped: ['c'], written: true });
-      });
-
-      it('names each change', () => {
-        const table = (lock: Partial<ProofResult['lock']>) => render(written(lock), 'table', options).split('\n').find((l) => l.includes('Updated'))?.trim();
-        expect(table({ forgot: ['a', 'b'] })).toBe('Updated skillunit.lock: forgot 2 units (a, b).');
-        expect(table({})).toBe('Updated skillunit.lock: sorted the ids.');
-        expect(table({ written: false, added: ['a'] })).toBeUndefined();
-      });
+    it('every reporter gives the summary of the build', () => {
+      const summary = '4 units · 1 from tests, 1 failed, 1 missing · 1 by hand · 2 values in prose · 1 file out of date';
+      expect(render(withProof, 'table', options)).toContain(`  ${summary}\n`);
+      expect(render(withProof, 'github', options)).toContain(`::notice title=SkillUnit proof::${summary}\n`);
+      expect(JSON.parse(render(withProof, 'json', options)).proof.summary).toMatchObject({ units: 4, fromTests: 1, byHand: 1, values: 2 });
+      expect(render(withProof, 'junit', options)).toContain('<property name="from" value="test"/>');
     });
 
-    it('table: says when check ran with no proof key', () => {
+    it('a failed model test says where its unit comes from, when the unit is built from a test', () => {
+      const built = units.map((u) => (u.id === 'retry-delay' ? { ...u, from: 'test' as const, test: { file: '../../src/retry.test.ts', line: 40 } } : { ...u, from: 'hand' as const }));
+      const report = buildReport('check', { units: built, lint, test });
+      const origin = 'the unit `retry-delay` comes from its test, src/retry.test.ts:40';
+      expect(render(report, 'github', options)).toContain(`%0A${origin}`);
+      expect(render(report, 'junit', options)).toContain(origin);
+      expect(JSON.parse(render(report, 'json', options)).units.find((u: { id: string }) => u.id === 'retry-delay')).toEqual({ id: 'retry-delay', kind: 'fact', file: 'features/retries.md', line: 40, from: 'test', test: { file: '../../src/retry.test.ts', line: 40 } });
+      // A unit by hand has nothing to point at.
+      expect(render(buildReport('check', { units: built.map((u) => ({ ...u, from: 'hand' as const, test: undefined })), lint, test }), 'github', options)).not.toContain('comes from its test');
+    });
+
+    it('github: annotation paths start at the repository root, messages keep the folder the command ran in', () => {
+      const out = render(withProof, 'github', { cwd: '/repo/skills', root: '/repo', color: false });
+      expect(out).toContain('::error file=skills/demo/features/retries.md,line=22,');
+      // Outside the folder the command ran in, a path in a message is shown whole.
+      expect(out).toContain('from the test of `retry-idempotent-only`, /repo/src/retry.test.ts:12');
+    });
+
+    it('every reporter says what --write wrote', () => {
+      const report = buildReport('proof', { proof: { ...proof, ok: true, problems: [], files: [{ file: 'SKILL.md', state: 'written' }, { file: 'features/retries.md', state: 'same' }], summary: { ...proof.summary, written: 1 } } });
+      const line = 'Wrote 1 file of skills/demo: SKILL.md.';
+      expect(render(report, 'table', options)).toContain(`  ${line}\n`);
+      expect(render(report, 'github', options)).toContain(`::notice title=SkillUnit proof::${line}\n`);
+      expect(render(report, 'junit', options)).toContain(`<system-out>${line}</system-out>`);
+    });
+
+    it('table: says when check ran with no source', () => {
       const report = buildReport('check', { units, lint: { ...lint, ok: true, problems: [] }, proof: { configured: false, ok: true } });
       const text = render(report, 'table', options);
       expect(text).toContain('Units  proof not configured\n');

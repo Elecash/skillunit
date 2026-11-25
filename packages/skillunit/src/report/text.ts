@@ -1,7 +1,7 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
 import { isAbsolute, join, relative } from 'node:path';
 import type { LintSummary, Problem } from '../lint/types.js';
-import type { LockReport } from '../proof/layer.js';
+import type { ProofResult } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -80,17 +80,54 @@ export function decidingNumber(v: Verdict, report: CheckReport): string {
   return `P(yes) ${v.confidence.toFixed(2)}${threshold}`;
 }
 
-/** What `--write` or `--forget` did to `skillunit.lock`, shown as `file`, or null when it was not written. */
-export function lockChange(lock: LockReport, file: string): string | null {
-  if (!lock.written) return null;
-  const ids = (list: string[]) => `(${list.join(', ')})`;
-  const parts = lock.forgot.length
-    ? [`forgot ${plural(lock.forgot.length, 'unit')} ${ids(lock.forgot)}`]
-    : [
-        lock.added.length ? `added ${plural(lock.added.length, 'unit')} ${ids(lock.added)}` : '',
-        lock.dropped.length ? `dropped ${lock.dropped.length} ${ids(lock.dropped)}` : '',
-      ].filter(Boolean);
-  return `Updated ${file}: ${parts.length ? parts.join(', ') : 'sorted the ids'}.`;
+/** What `proof --write` did to the skill folder, or null when it wrote nothing. */
+export function buildChange(proof: ProofResult, options: ReportOptions): string | null {
+  const written = proof.files.filter((f) => f.state === 'written');
+  if (!written.length) return null;
+  const names = written.slice(0, 5).map((f) => f.file).join(', ') + (written.length > 5 ? ', …' : '');
+  return `Wrote ${plural(written.length, 'file')} of ${shown(proof.skill, options)}: ${names}.`;
+}
+
+/**
+ * Where the line of a finding comes from, when the skill is built: the test of a unit, or a file
+ * of the source. Null for a skill written by hand.
+ */
+export function originOf(skill: string, p: Problem, options: ReportOptions): string | null {
+  if (!p.origin) return null;
+  const place = `${skillFile(skill, p.origin.file, options)}:${p.origin.line}`;
+  return p.origin.kind === 'test' ? `the test of \`${p.origin.unit}\`, ${place}` : `the source, ${place}`;
+}
+
+/** The message of a finding, with where its line comes from. */
+export function withOrigin(skill: string, p: Problem, options: ReportOptions): string {
+  const origin = originOf(skill, p, options);
+  return origin ? `${p.message}\nfrom ${origin}` : p.message;
+}
+
+/** The proof in one line: `12 units · 9 from tests · 3 by hand · 2 values in prose`, and what is wrong. */
+export function proofSummary(proof: ProofResult): string {
+  const s = proof.summary;
+  return [
+    plural(s.units, 'unit'),
+    `${s.fromTests} from tests${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
+    `${s.byHand} by hand`,
+    `${plural(s.values, 'value')} in prose`,
+    s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
+    s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+/**
+ * For a model test about a unit of a built skill: where the unit comes from, so a failure says
+ * which file to edit. Null when the unit is written by hand or the skill is not built.
+ */
+export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
+  const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
+  if (!u?.test) return null;
+  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  return `the unit \`${u.id}\` comes from its test, ${skillFile(skill, u.test.file, options)}:${u.test.line}`;
 }
 
 /** One line on how each layer went, for the end of every text report. */
@@ -107,8 +144,7 @@ export function statusLine(report: CheckReport): string {
     else {
       const errors = proof.problems.filter((p) => p.severity === 'error').length;
       const warnings = proof.problems.length - errors;
-      const written = [proof.summary.written ? plural(proof.summary.written, 'block') : '', proof.lock.written ? 'the lock' : ''].filter(Boolean);
-      const wrote = written.length ? `, wrote ${written.join(' and ')}` : '';
+      const wrote = proof.summary.written ? `, wrote ${plural(proof.summary.written, 'file')}` : '';
       parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${wrote}`);
     }
   }

@@ -28,6 +28,8 @@ export type FenceOwner =
   /** A fence outside any unit. */
   | { kind: 'reference' }
   | { kind: 'right'; unit: string }
+  /** A block under the `Value` of a fact: what the fact's test produced, or an example of the value. */
+  | { kind: 'value'; unit: string }
   /** `path` is the id of the `Decide` path the fence sits in. */
   | { kind: 'decide'; unit: string; path: string }
   /** A fence under a label that takes no code. The parser also reports it as an error. */
@@ -44,16 +46,12 @@ export interface Fence {
   endLine: number;
   /**
    * First word of the info string, lowercased (`ts`, `tsx`, `sh`), or '' when there is none.
-   * `typescript` and `javascript` read as `ts` and `js`.
+   * Other names of a language read as its short one: `typescript` is `ts`, `javascript` is `js`,
+   * `python` is `py`, `bash` and `shell` are `sh`, `yml` is `yaml`.
    */
   lang: string;
   /** The other words of the info string, such as `no-check`. */
   flags: string[];
-  /**
-   * The value of the first `proof=<id>` flag, quotes taken off: a test produced this block. ''
-   * for a bare `proof=`. Lint checks that it names the fence's own unit.
-   */
-  proof?: string;
   /** The code between the fences, with the fence's own indentation removed. */
   code: string;
   owner: FenceOwner;
@@ -84,7 +82,7 @@ export interface Check {
   /** v1 has only `forbid`. */
   mode: 'forbid';
   regex: RegExp;
-  /** Fence languages the check runs on, lowercased. */
+  /** Fence languages the check runs on, by their short names (see `Fence.lang`). */
   langs: string[];
   line: number;
   /** The text after `Check:`, as written. */
@@ -119,8 +117,8 @@ export interface Unit {
   skipped: number;
 
   check: Check[];
-  /** Fences of the unit with a `proof=` flag, in order, whatever label or list item they are in. */
-  proofs: Fence[];
+  /** Fences under the `Value` of a fact. */
+  valueFences: Fence[];
 
   /** The unit as written, heading to `endLine`. */
   text: string;

@@ -127,13 +127,37 @@ rules, or a `decision`.
   languages and over every inline code span of the skill. The flags `g` and `y` are not
   allowed. Any kind of unit may have a `Check`.
 
-A unit says nothing about whether a test proves it. A test that proves it carries `[skill:<id>]`
-in its title, and `skillunit.lock` lists the proved units; see [Proof](proof.md).
-
 ### Naming
 
 - Ids are kebab-case, unique across the skill, and name the instruction, not the topic:
   `retry-idempotent-only`, not `retries`.
+
+## Units from tests
+
+A skill built with [proof](proof.md) has two kinds of unit, and both read the same in the skill
+an agent gets.
+
+**A unit goes in a test when a test can check what it says.** A default, which failures are
+retried, what a failed request throws, a call that returns what the rule says it returns: the
+test that checks it declares the unit with `unit()`, and the source holds `{{unit:<id>}}` where
+it goes. Advice that no test can check stays in the source, written by hand: "raise `timeout` for
+an upload", "create one client per API", what a server does with a repeated POST.
+
+**Build the sentence from the code where the code has the value.**
+
+```ts
+value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${DEFAULT_TIMEOUT}\`), for every method.`,
+```
+
+A value typed into the sentence is a second copy, kept by hand, that no test compares with the
+first. A value built from the constant changes with it, and the change shows up in the skill. A
+sentence about behaviour, such as which statuses are retried, can be built from what the body
+observes, case by case, with `u.value()`. Whatever stays literal, the body asserts.
+
+**Where slots go.** A `{{unit:<id>}}` goes where the unit would be written by hand: alone on its
+line, under `## Rules`, in the file about its topic. A table or a sentence of the reference part
+that repeats a default uses `{{value:<id>.<name>}}`, and the test lists the value in `values`, so
+the table and the unit cannot disagree.
 
 ## Formatters
 

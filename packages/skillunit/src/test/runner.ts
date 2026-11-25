@@ -6,6 +6,7 @@ import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Config, Thresholds } from '../config.js';
 import type { DecisionModel, DecisionRequest } from '../models/index.js';
+import { parseSkill } from '../units/index.js';
 import { buildRequest, estimateTokens, read, type TokenEstimate, type Verdict } from './reader.js';
 import { readSkillText, readWithFiles } from './skill-text.js';
 import { loadSpec, type SpecFile } from './spec.js';
@@ -66,8 +67,9 @@ export async function runAll(config: Config, model: DecisionModel, options: RunO
   const dryRun = options.dryRun ?? false;
   const specs: SpecReport[] = [];
   let skipped = 0;
+  const units = new Set(parseSkill(config.skill).units.map((u) => u.id));
   for (const path of collectSpecs(config.specs)) {
-    const report = await runSpec(path, config, model, dryRun, options.select);
+    const report = await runSpec(path, config, model, dryRun, options.select, units);
     if (report) specs.push(report);
     else skipped++;
   }
@@ -105,6 +107,7 @@ async function runSpec(
   model: DecisionModel,
   dryRun: boolean,
   select: Selection | undefined,
+  units: Set<string>,
 ): Promise<SpecReport | null> {
   const report: SpecReport = {
     spec: path,
@@ -121,6 +124,7 @@ async function runSpec(
     if (select && !select(spec)) return null;
     report.file = spec.file;
     report.sections = spec.sections;
+    checkUnits(spec, units);
 
     const text = readSkillText(config.skill, spec.file, spec.sections);
     const references = readWithFiles(config.skill, spec.file, spec.withFiles);
@@ -159,6 +163,18 @@ async function runSpec(
   } catch (e) {
     return { ...report, error: (e as Error).message };
   }
+}
+
+/**
+ * Refuses a spec whose `unit:` names no unit of the skill, before anything is sent: the unit was
+ * renamed or removed, and the test would land on nothing. A dry run reports it, as it reports a
+ * heading that is gone.
+ */
+function checkUnits(spec: SpecFile, units: Set<string>) {
+  const wrong = spec.tests.filter((t) => t.unit !== undefined && !units.has(t.unit));
+  if (!wrong.length) return;
+  const list = wrong.map((t) => `\`unit: ${t.unit}\` (test ${t.id}${t.line ? `, line ${t.line}` : ''})`).join(', ');
+  throw new Error(`${list} ${wrong.length === 1 ? 'names no unit' : 'name no unit'} of the skill: was the unit renamed or removed? Point \`unit:\` at the unit's id, or take it out`);
 }
 
 /** Refuses a request with more questions, or a question with more options, than the model takes. */

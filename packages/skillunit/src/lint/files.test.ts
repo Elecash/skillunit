@@ -9,6 +9,7 @@ import { index } from './links.js';
 import { lint } from './lint.js';
 import { F } from './testing.js';
 import type { Problem } from './types.js';
+import { unit } from '../vitest.js';
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
@@ -46,7 +47,8 @@ describe('index', () => {
     ).toEqual(['SKILL.md:3 error: the link to `features/gone.md#a` does not resolve']);
   });
 
-  it('reports files no link leads to from SKILL.md, following links through other files [skill:index-every-file]', () => {
+  unit('index-every-file', { when: 'the agent adds a file to a skill.', do: 'add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.' }, (u) => {
+    u.example('md', '| Retry a request that failed | [features/retries.md](features/retries.md) |');
     expect(
       indexOf({
         'SKILL.md': '# T\n\n[a](a.md)\n',
@@ -170,12 +172,33 @@ ${F}
     expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
-  it('runs the command on a fence flagged proof= like any other example', () => {
-    const unit = `# T\n\n## Rules\n\n### rule: r\n\nWhen: a.\n\nDo: b.\n\nRight:\n\n${F}sh proof=r\nif then fi\n${F}\n`;
+  it('runs the command on a block under the Value of a fact like any other example', () => {
+    const unit = `# T\n\n## Rules\n\n### fact: r\n\nWhen: a.\n\nValue: b.\n\n${F}sh\nif then fi\n${F}\n`;
     const root = skillDir({ 'SKILL.md': unit });
     const result = runCommands(parseSkill(root), { commands: { sh: 'sh -n {file}' }, cwd: root });
     expect(result.checked).toBe(1);
-    expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['13 r command']);
+    expect(result.problems.map((p) => `${p.line} ${p.unit} ${p.rule}`)).toEqual(['11 r command']);
+  });
+
+  it('runs the command of a language on a fence that names it another way', () => {
+    const skill = `# T\n\n${F}python\nprint(1\n${F}\n\n${F}bash\nif then fi\n${F}\n\n${F}yml\na: [\n${F}\n`;
+    const root = skillDir({ 'SKILL.md': skill });
+    const result = runCommands(parseSkill(root), { commands: { py: 'exit 1 # {file}', sh: 'exit 2 # {file}', yaml: 'exit 3 # {file}' }, cwd: root });
+    expect(result.checked).toBe(3);
+    expect(result.problems.map((p) => p.message)).toEqual([
+      'this `py` example fails `exit 1 # {file}` (exit 1)',
+      'this `sh` example fails `exit 2 # {file}` (exit 2)',
+      'this `yaml` example fails `exit 3 # {file}` (exit 3)',
+    ]);
+  });
+
+  it('warns about a language set in the settings that no block is in', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n\n${F}py\nprint(1)\n${F}\n`, 'skillunit.yaml': 'examples:\n  ruby: { command: "ruby -c {file}" }\n  py: { command: "true {file}" }\n' });
+    const place = { file: join(root, 'skillunit.yaml'), lines: { ruby: 2, py: 3 } };
+    const r = lint(root, { examples: { commands: { ruby: 'ruby -c {file}', py: 'true {file}' }, cwd: root, place } });
+    expect(r.problems.map(show)).toEqual(['skillunit.yaml:2 warning: `examples.ruby` is set, and no block of the skill is in `ruby`, so its command never runs. The blocks are in `py`']);
+    const sh = lint(root, { examples: { commands: { sh: 'true {file}' }, cwd: root, place: { ...place, lines: { sh: 2 } } } });
+    expect(sh.problems.map(show)).toEqual(['skillunit.yaml:2 warning: `examples.sh` is set, and no block of the skill is in `sh` or `bash` or `shell`, so its command never runs. The blocks are in `py`']);
   });
 
   it('reports a failing Setup', () => {

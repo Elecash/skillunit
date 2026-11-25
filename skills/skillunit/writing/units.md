@@ -10,7 +10,7 @@ A unit is a level-3 heading, `### <kind>: <id>`, followed by labels. Each label 
 | `decision` | When, Decide (one `- **path** — condition` item per path), Even when | When, Decide |
 | `fact` | When, Value, Unknown | When, Value |
 
-Every kind may end with `Check`, a regex no example may match, which lint reads and the agent does not. Which units the project's tests prove is in the tests' titles and in `skillunit.lock`, not in the unit; see [testing/proof.md](../testing/proof.md).
+Every kind may end with `Check`, a regex no example may match, which lint reads and the agent does not. A unit the project's tests can check is declared in those tests and built into the skill; see [testing/proof.md](../testing/proof.md).
 
 ````md
 ### rule: retry-idempotent-only

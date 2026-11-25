@@ -16,6 +16,11 @@ function config(skill: string, tsconfig: boolean): string {
   ];
   if (tsconfig) lines.push('examples:                       # type-check TypeScript and JavaScript examples', '  ts: { tsconfig: ./tsconfig.json }');
   else lines.push('# examples: { ts: { tsconfig: ./tsconfig.json } }   # type-check TypeScript and JavaScript examples');
+  lines.push(
+    '# To build the skill from the folder people write and the units your tests declare with unit():',
+    '# source: ./skill-src',
+    '# proof: { run: "npx vitest run" }',
+  );
   return `${lines.join('\n')}\n`;
 }
 
@@ -26,7 +31,7 @@ file: SKILL.md
 
 tests:
   - id: example-choice
-    # unit: some-unit-id    # the unit this test is about; \`test --changed\` uses it
+    # unit: some-unit-id    # the unit this test is about: the report shows the test under it
     scenario: Describe the situation the agent is in.
     question: What should the agent do?
     options:
