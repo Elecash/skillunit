@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { listMarkdown } from '../files.js';
 import { join, normalize, sep } from 'node:path';
+import { leavesFolder } from '../unit/contract.js';
 
 export function readSkillText(skillDir: string, file: string, sections: string[]): string {
   const source = readFileSync(join(skillDir, file), 'utf8');
@@ -22,6 +23,7 @@ export function readWithFiles(skillDir: string, file: string, withFiles: string[
   const paths = withFiles === 'all' ? listMarkdown(skillDir).filter((p) => p !== under) : withFiles;
   const out: Record<string, string> = {};
   for (const p of paths) {
+    if (leavesFolder(p)) throw new Error(`\`with\` lists ${p}, which is outside the skill folder`);
     const full = join(skillDir, p);
     if (!existsSync(full) || !statSync(full).isFile()) throw new Error(`\`with\` lists ${p}, which is not a file in the skill folder`);
     out[p] = readFileSync(full, 'utf8').trim();

@@ -67,6 +67,16 @@ describe('collectQuestions', () => {
     expect(problems).toEqual([{ id: 'which-file', declared: { file: '/project/src/b.skill.test.ts', line: 3 }, message: 'the question `which-file` is also declared at /project/src/a.skill.test.ts:10; give one of them another `id`' }]);
   });
 
+  it('a path outside the skill folder, in a record that was not checked when it was read: a problem where it is declared', () => {
+    const units = [unit('retry-defaults', 5, { ask: { ...ask, with: '../README.md' } })];
+    const { questions, problems } = collectQuestions(units, [question('which-file', 3, { skillFile: '../README.md' })], skill, inSkill);
+    expect(questions).toEqual([]);
+    expect(problems).toEqual([
+      { id: 'retry-defaults', unit: 'retry-defaults', declared: { file: '/project/src/a.skill.test.ts', line: 5 }, message: 'unit `retry-defaults`: the question `retry-defaults`: `with` lists ../README.md, which is outside the skill folder; the model reads only files of the skill' },
+      { id: 'which-file', declared: { file: '/project/src/b.skill.test.ts', line: 3 }, message: 'the question `which-file` is about ../README.md, which is outside the skill folder' },
+    ]);
+  });
+
   it('`with` that lists the file the question of a unit is about', () => {
     const { problems } = collectQuestions([unit('retry-defaults', 5, { ask: { ...ask, with: ['./features/retries.md'] } })], [], skill, inSkill);
     expect(problems.map((p) => p.message)).toEqual(['`with` lists features/retries.md, the file the question is about; remove it']);

@@ -42,8 +42,8 @@ The keys of the spec give the kind of the unit and its labels:
 | `unknown` | a fact | `Unknown:` |
 | `evenWhen` | a rule or a decision | `Even when:` |
 | `check` | any kind | `Check:` |
-| `values: { name: value }` | any kind | values the prose of the skill uses, as `{{value:<id>.<name>}}` |
-| `examples: [{ lang, text }]` | a rule or a fact | blocks shown under `Right`, or under the `Value` |
+| `values: { name: value }` | any kind | values the prose of the skill uses, as `{{value:<id>.<name>}}`: text on one line, a finite number or a boolean |
+| `examples: [{ lang, text }]` | a rule or a fact | blocks shown under `Right`, or under the `Value`; `lang` is a fence language: letters, digits, `_`, `+`, `.` and `-` |
 | `ask` | any kind | the [questions](questions.md) for the decision model about the unit |
 
 `do` makes a rule, `value` a fact, `decide` or `paths` a decision. A spec with two of them, an id
@@ -311,13 +311,16 @@ of `skillunit.yaml`, and `line` the line of the declaration.
 
 A failed test writes the same `skillunit`, `id`, `file`, `line` and `test`, with
 `"status": "failed"` and the error's message in `error`. `examples` is a list of
-`{ "lang": …, "text": … }`, the blocks of `examples` and of `u.example`. A unit declared with no
-body has `"body": false`. `ask` holds the questions as the spec gives them, one or a list, with or
-without `id`; SkillUnit fills in the default ids and checks them when it reads the record. The
-other keys are those of the spec above.
+`{ "lang": …, "text": … }`, the blocks of `examples` and of `u.example`. As with `unit()`, a value
+is a single line and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`):
+SkillUnit refuses a record that breaks either, since a line break there would add lines to the
+built file that no unit declares. A unit declared with no body has `"body": false`. `ask` holds
+the questions as the spec gives them, one or a list, with or without `id`; SkillUnit fills in the
+default ids and checks them when it reads the record. The other keys are those of the spec above.
 
 A question about prose, declared with `ask()`, leaves a record of its own: `"kind": "question"`,
-its id, the built file it is about in `skillFile`, and itself in `ask`.
+its id, the built file it is about in `skillFile`, from the skill folder and inside it, and itself
+in `ask`.
 
 ```json
 {

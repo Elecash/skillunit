@@ -4,7 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkQuestions, checkSpec, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
+import { checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
 
 /** A record, with the absolute path of its test file and of the record itself. */
 export type ReadUnit = (PassedUnit | FailedUnit) & { path: string; abs: string };
@@ -85,9 +85,12 @@ export function checkRecord(raw: unknown): string | undefined {
   }
   if (kind !== found) return `\`kind\` is ${JSON.stringify(kind)}, and the keys make it a ${found}`;
   if (found === 'fact' && spec.value === undefined) return 'a fact needs `value`';
-  if (!Array.isArray(examples) || examples.some((x) => !x || typeof (x as UnitExample).lang !== 'string' || !(x as UnitExample).lang || typeof (x as UnitExample).text !== 'string')) {
+  if (!Array.isArray(examples) || examples.some((x) => !x || typeof (x as UnitExample).lang !== 'string' || typeof (x as UnitExample).text !== 'string')) {
     return '`examples` must be a list of `{ "lang": …, "text": … }`';
   }
+  // As `unit()` checks it: one word, so it cannot add a line to the built file.
+  const lang = (examples as UnitExample[]).find((x) => !FENCE_LANG.test(x.lang))?.lang;
+  if (lang !== undefined) return `each example has a fence language in \`lang\`, such as \`sh\` or \`yaml\`; got ${JSON.stringify(lang)}`;
   if (found === 'decision' && examples.length) return 'a decision shows its examples in its paths, from the regions `skill:<id>.<path>`, and has no `examples`';
   return undefined;
 }

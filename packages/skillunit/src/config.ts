@@ -7,8 +7,8 @@
  *   model: { provider: typesafe, name: jev-latest }   # a provider of models/providers.ts, or the path of a module: ./model.mjs
  *   thresholds:
  *     choice: 0.5                # lowest probability that passes a choice test
- *     yes: 0.7                   # lowest P(yes) that passes an expected "yes"
- *     no: 0.3                    # highest P(yes) that passes an expected "no"
+ *     yes: 0.7                   # lowest P(yes) that passes an expected "yes": 0.5 or more
+ *     no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
  *     margin: 0.13               # a verdict this close to its threshold is marked borderline
  *   examples:                    # how lint checks the code examples of the skill
  *     ts: { tsconfig: ./tsconfig.json }        # ts, tsx, js and jsx fences, with `tsc`
@@ -101,6 +101,18 @@ export interface ExamplesConfig {
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, margin: 0.13 };
 export const CONFIG_FILE = 'skillunit.yaml';
 
+/**
+ * What is wrong with the yes/no thresholds of `th`, if anything. `no` is under 0.5 and `yes` is
+ * 0.5 or more, so a question passes only when the model leans to the answer it expects, and no
+ * answer passes both a question that expects yes and one that expects no. `name` says how the
+ * message names a key: `thresholds.yes` in the settings, `--yes` on the command line.
+ */
+export function thresholdsProblem(th: Partial<Thresholds>, name: (key: 'yes' | 'no') => string): string | undefined {
+  if (th.yes !== undefined && th.yes < 0.5) return `${name('yes')} must be 0.5 or more: a lower one passes a question that expects yes when the model answers no`;
+  if (th.no !== undefined && th.no >= 0.5) return `${name('no')} must be under 0.5: from 0.5 up, it passes a question that expects no when the model answers yes`;
+  return undefined;
+}
+
 const KEYS = new Set(['skill', 'source', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
 
 /**
@@ -145,6 +157,8 @@ export function loadConfig(path?: string): Config {
       if (typeof value !== 'number' || value < 0 || value > 1) throw fail(`thresholds.${key} must be a number from 0 to 1`);
       config.thresholds[key as keyof Thresholds] = value;
     }
+    const problem = thresholdsProblem(config.thresholds, (key) => `thresholds.${key}`);
+    if (problem) throw fail(problem);
   }
   if (raw.examples !== undefined) config.examples = readExamples(raw.examples, root, fail, file);
   if (raw.lint !== undefined) config.lint = readLint(raw.lint, fail);

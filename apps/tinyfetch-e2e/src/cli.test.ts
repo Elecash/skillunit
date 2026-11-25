@@ -130,3 +130,36 @@ describe('the table reporter by unit', () => {
     expect(rows).toEqual(ids);
   });
 });
+
+describe('the thresholds of a yes/no question', () => {
+  const project = mkdtempSync(join(tmpdir(), 'skillunit-thresholds-'));
+  const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
+  for (const dir of ['skill', 'skill-src']) {
+    mkdirSync(join(project, dir));
+    writeFileSync(join(project, dir, 'SKILL.md'), skill);
+  }
+  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  writeFileSync(join(project, 'skillunit.yaml'), settings);
+  writeFileSync(join(project, 'low-yes.yaml'), `${settings}thresholds: { yes: 0.3 }\n`);
+  afterAll(() => rmSync(project, { recursive: true, force: true }));
+
+  const inProject = (...args: string[]) => spawnSync(process.execPath, [CLI, 'test', '--dry-run', ...args], { cwd: project, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+  const YES = 'thresholds.yes must be 0.5 or more: a lower one passes a question that expects yes when the model answers no';
+
+  it('refuses --yes under 0.5 and --no from 0.5 up, and says why', () => {
+    expect(inProject('--yes', '0.5', '--no', '0.49').status).toBe(0);
+    const yes = inProject('--yes', '0.3');
+    expect(yes.status).toBe(2);
+    expect(yes.stderr).toBe(`skillunit: ${YES.replace('thresholds.yes', '--yes')}\n`);
+    const no = inProject('--no', '0.6');
+    expect(no.status).toBe(2);
+    expect(no.stderr).toBe('skillunit: --no must be under 0.5: from 0.5 up, it passes a question that expects no when the model answers yes\n');
+  });
+
+  it('refuses the same in the settings', () => {
+    const result = inProject('--config', 'low-yes.yaml');
+    expect(result.status).toBe(2);
+    expect(result.stderr).toMatch(/^skillunit: \S*low-yes\.yaml: /);
+    expect(result.stderr).toContain(`low-yes.yaml: ${YES}\n`);
+  });
+});

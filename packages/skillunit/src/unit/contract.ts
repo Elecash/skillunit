@@ -109,14 +109,14 @@ export interface UnitSpec {
 export interface UnitQuestion {
   /** Defaults to the unit's id for its first question, then `<unit id>.2`, `<unit id>.3`. */
   id?: string;
-  /** The situation, or several phrasings of it. Each is asked on its own; the median counts. */
+  /** The situation, or several phrasings of it. Each is asked on its own; the question passes when most of them pass. */
   scenario: string | string[];
   question: string;
   /** Labels and what each means, or labels alone. Without options, the question is yes or no. */
   options?: Record<string, string | null> | string[];
   /** An option, `none` (SkillUnit adds it to every question with options), or `yes` or `no`. */
   expect: string;
-  /** Other files of the skill the model reads too: `all`, a path, or a list of paths. */
+  /** Other files of the skill the model reads too: `all`, a path, or a list of paths inside the skill folder. */
   with?: string | string[];
   /** Headings of the built file to cut out for the model. Without it, the model reads the whole file. */
   section?: string | string[];
@@ -265,6 +265,7 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
       if (!['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'number' && !Number.isFinite(v))) {
         fail(`the value \`${name}\` must be text, a finite number or a boolean; got ${JSON.stringify(v) ?? String(v)}`);
       }
+      if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since \`{{value:${id as string}.${name}}}\` puts it inside a line`);
     }
   }
   if (s.examples !== undefined) {
@@ -321,6 +322,7 @@ export function checkAsk(id: unknown, spec: unknown): { skillFile: string; quest
   const { file, ...raw } = spec as Record<string, unknown>;
   if (file !== undefined && (typeof file !== 'string' || !file.trim())) fail('`file` must be the path of a built file of the skill, such as `SKILL.md`');
   const skillFile = (file as string | undefined) ?? DEFAULT_SKILL_FILE;
+  if (leavesFolder(skillFile)) fail(`\`file\` is ${skillFile}, which is outside the skill folder; it must be a built file of the skill, such as \`SKILL.md\``);
   const question = checkQuestion(id as string, raw, ['file', ...QUESTION_KEYS.filter((k) => k !== 'id')], fail);
   const others = question.with === undefined ? [] : Array.isArray(question.with) ? question.with : [question.with];
   if (others.includes(skillFile)) fail(`\`with\` lists ${skillFile}, the file the question is about; remove it`);
@@ -357,6 +359,8 @@ function checkQuestion(id: string, raw: Record<string, unknown>, allowed: readon
     if (!paths.length || paths.some((p) => typeof p !== 'string' || !p.trim())) fail('`with` must be `all`, a path, or a list of paths inside the skill folder');
     if (new Set(paths).size !== paths.length) fail('`with` lists the same file twice');
     if (Array.isArray(w) && w.includes('all')) fail('`with: all` stands alone, not in a list');
+    const away = (paths as string[]).find(leavesFolder);
+    if (away !== undefined) fail(`\`with\` lists ${away}, which is outside the skill folder; the model reads only files of the skill`);
     out.with = Array.isArray(w) ? [...(w as string[])] : (w as string);
   }
   if (raw.section !== undefined) {
@@ -366,6 +370,22 @@ function checkQuestion(id: string, raw: Record<string, unknown>, allowed: readon
     out.section = Array.isArray(sec) ? [...(sec as string[])] : (sec as string);
   }
   return out;
+}
+
+/**
+ * Whether a path from the skill folder leaves it: it is absolute, or its `..` climb above the
+ * folder. `features/../SKILL.md` stays in it. With `/` or `\`, as a test on any system writes it.
+ */
+export function leavesFolder(path: string): boolean {
+  const p = path.split('\\').join('/');
+  if (p.startsWith('/') || /^[A-Za-z]:/.test(p)) return true;
+  let depth = 0;
+  for (const part of p.split('/')) {
+    if (part === '..') depth--;
+    else if (part !== '.' && part !== '') depth++;
+    if (depth < 0) return true;
+  }
+  return false;
 }
 
 /** The labels of `options`: the keys of a map, or the items of a list. */

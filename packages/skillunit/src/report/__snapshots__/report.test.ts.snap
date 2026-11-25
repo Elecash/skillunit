@@ -191,8 +191,13 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
             "unit": "no-such-unit",
             "variants": [
               0.34,
-              0.41,
+              0.12,
               0.72
+            ],
+            "variantsPass": [
+              false,
+              false,
+              true
             ]
           }
         ]
@@ -379,7 +384,7 @@ exports[`reporters > table: colour on a terminal 1`] = `
              expected:  explain
              got:       none · probability 0.66, threshold 0.50 · wrong answer
                         none 66% · explain 34% · tool 0%
-             phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+             phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
     [31mretry-idempotent-only[0m  [2mrule[0m
       lint   [31m✗[0m skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
       test   [32m✓[0m src/retry.skill.test.ts:3  post-retry  stop 0.92
@@ -436,7 +441,7 @@ Units  test jev-1.14.0
              expected:  explain
              got:       none · probability 0.66, threshold 0.50 · wrong answer
                         none 66% · explain 34% · tool 0%
-             phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+             phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
     retry-idempotent-only  rule
       lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
       test   ✓ src/retry.skill.test.ts:3  post-retry  stop 0.92
@@ -489,7 +494,7 @@ Units  proof ran \`npx vitest run\` in 2.3 s, exit 0 · test jev-1.14.0
                  expected:  explain
                  got:       none · probability 0.66, threshold 0.50 · wrong answer
                             none 66% · explain 34% · tool 0%
-                 phrasings: 0.34  0.41  0.72 (probability of "explain" for each; the median decides)
+                 phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
     ✗ retry-idempotent-only  rule      test      1/1
         lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
     ✗ retry-delay            fact      declared  0/1

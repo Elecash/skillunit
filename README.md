@@ -253,22 +253,22 @@ The test runner only records them. SkillUnit asks them about the skill folder: a
 +The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a POST and for a PATCH, but the new sentence pulls both down to 42%, under the threshold, so both questions fail. The question about which methods may get `retry` passes at 62%, close enough to the threshold to be marked borderline:
+The model still picks `no-retry` for a POST and for a PATCH, but the new sentence pulls them down to 37% and 42%, under the threshold, so both questions fail. The question about which methods may get `retry` passes at 56%, close enough to the threshold to be marked borderline:
 
 ```
   skill/features/retries.md
     retry-idempotent-only  rule
-      test   ✗ src/tinyfetch.skill.test.ts:59  post-no-retry  no-retry 0.42
+      test   ✗ src/tinyfetch.skill.test.ts:59  post-no-retry  no-retry 0.37
                scenario:  A payment is sent with `tf.post` to an API that sometimes answers 503.
                question:  Should the agent pass `retry` to that call?
                expected:  no-retry
-               got:       no-retry · probability 0.42, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
-                          no-retry 42% · retry 32% · none 26%
-               phrasings: 0.44  0.42 (probability of "no-retry" for each; the median decides)
+               got:       no-retry · probability 0.37, threshold 0.50 · right answer, under the threshold
+                          no-retry 37% · retry 35% · none 28%
+               phrasings: 0.39 fail  0.37 fail (probability of "no-retry" for each; 0 of 2 pass, and most must)
       test   ✗ src/tinyfetch.skill.test.ts:59  patch-no-retry  no-retry 0.42
                …
-      test   ~ src/tinyfetch.skill.test.ts:59  retry-methods  idempotent 0.62
-               probability 0.62, threshold 0.50 · borderline: the next run may fail it
+      test   ~ src/tinyfetch.skill.test.ts:59  retry-methods  idempotent 0.56
+               probability 0.56, threshold 0.50 · borderline: the next run may fail it
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -345,7 +345,7 @@ Failed
   skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  post-no-retry
   skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  patch-no-retry
 
-FAILED  test 14/16 passed (3 borderline)
+FAILED  test 14/16 passed (2 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.

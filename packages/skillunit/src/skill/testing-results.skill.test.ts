@@ -114,7 +114,7 @@ unit('fix-when-asked', {
 
 unit('strengthen-borderline-questions', {
   when: 'the report marks a verdict borderline.',
-  do: 'make the skill\'s text more direct on that point, or give the question more phrasings so the median decides; leave `thresholds.margin` as it is.',
+  do: 'make the skill\'s text more direct on that point, or give the question more phrasings, since it passes when most of them pass and one phrasing cannot decide it; leave `thresholds.margin` as it is.',
   ask: {
     id: 'borderline-pass',
     scenario: 'A question passes, but the report marks it borderline.',

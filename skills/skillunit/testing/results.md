@@ -71,4 +71,4 @@ Do: rewrite the unclear part of the skill, adding the idea the rule is missing r
 
 When: the report marks a verdict borderline.
 
-Do: make the skill's text more direct on that point, or give the question more phrasings so the median decides; leave `thresholds.margin` as it is.
+Do: make the skill's text more direct on that point, or give the question more phrasings, since it passes when most of them pass and one phrasing cannot decide it; leave `thresholds.margin` as it is.
