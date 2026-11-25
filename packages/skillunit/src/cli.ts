@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { readRecords, type Records } from './build/records.js';
-import { CONFIG_FILE, loadConfig, type Config, type ProofConfig, type Thresholds } from './config.js';
+import { CONFIG_FILE, loadConfig, thresholdsProblem, type Config, type ProofConfig, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
 import { Git } from './git.js';
 import { init } from './init.js';
@@ -169,6 +169,9 @@ async function runCommand(command: Command, args: Args) {
     if (config.model.provider === 'module') usage('--model sets the model of a provider that ships with SkillUnit; the settings use a model module. Add --provider to use one');
     config.model = { provider: config.model.provider, name: args.model };
   }
+  // The settings were checked when they were read.
+  const badThresholds = thresholdsProblem(args.thresholds, (key) => `--${key}`);
+  if (badThresholds) usage(badThresholds);
   Object.assign(config.thresholds, args.thresholds);
   // `proof --write` builds the skill folder, so it may not exist yet.
   if (!existsSync(config.skill) && !(command === 'proof' && args.write)) usage(`no skill folder at ${config.skill}`);

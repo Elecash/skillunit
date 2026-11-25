@@ -5,19 +5,19 @@
  *
  * The records were checked when they were read (`build/records.ts`); what is checked here needs
  * the whole run or the skill folder: an id two records give, a unit the skill folder does not
- * have, a file that is not there.
+ * have, a file that is not there or is outside the folder.
  */
 import { existsSync, statSync } from 'node:fs';
 import { join, posix } from 'node:path';
 import type { ReadQuestion, ReadUnit } from '../build/records.js';
-import { checkQuestions, type AskedQuestion, type PassedQuestion, type PassedUnit } from '../unit/contract.js';
+import { checkQuestions, leavesFolder, type AskedQuestion, type PassedQuestion, type PassedUnit } from '../unit/contract.js';
 
 /** One question, as the reader asks it. */
 export interface TestCase {
   id: string;
   /**
    * The situation, in one or more phrasings. Each phrasing is asked on its own and the test
-   * takes the median result, so one odd wording cannot pass or fail it alone.
+   * passes when most of them pass, so one odd wording cannot pass or fail it alone.
    */
   scenarios: string[];
   question: string;
@@ -90,6 +90,17 @@ export function collectQuestions(units: ReadUnit[], asked: ReadQuestion[], skill
     });
   };
 
+  // `build/records.ts` checked the questions of every record it read, so this throws only for a
+  // record that did not come from there; it is a problem of its declaration all the same.
+  const checked = (id: string, ask: unknown, declared: { file: string; line: number }, unit?: string) => {
+    try {
+      return checkQuestions(id, ask);
+    } catch (e) {
+      problems.push({ id, ...(unit ? { unit } : {}), declared, message: (e as Error).message });
+      return undefined;
+    }
+  };
+
   // In the order of the test files and their lines, units and `ask()` together.
   const records = [...units, ...asked].sort((a, b) => a.abs.localeCompare(b.abs) || a.line - b.line);
   for (const r of records) {
@@ -98,17 +109,20 @@ export function collectQuestions(units: ReadUnit[], asked: ReadQuestion[], skill
     if (r.kind === 'question') {
       const q = r as PassedQuestion & ReadQuestion;
       const file = norm(q.skillFile);
-      if (!isFile(join(skillDir, file))) {
-        problems.push({ id: q.id, declared, message: `the question \`${q.id}\` is about ${file}, which is not a file in the skill folder` });
+      const where = leavesFolder(file) ? 'outside the skill folder' : !isFile(join(skillDir, file)) ? 'not a file in the skill folder' : undefined;
+      if (where) {
+        problems.push({ id: q.id, declared, message: `the question \`${q.id}\` is about ${file}, which is ${where}` });
         continue;
       }
-      add(checkQuestions(q.id, q.ask)[0]!, file, declared);
+      const list = checked(q.id, q.ask, declared);
+      if (list) add(list[0]!, file, declared);
       continue;
     }
     const u = r as PassedUnit & ReadUnit;
     if (u.ask === undefined) continue;
     const file = inSkill.get(u.id);
-    const list = checkQuestions(u.id, u.ask);
+    const list = checked(u.id, u.ask, declared, u.id);
+    if (!list) continue;
     if (file === undefined) {
       for (const q of list) {
         problems.push({ id: q.id, unit: u.id, declared, message: `the skill folder has no unit \`${u.id}\`, which this question is about: build it with \`skillunit proof --write\`` });

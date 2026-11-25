@@ -12,7 +12,7 @@ import type { LintResult, Problem } from '../lint/types.js';
 import type { RunReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { RequestReport } from '../test/runner.js';
-import { brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
+import { answered, brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
 
@@ -275,7 +275,7 @@ function describe(line: Line, report: CheckReport, options: ReportOptions, c: Pa
 function answer(v: Verdict, report: CheckReport): string {
   if (report.test?.dryRun) return 'ready';
   if (v.refused) return 'refused';
-  return `${v.answer} ${v.probabilities ? '' : 'P(yes) '}${v.confidence.toFixed(2)}`;
+  return `${answered(v)} ${v.probabilities ? '' : 'P(yes) '}${v.confidence.toFixed(2)}`;
 }
 
 /** A request as the report names it: its file, and its sections and `with` files when it has them. */
@@ -285,13 +285,16 @@ function requestName(r: RequestReport, options: ReportOptions, skill: string): s
 }
 
 function testFailure(v: Verdict, report: CheckReport): string[] {
-  const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
+  const verdict = `${v.tied ? 'a tie, which does not pass' : v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
+  const passes = v.variantsPass ?? [];
+  const phrasings = v.variants?.map((p, i) => `${p.toFixed(2)}${passes[i] === undefined ? '' : passes[i] ? ' pass' : ' fail'}`);
+  const passed = v.variantsPass ? `; ${passes.filter(Boolean).length} of ${passes.length} pass, and most must` : '';
   return [
     `scenario:  ${v.scenario}`,
     `question:  ${v.question}`,
     `expected:  ${v.expect}`,
-    ...(v.refused ? [`got:       nothing: the model refused to answer`] : [`got:       ${v.answer} · ${decidingNumber(v, report)} · ${verdict}`, `           ${distribution(v)}`]),
-    ...(v.variants ? [`phrasings: ${v.variants.map((p) => p.toFixed(2)).join('  ')} (probability of "${v.expect}" for each; the median decides)`] : []),
+    ...(v.refused ? [`got:       nothing: the model refused to answer`] : [`got:       ${answered(v)} · ${decidingNumber(v, report)} · ${verdict}`, `           ${distribution(v)}`]),
+    ...(phrasings ? [`phrasings: ${phrasings.join('  ')} (probability of "${v.expect}" for each${passed})`] : []),
   ];
 }
 

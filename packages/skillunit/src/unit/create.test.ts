@@ -185,6 +185,7 @@ describe('a spec with a mistake', () => {
     expect(await message({ when: 'x.', value: 'y.', values: { 'a.b': 1 } })).toBe('unit `a-unit`: the value name `a.b` must be letters, digits and hyphens, such as `max-retries`');
     expect(await message({ when: 'x.', value: 'y.', values: { n: Infinity } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got null');
     expect(await message({ when: 'x.', value: 'y.', values: { n: { a: 1 } } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got {"a":1}');
+    expect(await message({ when: 'x.', value: 'y.', values: { n: 'ten\nseconds' } })).toBe('unit `a-unit`: the value `n` has a line break; a value is one line, since `{{value:a-unit.n}}` puts it inside a line');
   });
 });
 
@@ -257,6 +258,9 @@ describe('questions for the decision model', () => {
     expect(await message({ ...q, scenario: [] })).toBe('unit `a-unit`: the question `a-unit`: `scenario` must be a sentence or a list of sentences');
     expect(await message({ ...q, question: '' })).toBe('unit `a-unit`: the question `a-unit`: `question` must be text that is not empty');
     expect(await message({ ...q, with: ['a.md', 'a.md'] })).toBe('unit `a-unit`: the question `a-unit`: `with` lists the same file twice');
+    for (const path of ['../README.md', 'features/../../.env', '/etc/hosts', 'C:\\skill\\a.md', 'features\\..\\..\\a.md']) {
+      expect(await message({ ...q, with: ['features/retries.md', path] })).toBe(`unit \`a-unit\`: the question \`a-unit\`: \`with\` lists ${path}, which is outside the skill folder; the model reads only files of the skill`);
+    }
     expect(await message({ ...q, id: 'Two words' })).toBe('unit `a-unit`: question 1: `id` must be kebab-case, such as `retry-delay`; got "Two words"');
     expect(await message([q, { ...q, id: 'a-unit' }])).toBe('unit `a-unit`: the question `a-unit`: two questions of the unit have this id; give one of them another `id`');
     expect(await message([])).toBe('unit `a-unit`: `ask` is an empty list; give a question, or leave `ask` out');
@@ -384,6 +388,10 @@ describe('ask()', () => {
     expect((await message('which-file', { ...question, expect: 'index' })).message).toBe('ask `which-file`: `expect` is "index", which is not an option (use one of: retries, errors, none)');
     expect((await message('which-file', { ...question, file: '' })).message).toBe('ask `which-file`: `file` must be the path of a built file of the skill, such as `SKILL.md`');
     expect((await message('which-file', { ...question, with: ['SKILL.md'] })).message).toBe('ask `which-file`: `with` lists SKILL.md, the file the question is about; remove it');
+    expect((await message('which-file', { ...question, file: '../README.md' })).message).toBe('ask `which-file`: `file` is ../README.md, which is outside the skill folder; it must be a built file of the skill, such as `SKILL.md`');
+    expect((await message('which-file', { ...question, with: '../README.md' })).message).toBe('ask `which-file`: `with` lists ../README.md, which is outside the skill folder; the model reads only files of the skill');
+    // A path that climbs and comes back stays in the folder.
+    expect((await message('which-file', { ...question, file: 'features/../SKILL.md', with: './features/retries.md' })).message).toBe('ok');
     expect((await message('which-file', { ...question, id: 'other' })).message).toBe('ask `which-file`: unknown key `id` (allowed: file, scenario, question, options, expect, with, section)');
     const bad = await message('Which File', question);
     expect(bad.message).toBe('ask `Which File`: the id must be kebab-case, such as `which-file-for-retries`');

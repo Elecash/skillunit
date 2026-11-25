@@ -30,6 +30,12 @@ export interface Verdict {
   pass: boolean;
   /** The reader picked the expected answer, with a probability under the threshold. Counts as a fail. */
   weak: boolean;
+  /**
+   * For a choice test, when two options or more share the top probability: those options, in the
+   * order the question lists them. A tie never passes, since which of them comes first is only the
+   * provider's order. `answer` is the expected option when it is one of them.
+   */
+  tied?: string[];
   /** The model declined to answer. Counts as a fail; `answer` is `(refused)`. */
   refused?: true;
   /**
@@ -37,7 +43,10 @@ export interface Verdict {
    * run may decide it the other way. A borderline pass still passes.
    */
   borderline: boolean;
-  /** The phrasing of the scenario this verdict comes from: the median one when there are several. */
+  /**
+   * The phrasing of the scenario this verdict comes from. With several, the phrasings are ranked,
+   * failing ones first and then by `expectedProb`, and this is the median one.
+   */
   scenario: string;
   question: string;
   /** The unit the question is about, if any. */
@@ -46,6 +55,8 @@ export interface Verdict {
   declared?: { file: string; line: number };
   /** For a test with several phrasings: `expectedProb` of each, in the order they were declared. */
   variants?: number[];
+  /** For a test with several phrasings: whether each passed, in the same order as `variants`. */
+  variantsPass?: boolean[];
 }
 
 export interface ReaderResult {
@@ -155,11 +166,12 @@ export async function read(model: DecisionModel, request: DecisionRequest, tests
   const verdicts = tests.map((test) => {
     const perPhrasing = test.scenarios.map((_, i) => judge(test, result.answers[questionKey(test, i)], thresholds, i));
     if (perPhrasing.length === 1) return perPhrasing[0]!;
-    // Rank the phrasings by how strongly the reader backed the expected answer and keep the
-    // median one: a single odd phrasing cannot decide the test, half of them can.
-    const ranked = [...perPhrasing].sort((a, b) => a.expectedProb - b.expectedProb);
+    // Failing phrasings rank below passing ones, then by how strongly the reader backed the
+    // expected answer, and the median one decides. So the test passes when most phrasings pass,
+    // whatever the thresholds: a single odd phrasing cannot decide it.
+    const ranked = [...perPhrasing].sort((a, b) => Number(a.pass) - Number(b.pass) || a.expectedProb - b.expectedProb);
     const median = ranked[Math.floor((ranked.length - 1) / 2)]!;
-    return { ...median, variants: perPhrasing.map((v) => v.expectedProb) };
+    return { ...median, variants: perPhrasing.map((v) => v.expectedProb), variantsPass: perPhrasing.map((v) => v.pass) };
   });
   return {
     verdicts,
@@ -184,11 +196,19 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
   if (!probabilities || Object.keys(probabilities).length === 0) return missing('(no answer)');
 
   if (test.options) {
-    const [choice, top] = Object.entries(probabilities).reduce((best, entry) => (entry[1] > best[1] ? entry : best));
-    const confidence = top;
-    const right = choice === test.expect;
-    const sure = confidence >= th.choice;
+    const confidence = Math.max(...Object.values(probabilities));
     const expectedProb = probabilities[test.expect] ?? 0;
+    // The options at the top, in the order the question lists them: a verdict must not depend on
+    // the order the provider lists them in. Two or more are a tie, which never passes.
+    const order = [...Object.keys(test.options), NONE];
+    const rank = (o: string) => (order.includes(o) ? order.indexOf(o) : order.length);
+    const top = Object.keys(probabilities)
+      .filter((o) => probabilities[o] === confidence)
+      .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+    const tied = top.length > 1;
+    const choice = tied && top.includes(test.expect) ? test.expect : top[0]!;
+    const right = choice === test.expect;
+    const sure = !tied && confidence >= th.choice;
     return {
       ...base,
       answer: choice,
@@ -196,9 +216,10 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
       expectedProb,
       probabilities: { ...probabilities },
       pass: right && sure,
-      weak: right && !sure,
-      // Right: its probability is near the threshold. Wrong: the expected option is close behind.
-      borderline: right ? near(confidence, th.choice) : near(expectedProb, top),
+      weak: right && !tied && !sure,
+      ...(tied ? { tied: top } : {}),
+      // Right: its probability is near the threshold, or tied. Wrong: the expected option is close behind.
+      borderline: right ? tied || near(confidence, th.choice) : near(expectedProb, confidence),
     };
   }
 

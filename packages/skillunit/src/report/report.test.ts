@@ -90,7 +90,8 @@ const test: Report = {
           pass: false,
           declared: { file: '/repo/src/retry.skill.test.ts', line: 30 },
           unit: 'no-such-unit',
-          variants: [0.34, 0.41, 0.72],
+          variants: [0.34, 0.12, 0.72],
+          variantsPass: [false, false, true],
         },
       ],
     },
@@ -208,6 +209,35 @@ describe('reporters', () => {
     expect(render(report, 'junit', options)).toContain('expected stop; the model refused to answer');
     expect(render(report, 'github', options)).toContain('::error file=src/retry.skill.test.ts,line=3,title=SkillUnit test%3A post-retry::expected stop; the model refused to answer%0A');
     expect(JSON.parse(render(report, 'json', options)).test.requests[0].verdicts[0]).toMatchObject({ answer: '(refused)', refused: true, pass: false });
+  });
+
+  it('every reporter: a tie for the top fails, and names the options that tied', () => {
+    const tie = {
+      ...verdict,
+      id: 'post-retry',
+      expect: 'stop',
+      answer: 'stop',
+      confidence: 0.5,
+      expectedProb: 0.5,
+      probabilities: { stop: 0.5, retry: 0.5, none: 0 },
+      pass: false,
+      borderline: true,
+      tied: ['stop', 'retry'],
+      declared: { file: '/repo/src/retry.skill.test.ts', line: 3 },
+    };
+    const report = buildReport('test', { test: { ...test, ok: false, problems: [], requests: [{ ...test.requests[0]!, verdicts: [tie] }] } });
+    const got = 'expected stop, got a tie of stop and retry (probability 0.50, threshold 0.50, and a tie does not pass): stop 50%, retry 50%, none 0%';
+    const table = render(report, 'table', options);
+    expect(table).toContain('post-retry  a tie of stop and retry 0.50\n');
+    expect(table).toContain('got:       a tie of stop and retry · probability 0.50, threshold 0.50 · a tie, which does not pass, borderline: the next run may pass it\n');
+    expect(table).not.toContain('right answer');
+    expect(render(report, 'junit', options)).toContain(`<failure message="${got}">`);
+    expect(render(report, 'github', options)).toContain(`::error file=src/retry.skill.test.ts,line=3,title=SkillUnit test%3A post-retry::${got.replace(/%/g, '%25')}%0A`);
+    expect(JSON.parse(render(report, 'json', options)).test.requests[0].verdicts[0]).toMatchObject({ answer: 'stop', tied: ['stop', 'retry'], pass: false, weak: false });
+  });
+
+  it('table: how many phrasings passed, since most of them must', () => {
+    expect(render(full, 'table', options)).toContain('phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)\n');
   });
 
   it('table: test --changed with nothing to ask', () => {

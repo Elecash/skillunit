@@ -67,7 +67,14 @@ export function distribution(v: Verdict, sep = ' · '): string {
 /** What a failed or borderline verdict got, on one line, for the JUnit and GitHub reports. */
 export function gotLine(v: Verdict, report: CheckReport): string {
   if (v.refused) return `expected ${v.expect}; the model refused to answer`;
-  return `expected ${v.expect}, got ${v.answer} (${decidingNumber(v, report)}): ${distribution(v, ', ')}`;
+  const tie = v.tied ? ', and a tie does not pass' : '';
+  return `expected ${v.expect}, got ${answered(v)} (${decidingNumber(v, report)}${tie}): ${distribution(v, ', ')}`;
+}
+
+/** The answer a verdict got: an option, yes or no, or `a tie of stop and none`. */
+export function answered(v: Verdict): string {
+  if (!v.tied) return v.answer;
+  return `a tie of ${v.tied.slice(0, -1).join(', ')} and ${v.tied[v.tied.length - 1]}`;
 }
 
 /** The number that decided the verdict, and what it was compared with. */
