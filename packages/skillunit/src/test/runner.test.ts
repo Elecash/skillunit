@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -6,9 +6,8 @@ import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
 import { buildRequest, framing, judge, NONE_DESCRIPTION } from './reader.js';
 import { changedSelection } from './changed.js';
+import type { Question, TestCase } from './questions.js';
 import { runAll } from './runner.js';
-import { loadSpec } from './spec.js';
-import type { TestCase } from './spec.js';
 import { unit } from '../vitest.js';
 
 /**
@@ -125,118 +124,146 @@ describe('missing answers', () => {
 const dir = mkdtempSync(join(tmpdir(), 'skillunit-runner-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-function project(specs: Record<string, string>): Config {
+function project(): Config {
   const root = mkdtempSync(join(dir, 'p-'));
   writeFileSync(join(root, 'SKILL.md'), '# Skill\n\n## Retries\n\nRetry only GET requests.\n');
-  mkdirSync(join(root, 'specs'));
-  for (const [name, text] of Object.entries(specs)) writeFileSync(join(root, 'specs', name), text);
-  return { skill: root, specs: [join(root, 'specs')], model: { provider: 'typesafe' }, thresholds: { ...th } };
+  writeFileSync(join(root, 'reference.md'), '# Reference\n\nThe options.\n');
+  return { skill: root, model: { provider: 'typesafe' }, thresholds: { ...th } };
 }
 
-const SPEC = `section: Retries
-tests:
-  - id: post-retry
-    scenario:
-      - A POST may be retried.
-      - A request that creates a user times out.
-      - The user asks to retry a POST.
-    question: What does the skill say?
-    options:
-      retry: Retry it
-      stop: Do not retry it
-    expect: stop
-  - id: get-ok
-    scenario: A GET times out.
-    question: May the agent retry it?
-`;
+/** A question as `collectQuestions` gives it: about SKILL.md unless it says. */
+const question = (id: string, more: Partial<Question> = {}): Question => ({
+  id,
+  scenarios: ['s'],
+  question: 'q?',
+  expect: 'no',
+  declared: { file: '/project/src/a.skill.test.ts', line: 10 },
+  file: 'SKILL.md',
+  sections: [],
+  withFiles: [],
+  ...more,
+});
+const collected = (...questions: Question[]) => ({ questions, problems: [] });
+
+const postRetry = question('post-retry', {
+  scenarios: ['A POST may be retried.', 'A request that creates a user times out.', 'The user asks to retry a POST.'],
+  question: 'What does the skill say?',
+  options: { retry: 'Retry it', stop: 'Do not retry it' },
+  expect: 'stop',
+  sections: ['Retries'],
+  unit: 'retry-idempotent-only',
+});
+const getOk = question('get-ok', { scenarios: ['A GET times out.'], question: 'May the agent retry it?', expect: 'yes', sections: ['Retries'] });
 
 describe('runAll', () => {
-  it('sends one request per spec and takes the median phrasing', async () => {
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+  it('sends one request per file and takes the median phrasing', async () => {
+    const config = project();
     const { model, calls } = stub(() => ({
       'post-retry#1': { probabilities: { stop: 0.9, retry: 0.05, none: 0.05 } },
       'post-retry#2': { probabilities: { stop: 0.2, retry: 0.7, none: 0.1 } },
       'post-retry#3': { probabilities: { stop: 0.8, retry: 0.1, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.9, no: 0.1 } },
     }));
-    const report = await runAll(config, model);
+    const report = await runAll(config, model, collected(postRetry, getOk));
     expect(calls).toHaveLength(1);
     expect(calls[0]!.state).toEqual({ skill: '## Retries\n\nRetry only GET requests.' });
     expect(report.ok).toBe(true);
-    expect(report.specs[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8] });
-    expect(report.specs[0]!.model).toBe('stub-1');
+    expect(report.requests[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8], unit: 'retry-idempotent-only', declared: { file: '/project/src/a.skill.test.ts', line: 10 } });
+    expect(report.requests[0]).toMatchObject({ file: 'SKILL.md', sections: ['Retries'], with: [], model: 'stub-1' });
     expect(report.provider).toBe('stub');
     expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 
-  it('reports a failed request as a spec that could not run, and runs the other specs', async () => {
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n`, 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n' });
-    const { model, calls } = stub((request) =>
-      request.questions.some((q) => q.id === 't') ? { t: { probabilities: { yes: 0.1, no: 0.9 } } } : new Error('429 rate limited'),
-    );
-    const report = await runAll(config, model);
+  it('asks the questions of two files, or of one file with different `with`, in requests of their own', async () => {
+    const config = project();
+    const { model, calls } = stub((request) => Object.fromEntries(request.questions.map((q) => [q.id, { probabilities: { yes: 0.1, no: 0.9 } }])));
+    const report = await runAll(config, model, collected(question('a'), question('b', { withFiles: ['reference.md'] }), question('c', { file: 'reference.md' }), question('d')));
+    expect(calls.map((c) => c.questions.map((q) => q.id))).toEqual([['a', 'd'], ['b'], ['c']]);
+    expect(calls[1]!.state).toEqual({ skill: '# Skill\n\n## Retries\n\nRetry only GET requests.', references: { 'reference.md': '# Reference\n\nThe options.' } });
+    expect(report.requests.map((r) => [r.file, r.with])).toEqual([['SKILL.md', []], ['SKILL.md', ['reference.md']], ['reference.md', []]]);
+    expect(report.ok).toBe(true);
+  });
+
+  it('reports a failed request with its questions, and runs the other requests', async () => {
+    const config = project();
+    const { model, calls } = stub((request) => (request.questions.some((q) => q.id === 't') ? { t: { probabilities: { yes: 0.1, no: 0.9 } } } : new Error('429 rate limited')));
+    const report = await runAll(config, model, collected(postRetry, getOk, question('t', { file: 'reference.md' })));
     expect(calls).toHaveLength(2);
     expect(report.ok).toBe(false);
-    expect(report.specs.map((s) => s.error ?? 'ran')).toEqual(['429 rate limited', 'ran']);
+    expect(report.requests.map((r) => r.error ?? 'ran')).toEqual(['429 rate limited', 'ran']);
+    expect(report.requests[0]!.questions).toEqual([
+      { id: 'post-retry', unit: 'retry-idempotent-only', declared: { file: '/project/src/a.skill.test.ts', line: 10 } },
+      { id: 'get-ok', declared: { file: '/project/src/a.skill.test.ts', line: 10 } },
+    ]);
     expect(report.summary.passed).toBe(1);
   });
 
-  it('refuses a request over the model limits before sending it, naming the model', async () => {
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
-    const { model, calls } = stub(() => ({}), { perQuestionTokens: 50, perRequestTokens: 64_000 });
-    const report = await runAll(config, model);
-    expect(calls).toHaveLength(0);
-    expect(report.specs[0]!.error).toMatch(/^too large: the skill text plus the longest question is about \d+ tokens; stub takes 50\./);
-  });
-
-  it('refuses, on a dry run too, a spec with more questions or options than the model takes', async () => {
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
-    const limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 };
-    const fewQuestions = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 3 });
-    const report = await runAll(config, fewQuestions.model, { dryRun: true });
+  it('fails on the problems it is given, and on those of the questions', async () => {
+    const config = project();
+    const { model } = stub(() => ({ t: { probabilities: { yes: 0.1, no: 0.9 } } }));
+    const report = await runAll(config, model, { questions: [question('t')], problems: [{ id: 'x', message: 'no unit' }] }, { problems: [{ message: '`proof.run` exited with 1' }] });
     expect(report.ok).toBe(false);
-    expect(report.specs[0]!.error).toBe(
-      'too many questions: the spec asks 4, every phrasing of a test counted; stub takes 3 in one request. Split the tests into two specs',
-    );
-    const fewOptions = stub(() => new Error('must not be called'), { ...limits, optionsPerQuestion: 2 });
-    expect((await runAll(config, fewOptions.model, { dryRun: true })).specs[0]!.error).toBe(
-      'too many options: test post-retry has 3, `none` included; stub takes 2 in one question',
-    );
-    const enough = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 4, optionsPerQuestion: 3 });
-    expect((await runAll(config, enough.model, { dryRun: true })).ok).toBe(true);
+    expect(report.problems.map((p) => p.message)).toEqual(['`proof.run` exited with 1', 'no unit']);
+    expect(report.summary).toMatchObject({ tests: 1, passed: 1 });
   });
 
-  it('refuses, on a dry run too, a test whose `unit:` names no unit of the skill', async () => {
-    const config = project({ 'a.yaml': 'tests:\n  - id: t\n    unit: never-disable-timeout\n    scenario: s\n    question: q?\n    expect: no\n' });
-    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: keep-a-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
-    const { model, calls } = stub(() => new Error('must not be called'));
-    for (const dryRun of [true, false]) {
-      const report = await runAll(config, model, { dryRun });
-      expect(report.ok).toBe(false);
-      expect(report.specs[0]!.error).toBe('`unit: never-disable-timeout` (test t, line 2) names no unit of the skill: was the unit renamed or removed? Point `unit:` at the unit\'s id, or take it out');
-    }
+  it('leaves out what the selection does not keep, and counts it', async () => {
+    const config = project();
+    const { model, calls } = stub(() => ({ t: { probabilities: { yes: 0.1, no: 0.9 } } }));
+    const report = await runAll(config, model, collected(question('t'), question('u', { file: 'reference.md' })), { select: (q) => q.file === 'SKILL.md' });
+    expect(calls).toHaveLength(1);
+    expect(report.summary).toMatchObject({ tests: 1, skipped: 1 });
+  });
+
+  it('refuses a request over the model limits before sending it, naming the model', async () => {
+    const config = project();
+    const { model, calls } = stub(() => ({}), { perQuestionTokens: 50, perRequestTokens: 64_000 });
+    const report = await runAll(config, model, collected(postRetry, getOk));
     expect(calls).toHaveLength(0);
-    writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Rules\n\n### rule: never-disable-timeout\n\nWhen: a request is slow.\n\nDo: set a timeout.\n');
-    expect((await runAll(config, model, { dryRun: true })).ok).toBe(true);
+    expect(report.requests[0]!.error).toMatch(/^too large: the skill text plus the longest question is about \d+ tokens; stub takes 50\./);
   });
 
-  it('runs a spec where the model refused one question, and fails only that test', async () => {
-    const config = project({ 'b.yaml': 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n  - id: u\n    scenario: s\n    question: r?\n    expect: no\n' });
+  it('splits the questions of a file into requests that fit the number the model takes, every phrasing counted', async () => {
+    const config = project();
+    const limits = { perQuestionTokens: 32_000, perRequestTokens: 64_000 };
+    const few = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 3 });
+    const report = await runAll(config, few.model, collected(postRetry, getOk), { dryRun: true });
+    expect(report.ok).toBe(true);
+    expect(report.requests.map((r) => r.verdicts.map((v) => v.id))).toEqual([['post-retry'], ['get-ok']]);
+    // One question with more phrasings than the model takes cannot be split.
+    const two = stub(() => new Error('must not be called'), { ...limits, questionsPerRequest: 2 });
+    expect((await runAll(config, two.model, collected(postRetry), { dryRun: true })).requests[0]!.error).toBe('too many phrasings: the question post-retry has 3; stub takes 2 in one request');
+    const fewOptions = stub(() => new Error('must not be called'), { ...limits, optionsPerQuestion: 2 });
+    expect((await runAll(config, fewOptions.model, collected(postRetry), { dryRun: true })).requests[0]!.error).toBe(
+      'too many options: the question post-retry has 3, `none` included; stub takes 2 in one question',
+    );
+  });
+
+  it('a heading the file does not have is the error of its request, on a dry run too', async () => {
+    const config = project();
+    const { model } = stub(() => new Error('must not be called'));
+    const report = await runAll(config, model, collected(question('t', { sections: ['Timeouts'] })), { dryRun: true });
+    expect(report.ok).toBe(false);
+    expect(report.requests[0]!.error).toMatch(/^no heading "Timeouts" in SKILL\.md/);
+  });
+
+  it('runs a request where the model refused one question, and fails only that question', async () => {
+    const config = project();
     const { model } = stub(() => ({ t: { refused: true }, u: { probabilities: { yes: 0.1, no: 0.9 } } }));
-    const report = await runAll(config, model);
-    expect(report.specs[0]!.verdicts.map((v) => [v.id, v.answer, v.pass])).toEqual([['t', '(refused)', false], ['u', 'no', true]]);
+    const report = await runAll(config, model, collected(question('t'), question('u', { question: 'r?' })));
+    expect(report.requests[0]!.verdicts.map((v) => [v.id, v.answer, v.pass])).toEqual([['t', '(refused)', false], ['u', 'no', true]]);
     expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
   });
 
   unit('dry-run-without-key', { when: 'there is no API key, and the user asked for tests.', do: 'write the specs anyway, run `npx skillunit check --dry-run`, and tell the user the tests were not sent to the model.', evenWhen: 'the specs look obviously right; a test that was never sent has not passed.' }, async (u) => {
     u.example('sh', 'npx skillunit check --dry-run');
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+    const config = project();
     const { model, calls } = stub(() => new Error('must not be called'));
-    const report = await runAll(config, model, { dryRun: true });
+    const report = await runAll(config, model, collected(postRetry, getOk), { dryRun: true });
     expect(calls).toHaveLength(0);
     expect(report).toMatchObject({ ok: true, dryRun: true });
     const small = stub(() => ({}), { perQuestionTokens: 50, perRequestTokens: 64_000 });
-    expect((await runAll(config, small.model, { dryRun: true })).ok).toBe(false);
+    expect((await runAll(config, small.model, collected(postRetry, getOk), { dryRun: true })).ok).toBe(false);
   });
 });
 
@@ -335,51 +362,31 @@ describe('borderline', () => {
 
   it('honours thresholds.margin, and counts borderline verdicts in the summary', async () => {
     expect(judge(yes, { probabilities: { yes: 0.95, no: 0.05 } }, { ...th, margin: 0.3 })).toMatchObject({ borderline: true });
-    const config = project({ 'a.yaml': `${SPEC}    expect: yes\n` });
+    const config = project();
     const { model } = stub(() => ({
       'post-retry#1': { probabilities: { stop: 0.9, none: 0.1 } },
       'post-retry#2': { probabilities: { stop: 0.9, none: 0.1 } },
       'post-retry#3': { probabilities: { stop: 0.9, none: 0.1 } },
       'get-ok': { probabilities: { yes: 0.75, no: 0.25 } },
     }));
-    const report = await runAll(config, model);
+    const report = await runAll(config, model, collected(postRetry, getOk));
     expect(report.summary).toMatchObject({ passed: 2, borderline: 1 });
     expect(report.thresholds).toEqual(th);
   });
 });
 
-describe('specs: unit and line', () => {
-  it('reads an optional unit per test and the line of each test', () => {
-    const path = join(dir, 'unit.yaml');
-    writeFileSync(path, `${SPEC}    expect: yes\n    unit: retry-idempotent-only\n`);
-    const spec = loadSpec(path);
-    expect(spec.tests.map((t) => [t.id, t.line, t.unit])).toEqual([
-      ['post-retry', 3, undefined],
-      ['get-ok', 13, 'retry-idempotent-only'],
-    ]);
-    writeFileSync(path, 'tests:\n  - id: t\n    scenario: s\n    question: q?\n    expect: no\n    unit: Not_Kebab\n');
-    expect(() => loadSpec(path)).toThrow(/`unit` must be the id of a unit, in kebab-case/);
-  });
-});
-
-describe('test --changed', () => {
+describe('--changed', () => {
   const changed = (files: string[]) => ({ ref: 'main', commit: 'abc', files });
-  const spec = (file: string, withFiles: string[] | 'all', units: (string | undefined)[]) => ({
-    path: 'x.yaml',
-    file,
-    sections: [],
-    withFiles,
-    tests: units.map((unit, i) => ({ id: `t${i}`, scenarios: ['s'], question: 'q', expect: 'yes', ...(unit ? { unit } : {}) })),
-  });
+  const about = (file: string, withFiles: string[] | 'all') => question('t', { file, withFiles });
 
-  it('runs whole specs whose skill file or `with` files changed, and leaves the others out', () => {
+  it('asks the questions whose skill file or `with` files changed, and leaves the others out', () => {
     const select = changedSelection(changed(['features/retries.md']));
-    expect(select(spec('features/retries.md', [], [undefined]))).toBe(true);
-    expect(select(spec('./features/../features/retries.md', [], []))).toBe(true);
-    expect(select(spec('SKILL.md', ['features/retries.md'], []))).toBe(true);
-    expect(select(spec('SKILL.md', 'all', []))).toBe(true);
-    expect(select(spec('SKILL.md', [], ['a', 'b', undefined, 'c']))).toBe(false);
-    expect(select(spec('SKILL.md', ['other.md'], []))).toBe(false);
-    expect(changedSelection(changed([]))(spec('SKILL.md', 'all', []))).toBe(false);
+    expect(select(about('features/retries.md', []))).toBe(true);
+    expect(select(about('./features/../features/retries.md', []))).toBe(true);
+    expect(select(about('SKILL.md', ['features/retries.md']))).toBe(true);
+    expect(select(about('SKILL.md', 'all'))).toBe(true);
+    expect(select(about('SKILL.md', []))).toBe(false);
+    expect(select(about('SKILL.md', ['other.md']))).toBe(false);
+    expect(changedSelection(changed([]))(about('SKILL.md', 'all'))).toBe(false);
   });
 });

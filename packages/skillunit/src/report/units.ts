@@ -1,13 +1,14 @@
 /**
  * The report by unit: the three layers joined on the unit id. Each file of the skill, then each
  * unit in it, then what each layer found about that unit: its lint findings, what the proof
- * found about it and where it comes from, and the model tests that name it with `unit:`. The table reporter prints this; the
- * join is apart from the text so it can be tested without it.
+ * found about it and where it comes from, and the questions it declares. The table reporter
+ * prints this; the join is apart from the text so it can be tested without it.
  */
 import type { Problem } from '../lint/types.js';
 import type { UnitProof } from '../proof/layer.js';
+import type { QuestionProblem } from '../test/questions.js';
 import type { Verdict } from '../test/reader.js';
-import type { SpecReport } from '../test/runner.js';
+import type { RequestReport } from '../test/runner.js';
 import type { UnitKind } from '../units/types.js';
 import type { CheckReport, ReportUnit } from './types.js';
 
@@ -23,14 +24,15 @@ export type Mark = 'pass' | 'fail' | 'warn' | 'none' | 'ready';
 export type Line =
   /** `more`: findings of the same example left out after this one. */
   | { kind: 'lint'; mark: Mark; problem: Problem; more: number }
-  /** Where a unit of a built skill comes from: a test that passed, or the source. */
+  /** Where a unit of a built skill comes from: a test that passed, or a declaration with no body. */
   | { kind: 'origin'; mark: Mark; unit: UnitProof }
   /** A proof finding. */
   | { kind: 'proof'; mark: Mark; problem: Problem }
-  /** `unknownUnit`: the test's `unit:` names no unit of the skill. */
-  | { kind: 'verdict'; mark: Mark; spec: SpecReport; verdict: Verdict; unknownUnit: boolean }
-  /** A spec that could not run. */
-  | { kind: 'spec'; mark: Mark; spec: SpecReport }
+  | { kind: 'verdict'; mark: Mark; request: RequestReport; verdict: Verdict }
+  /** A request that could not run. */
+  | { kind: 'request'; mark: Mark; request: RequestReport }
+  /** A question that cannot be asked, or what kept the questions from being collected. */
+  | { kind: 'question'; mark: Mark; problem: QuestionProblem }
   /** The unit has no line of this layer. */
   | { kind: 'missing'; mark: Mark; layer: 'proof' | 'test' };
 
@@ -62,7 +64,7 @@ export interface UnitNode {
 export interface FileNode {
   /** From the skill folder. */
   file: string;
-  /** Findings with no unit, and the tests of a spec about this file that name none. */
+  /** Findings with no unit, and the questions of `ask()` about this file. */
   lines: Line[];
   units: UnitNode[];
 }
@@ -72,12 +74,12 @@ export interface UnitTree {
   skill: string;
   /** The layers that ran. Proof counts only with a `proof` key. */
   layers: Record<Layer, boolean>;
-  /** `--changed` or spec paths: only the units and files with a line are kept. */
+  /** `--changed`: only the units and files with a line are kept. */
   partial: boolean;
   files: FileNode[];
   /** Files lint read that have no node, or null when lint did not run or the run is partial. */
   otherFiles: number | null;
-  /** What has no place in the skill: findings about the settings, the source or a test file, and specs that could not run. */
+  /** What has no place in the skill: findings about the settings, the source or a test file, and requests that could not run. */
   elsewhere: Line[];
   /** Units by coverage, when both layers ran over the whole skill (`check` with a `source`, without `--changed`). */
   coverage: Record<Coverage, number> | null;
@@ -87,7 +89,7 @@ export function unitTree(report: CheckReport): UnitTree {
   const { lint, test } = report;
   const proof = report.proof?.configured ? report.proof : undefined;
   const skill = lint?.skill ?? proof?.skill ?? test?.skill ?? '';
-  const partial = Boolean(test && (test.changed || test.paths?.length || test.summary.skipped));
+  const partial = Boolean(test && (test.changed || test.summary.skipped));
   const units: ReportUnit[] = report.units ?? [];
 
   // ---------------------------------------------------------------- nodes
@@ -134,7 +136,8 @@ export function unitTree(report: CheckReport): UnitTree {
       const node = unitOf(u.id, u.file);
       if (!node) continue;
       node.proof = u;
-      if (u.state === 'passed' || u.state === 'hand') node.lines.push({ kind: 'origin', mark: u.state === 'passed' ? 'pass' : 'none', unit: u });
+      // A unit declared with no body is never shown as proved.
+      if (u.state === 'passed') node.lines.push({ kind: 'origin', mark: u.from === 'test' ? 'pass' : 'none', unit: u });
     }
     for (const p of proof.problems) {
       const line: Line = { kind: 'proof', mark: severity(p), problem: p };
@@ -149,13 +152,17 @@ export function unitTree(report: CheckReport): UnitTree {
 
   // ---------------------------------------------------------------- test
   if (test) {
-    for (const spec of test.specs) {
-      if (spec.error) elsewhere.push({ kind: 'spec', mark: 'fail', spec });
-      for (const verdict of spec.verdicts) {
-        const node = unitOf(verdict.unit);
+    for (const problem of test.problems) {
+      const node = unitOf(problem.unit);
+      (node?.lines ?? elsewhere).push({ kind: 'question', mark: 'fail', problem });
+    }
+    for (const request of test.requests) {
+      if (request.error) elsewhere.push({ kind: 'request', mark: 'fail', request });
+      for (const verdict of request.verdicts) {
+        const node = unitOf(verdict.unit, request.file);
         const mark: Mark = test.dryRun ? 'ready' : !verdict.pass ? 'fail' : verdict.borderline ? 'warn' : 'pass';
-        const line: Line = { kind: 'verdict', mark, spec, verdict, unknownUnit: verdict.unit !== undefined && !node };
-        (node?.lines ?? fileNode(spec.file).lines).push(line);
+        const line: Line = { kind: 'verdict', mark, request, verdict };
+        (node?.lines ?? fileNode(request.file).lines).push(line);
         if (node) {
           node.tests ??= { passed: 0, total: 0 };
           node.tests.total++;
@@ -163,7 +170,7 @@ export function unitTree(report: CheckReport): UnitTree {
         }
       }
     }
-    if (!partial) for (const node of all) if (!node.tests) node.lines.push({ kind: 'missing', mark: 'none', layer: 'test' });
+    if (!partial) for (const node of all) if (!node.lines.some((l) => layerOf(l) === 'test')) node.lines.push({ kind: 'missing', mark: 'none', layer: 'test' });
   }
 
   // ---------------------------------------------------------------- coverage and marks
@@ -181,8 +188,8 @@ export function unitTree(report: CheckReport): UnitTree {
   }
 
   // ---------------------------------------------------------------- what is shown
-  // `by hand` says nothing a partial run needs to show.
-  const real = (lines: Line[]) => lines.some((l) => l.kind !== 'missing' && !(l.kind === 'origin' && l.unit.from === 'hand'));
+  // `declared, no test` says nothing a partial run needs to show.
+  const real = (lines: Line[]) => lines.some((l) => l.kind !== 'missing' && !(l.kind === 'origin' && l.unit.from === 'declared'));
   const shown = [...files.values()]
     .map((f) => ({ ...f, units: partial ? f.units.filter((u) => real(u.lines)) : f.units }))
     .filter((f) => f.lines.length || f.units.length)

@@ -1,5 +1,5 @@
 /**
- * `test --changed`: run every spec whose skill file (or a `with` file) changed since the base.
+ * `--changed`: ask every question whose skill file (or a `with` file) changed since the base.
  * The skill files come from git, between the merge base with `--base` (default: the default
  * branch) and HEAD.
  */
@@ -40,5 +40,5 @@ export function changedSelection(changed: ChangedSince): Selection {
   const norm = (p: string) => posix.normalize(p.split('\\').join('/'));
   const anyMarkdown = changed.files.some((f) => f.endsWith('.md'));
 
-  return (spec) => files.has(norm(spec.file)) || (spec.withFiles === 'all' ? anyMarkdown : spec.withFiles.some((f) => files.has(norm(f))));
+  return (q) => files.has(norm(q.file)) || (q.withFiles === 'all' ? anyMarkdown : q.withFiles.some((f) => files.has(norm(f))));
 }

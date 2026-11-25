@@ -90,7 +90,7 @@ export function buildChange(proof: ProofResult, options: ReportOptions): string 
 
 /**
  * Where the line of a finding comes from, when the skill is built: the test of a unit, or a file
- * of the source. Null for a skill written by hand.
+ * of the source. Null for a skill that is not built.
  */
 export function originOf(skill: string, p: Problem, options: ReportOptions): string | null {
   if (!p.origin) return null;
@@ -104,13 +104,13 @@ export function withOrigin(skill: string, p: Problem, options: ReportOptions): s
   return origin ? `${p.message}\nfrom ${origin}` : p.message;
 }
 
-/** The proof in one line: `12 units · 9 from tests · 3 by hand · 2 values in prose`, and what is wrong. */
+/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one · 2 values in prose`, and what is wrong. */
 export function proofSummary(proof: ProofResult): string {
   const s = proof.summary;
   return [
     plural(s.units, 'unit'),
-    `${s.fromTests} from tests${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
-    `${s.byHand} by hand`,
+    `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
+    `${s.declared} declared without one`,
     `${plural(s.values, 'value')} in prose`,
     s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
     s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
@@ -120,14 +120,15 @@ export function proofSummary(proof: ProofResult): string {
 }
 
 /**
- * For a model test about a unit of a built skill: where the unit comes from, so a failure says
- * which file to edit. Null when the unit is written by hand or the skill is not built.
+ * For a model test about a unit of a built skill: where the unit is declared, so a failure says
+ * which file to edit. Null when the skill is not built.
  */
 export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
   const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
   if (!u?.test) return null;
   const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
-  return `the unit \`${u.id}\` comes from its test, ${skillFile(skill, u.test.file, options)}:${u.test.line}`;
+  const place = `${skillFile(skill, u.test.file, options)}:${u.test.line}`;
+  return u.from === 'declared' ? `the unit \`${u.id}\` is declared, with no test, at ${place}` : `the unit \`${u.id}\` comes from its test, ${place}`;
 }
 
 /** One line on how each layer went, for the end of every text report. */
@@ -150,11 +151,12 @@ export function statusLine(report: CheckReport): string {
   }
   if (test) {
     const s = test.summary;
-    const errors = test.specs.filter((x) => x.error).length;
+    const errors = test.requests.filter((x) => x.error).length;
+    const wrong = [errors ? `${plural(errors, 'request')} could not run` : '', test.problems.length ? plural(test.problems.length, 'problem') : ''].filter(Boolean).join(', ');
     if (test.dryRun) {
-      parts.push(`test dry run ${errors ? `${plural(errors, 'spec')} could not run` : `ok, ${plural(s.tests, 'test')} ready`}`);
+      parts.push(`test dry run ${wrong || `ok, ${plural(s.tests, 'test')} ready`}`);
     } else {
-      const extra = [errors ? `${plural(errors, 'spec')} could not run` : '', s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
+      const extra = [wrong, s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
       parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
     }
   }

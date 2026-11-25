@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import type { LintResult, Problem } from '../lint/types.js';
 import type { RunReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
-import type { SpecReport } from '../test/runner.js';
+import type { RequestReport } from '../test/runner.js';
 import { brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
@@ -116,22 +116,22 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
   if (proof && !proof.configured) header.push('proof not configured');
   else if (proof) header.push(`proof ${runLine(proof.run)}`);
   if (test) {
-    const model = test.specs.find((s) => s.model)?.model;
+    const model = test.requests.find((s) => s.model)?.model;
     const asked = [test.provider, model].filter(Boolean).join(' · ');
-    const label = test.specs.length === 0 ? 'nothing to run' : test.dryRun ? 'dry run: nothing sent' : asked;
+    const label = test.requests.length === 0 ? 'nothing to ask' : test.dryRun ? 'dry run: nothing sent' : asked;
     const since = test.changed ? ` · changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : '';
-    header.push(`test ${label}${since}`);
+    header.push(`test ${test.run ? `${runLine(test.run)} · ` : ''}${label}${since}`);
   }
   out.push('', `${c.bold('Units')}  ${c.dim(header.join(' · '))}`);
 
   // In a dry run, the size of each request, which nothing else shows.
-  if (test?.dryRun && test.specs.length) {
-    const names = test.specs.map((s) => shown(s.spec, options));
+  if (test?.dryRun && test.requests.length) {
+    const names = test.requests.map((r) => requestName(r, options, tree.skill));
     const w = Math.max(24, ...names.map((n) => n.length)) + 2;
-    out.push(c.dim(`    ${pad('SPEC', w)}${padStart('TESTS', 7)}${padStart('TOKENS', 9)}`));
-    test.specs.forEach((spec, i) => {
-      const tokens = spec.estimatedTokens ? `~${spec.estimatedTokens.toLocaleString('en-US')}` : '-';
-      out.push(`  ${sign(c, spec.error ? 'fail' : 'pass')} ${pad(names[i]!, w)}${padStart(String(spec.verdicts.length), 7)}${padStart(tokens, 9)}`);
+    out.push(c.dim(`    ${pad('FILE', w)}${padStart('TESTS', 7)}${padStart('TOKENS', 9)}`));
+    test.requests.forEach((r, i) => {
+      const tokens = r.estimatedTokens ? `~${r.estimatedTokens.toLocaleString('en-US')}` : '-';
+      out.push(`  ${sign(c, r.error ? 'fail' : 'pass')} ${pad(names[i]!, w)}${padStart(String(r.verdicts.length || (r.questions?.length ?? 0)), 7)}${padStart(tokens, 9)}`);
     });
   }
 
@@ -172,7 +172,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     notes.push(
       [
         plural(s.tests, 'test'),
-        s.skipped ? `${plural(s.skipped, 'spec')} left out by --changed` : '',
+        s.skipped ? `${plural(s.skipped, 'question')} left out by --changed` : '',
         s.borderline ? `${s.borderline} borderline: within ${test.thresholds.margin} of the threshold` : '',
         test.dryRun || s.tests === 0 ? '' : `${s.usage.input_tokens.toLocaleString('en-US')} in / ${s.usage.output_tokens.toLocaleString('en-US')} out tokens`,
       ]
@@ -225,7 +225,7 @@ function compactTree(
     }
     for (const u of file.units) {
       const p = u.proof;
-      const state = !p ? '–' : p.state === 'passed' ? 'test' : p.state === 'hand' ? 'hand' : p.state;
+      const state = !p ? '–' : p.state === 'passed' ? (p.from === 'test' ? 'test' : 'declared') : p.state;
       out.push(row(u.mark, idOf(u), u.kind, state, testsOf(u.tests)));
       for (const line of u.lines) if (line.mark === 'fail') show(line, 8, [path, u.id]);
     }
@@ -245,19 +245,26 @@ function describe(line: Line, report: CheckReport, options: ReportOptions, c: Pa
     }
     case 'origin': {
       const u = line.unit;
-      const text = u.test ? `from a test ${skillFile(skill, u.test.file, options)}:${u.test.line}` : 'by hand';
+      const place = u.test ? `, ${skillFile(skill, u.test.file, options)}:${u.test.line}` : '';
+      const text = u.from === 'test' ? `proved by a test${place}` : `declared, no test${place}`;
       return { text, details: [], short: text };
     }
     case 'verdict': {
       const v = line.verdict;
-      const place = `${shown(line.spec.spec, options)}:${v.line ?? 1}  ${v.id}`;
-      const note = line.unknownUnit ? [c.yellow(`unit: ${v.unit} names no unit of the skill`)] : [];
+      const place = `${v.declared ? `${shown(v.declared.file, options)}:${v.declared.line}` : skillFile(skill, line.request.file, options)}  ${v.id}`;
       const details = !v.pass ? testFailure(v, report) : v.borderline ? [`${decidingNumber(v, report)} · borderline: the next run may fail it`] : [];
-      return { text: `${place}  ${answer(v, report)}`, details: [...note, ...details], short: place };
+      return { text: `${place}  ${answer(v, report)}`, details, short: place };
     }
-    case 'spec': {
-      const place = `${shown(line.spec.spec, options)}  could not run`;
-      return { text: place, details: [line.spec.error ?? ''], short: place };
+    case 'request': {
+      const place = `${requestName(line.request, options, skill)}  could not run`;
+      const asked = (line.request.questions ?? []).map((q) => `${q.id} (${shown(q.declared.file, options)}:${q.declared.line})`);
+      return { text: place, details: [line.request.error ?? '', ...(asked.length ? [`questions: ${asked.join(', ')}`] : [])], short: place };
+    }
+    case 'question': {
+      const p = line.problem;
+      const place = p.declared ? `${shown(p.declared.file, options)}:${p.declared.line}${p.id ? `  ${p.id}` : ''}` : '';
+      const [first, ...rest] = brief(p.message).split('\n');
+      return { text: place ? `${place}  ${first}` : first!, details: rest, short: place || 'proof.run' };
     }
     case 'missing':
       return { text: '', details: [], short: '' };
@@ -271,7 +278,13 @@ function answer(v: Verdict, report: CheckReport): string {
   return `${v.answer} ${v.probabilities ? '' : 'P(yes) '}${v.confidence.toFixed(2)}`;
 }
 
-function testFailure(v: SpecReport['verdicts'][number], report: CheckReport): string[] {
+/** A request as the report names it: its file, and its sections and `with` files when it has them. */
+function requestName(r: RequestReport, options: ReportOptions, skill: string): string {
+  const parts = [skillFile(skill, r.file, options), ...(r.sections.length ? [`§ ${r.sections.join(', ')}`] : []), ...(r.with.length ? [`with ${r.with.join(', ')}`] : [])];
+  return parts.join(' ');
+}
+
+function testFailure(v: Verdict, report: CheckReport): string[] {
   const verdict = `${v.weak ? 'right answer, under the threshold' : 'wrong answer'}${v.borderline ? ', borderline: the next run may pass it' : ''}`;
   return [
     `scenario:  ${v.scenario}`,

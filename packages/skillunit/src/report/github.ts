@@ -21,14 +21,26 @@ export function github(report: CheckReport, options: ReportOptions): string {
   if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
   if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
-    for (const spec of report.test.specs) {
-      const file = shown(spec.spec, at);
-      if (spec.error) annotate('error', file, 1, 'SkillUnit test', `could not run: ${spec.error}`);
-      for (const v of spec.verdicts) {
+    // A question is annotated where it is declared: the line of its `unit()` or `ask()`.
+    for (const p of report.test.problems) {
+      const title = `SkillUnit test${p.id ? `: ${p.id}` : ''}`;
+      if (p.declared) annotate('error', shown(p.declared.file, at), p.declared.line, title, p.message);
+      else out.push(`::error title=${prop(title)}::${data(p.message)}`);
+    }
+    for (const r of report.test.requests) {
+      if (r.error) {
+        const first = r.questions?.[0];
+        const message = `could not ask the questions about ${r.file}: ${r.error}`;
+        if (first) annotate('error', shown(first.declared.file, at), first.declared.line, 'SkillUnit test', message);
+        else out.push(`::error title=SkillUnit test::${data(message)}`);
+      }
+      for (const v of r.verdicts) {
         const got = gotLine(v, report);
         const origin = unitOrigin(report, v.unit, options);
-        if (!v.pass) annotate('error', file, v.line ?? 1, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
-        else if (v.borderline) annotate('warning', file, v.line ?? 1, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
+        const file = v.declared ? shown(v.declared.file, at) : shown(join(report.test.skill, r.file), at);
+        const line = v.declared?.line ?? 1;
+        if (!v.pass) annotate('error', file, line, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
+        else if (v.borderline) annotate('warning', file, line, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
     }
   }

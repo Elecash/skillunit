@@ -64,11 +64,7 @@ ${F}
 
 {{unit:one-client-per-api}}
 
-### rule: by-hand
-
-When: calling one API many times.
-
-Do: reuse one client.
+{{unit:by-hand}}
 `;
 
 const TEST = `test('x', () => {
@@ -90,6 +86,7 @@ const RECORDS = {
     values: { seconds: 10, ms: 10000 },
     examples: [{ lang: 'text', text: 'GET   10 s\nPOST  10 s\n' }],
   }),
+  'tmp/skill-units/by-hand.0004.json': record('by-hand', 40, { kind: 'rule', body: false, when: 'calling one API many times.', do: 'reuse one client.' }),
   'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts' }),
   'tmp/skill-units/one-client-per-api.0003.json': record('one-client-per-api', 30, {
     kind: 'decision',
@@ -184,12 +181,12 @@ describe('building the skill', () => {
       { file: 'logo.txt', state: 'written' },
       { file: 'SKILL.md', state: 'written' },
     ]);
-    expect(r.summary).toEqual({ units: 4, fromTests: 3, byHand: 1, failed: 0, missing: 0, values: 3, files: 2, differ: 0, written: 2, extra: 0 });
+    expect(r.summary).toEqual({ units: 4, proved: 3, declared: 1, failed: 0, missing: 0, values: 3, files: 2, differ: 0, written: 2, extra: 0 });
     expect(r.units.map((u) => `${u.id} ${u.from} ${u.state} ${u.file}:${u.line} ${u.test ? `${u.test.file}:${u.test.line}` : '-'} ${u.source.file}:${u.source.line}`)).toEqual([
       'default-timeout test passed SKILL.md:19 ../tests/a.test.ts:10 ../skill-src/SKILL.md:19',
       'check-status test passed SKILL.md:32 ../tests/a.test.ts:20 ../skill-src/SKILL.md:21',
       'one-client-per-api test passed SKILL.md:46 ../tests/a.test.ts:30 ../skill-src/SKILL.md:23',
-      'by-hand hand hand SKILL.md:62 - ../skill-src/SKILL.md:25',
+      'by-hand declared passed SKILL.md:62 ../tests/a.test.ts:40 ../skill-src/SKILL.md:25',
     ]);
   });
 
@@ -279,7 +276,7 @@ describe('what the build cannot fill', () => {
     const ran = run(root, { run: 'true' });
     expect(errors(ran)).toContain('../skill-src/SKILL.md:19 default-timeout error: no test left the unit `default-timeout`: its test was skipped or deleted, or did not run');
     expect(ran.run).toMatchObject({ command: 'true', status: 0 });
-    expect(ran.summary.missing).toBe(3);
+    expect(ran.summary.missing).toBe(4);
   });
 
   it('a slot whose test failed: the finding carries the error', () => {
@@ -302,7 +299,7 @@ describe('what the build cannot fill', () => {
 
   it('leaves a placeholder in a sentence about slots as it is', () => {
     const src = `# Demo\n\nPut \`{{unit:<id>}}\` where a unit goes, and \`{{value:<id>.<name>}}\` for a value: {{value:default-timeout.seconds}}.\n\n## Rules\n\n{{unit:default-timeout}}\n`;
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': src, 'tmp/skill-units/check-status.0002.json': null, 'tmp/skill-units/one-client-per-api.0003.json': null, 'tests/a.test.ts': '' });
+    const root = project({ ...GOOD, 'skill-src/SKILL.md': src, 'tmp/skill-units/check-status.0002.json': null, 'tmp/skill-units/one-client-per-api.0003.json': null, 'tmp/skill-units/by-hand.0004.json': null, 'tests/a.test.ts': '' });
     const r = run(root, {}, { write: true });
     expect(errors(r)).toEqual([]);
     expect(read(root, 'skill/SKILL.md')).toContain('Put `{{unit:<id>}}` where a unit goes, and `{{value:<id>.<name>}}` for a value: 10.');
@@ -330,9 +327,11 @@ describe('a unit in two places, or in none', () => {
     expect(errors(run(root, {}, { write: true }))).toEqual([`../tests/a.test.ts:90 check-status error: the unit \`check-status\` is also declared at tests/a.test.ts:20; two tests cannot declare the same id`]);
   });
 
-  it('a test and a unit written by hand declare the same id', () => {
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': SOURCE.replace('### rule: by-hand', '### rule: check-status').replace('{{unit:check-status}}\n', '') });
-    expect(errors(run(root, {}, { write: true }))).toEqual([`../skill-src/SKILL.md:24 check-status error: the unit \`check-status\` is written here by hand, and the test at tests/a.test.ts:20 declares it too; keep one`]);
+  it('a unit heading in the source: an error on its line, and the file is not built', () => {
+    const root = project({ ...GOOD, 'skill-src/features.md': '# More\n\n## Rules\n\n### rule: written-here\n\nWhen: calling an API.\n\nDo: reuse one client.\n' });
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual(['../skill-src/features.md:5 written-here error: units are declared with `unit()`; put `{{unit:written-here}}` here']);
+    expect(r.files.find((f) => f.file === 'features.md')).toEqual({ file: 'features.md', state: 'broken' });
   });
 
   it('a slot twice', () => {
@@ -361,6 +360,57 @@ describe('a unit in two places, or in none', () => {
   });
 });
 
+describe('questions in a record', () => {
+  const rule = (ask: unknown) => record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts', ask });
+  const question = { scenario: 'A request failed.', question: 'What does the agent test first?', options: { helper: 'isHttpError', status: 'the status' }, expect: 'helper' };
+
+  it('leave the built skill as it is', () => {
+    const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': rule([{ id: 'check-status', ...question }, question]) });
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+  });
+
+  it('a unit with no body builds as any unit, with its example from a region of its file', () => {
+    const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', body: false, when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts' }) });
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual([]);
+    expect(r.units.find((u) => u.id === 'check-status')).toMatchObject({ from: 'declared', state: 'passed' });
+    expect(r.summary).toMatchObject({ proved: 2, declared: 2 });
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+  });
+
+  it('the record of `ask()` is no unit: the build does not change', () => {
+    const asked = `${JSON.stringify({ skillunit: 1, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 'question which-file: Which?', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }] })}\n`;
+    const root = project({ ...GOOD, 'tmp/skill-units/which-file.0009.json': asked });
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+  });
+
+  it('a record of `ask()` with a mistake is one that is not valid', () => {
+    const asked = (more: object) => `${JSON.stringify({ skillunit: 1, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 't', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }], ...more })}\n`;
+    const root = project({
+      ...GOOD,
+      'tmp/skill-units/a.json': asked({ skillFile: '' }),
+      'tmp/skill-units/b.json': asked({ ask: [{ id: 'other', ...question }] }),
+      'tmp/skill-units/c.json': asked({ when: 'x.' }),
+    });
+    expect(errors(run(root, {}, { write: true }))).toEqual([
+      '../tmp/skill-units/a.json:1 - error: a.json: `skillFile` must be the built file the question is about, such as `SKILL.md`',
+      '../tmp/skill-units/b.json:1 - error: b.json: the question in `ask` has the id `other`, and the record `which-file`',
+      '../tmp/skill-units/c.json:1 - error: c.json: a question has no `when`',
+    ]);
+  });
+
+  it('a question with a mistake makes the record one that is not valid', () => {
+    const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': rule({ ...question, expect: 'status-code' }) });
+    expect(errors(run(root, {}, { write: true }))).toContainEqual(
+      '../tmp/skill-units/check-status.0002.json:1 - error: check-status.0002.json: unit `check-status`: the question `check-status`: `expect` is "status-code", which is not an option (use one of: helper, status, none)',
+    );
+  });
+});
+
 describe('proof.run', () => {
   /** A script that writes the records of GOOD, as the tests would, then exits with `code`. */
   const script = (code: number) => `import { mkdirSync, writeFileSync } from 'node:fs';
@@ -376,7 +426,7 @@ process.exit(${code});
     const r = run(root, { run: 'node run.mjs' }, { write: true });
     expect(r.problems.map(show)).toEqual([]);
     expect(r.run).toMatchObject({ command: 'node run.mjs', status: 0, ms: expect.any(Number) });
-    expect(readdirSync(join(root, 'tmp/skill-units')).sort()).toEqual(['check-status.0002.json', 'default-timeout.0001.json', 'keep.txt', 'one-client-per-api.0003.json']);
+    expect(readdirSync(join(root, 'tmp/skill-units')).sort()).toEqual(['by-hand.0004.json', 'check-status.0002.json', 'default-timeout.0001.json', 'keep.txt', 'one-client-per-api.0003.json']);
     expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
   });
 
@@ -478,7 +528,8 @@ describe('where a line comes from, for lint and the model tests', () => {
     const root = project(GOOD);
     const { result, origin } = runProof({ skill: join(root, 'skill'), source: join(root, 'skill-src'), config: config(root), write: true });
     expect(result.ok).toBe(true);
-    expect(origin('SKILL.md', 66)).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 29 });
+    expect(origin('SKILL.md', 3)).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
+    expect(origin('SKILL.md', 66)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 40, unit: 'by-hand' });
   });
 });
 

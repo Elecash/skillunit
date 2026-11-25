@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS } from '../config.js';
 import { buildRequest, judge } from '../test/reader.js';
-import type { TestCase } from '../test/spec.js';
+import type { TestCase } from '../test/questions.js';
 import { PROVIDER_NAMES, PROVIDERS } from './providers.js';
 import type { ProbabilityAnswer } from './types.js';
 

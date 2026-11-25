@@ -1,7 +1,6 @@
 # SkillUnit settings for tinyfetch. From this folder: npx nx skill tinyfetch
 skill: ./skill          # built from skill-src and the tests; what agents read
 source: ./skill-src     # the skill as people write it
-specs: ./specs
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 examples:
   ts: { tsconfig: ./tsconfig.json }

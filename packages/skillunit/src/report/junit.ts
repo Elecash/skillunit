@@ -68,10 +68,16 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   }
 
   if (report.test) {
-    for (const spec of report.test.specs) {
-      const name = shown(spec.spec, options);
-      const cases: Case[] = spec.verdicts.map((v) => {
-        const c: Case = { name: v.id, classname: name };
+    const { test } = report;
+    const declared = (d: { file: string; line: number } | undefined) => (d ? `${shown(d.file, options)}:${d.line}` : 'test');
+    if (test.problems.length) {
+      const cases: Case[] = test.problems.map((p) => ({ name: p.id ?? '(questions)', classname: declared(p.declared), error: p.message }));
+      suites.push({ name: 'test questions', cases });
+    }
+    for (const r of test.requests) {
+      const name = shown(join(test.skill, r.file), options);
+      const cases: Case[] = r.verdicts.map((v) => {
+        const c: Case = { name: v.id, classname: declared(v.declared) };
         const got = gotLine(v, report);
         const origin = unitOrigin(report, v.unit, options);
         if (!v.pass) c.failure = `${got}\nscenario: ${v.scenario}\nquestion: ${v.question}${origin ? `\n${origin}` : ''}`;
@@ -81,7 +87,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
         }
         return c;
       });
-      if (spec.error) cases.push({ name: '(spec)', classname: name, error: spec.error });
+      if (r.error) for (const q of r.questions ?? []) cases.push({ name: q.id, classname: declared(q.declared), error: r.error });
       suites.push({ name: `test ${name}`, cases });
     }
   }

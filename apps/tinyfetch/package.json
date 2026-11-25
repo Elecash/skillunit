@@ -14,6 +14,9 @@
       },
       "test": {
         "dependsOn": ["skillunit:build"]
+      },
+      "typecheck": {
+        "dependsOn": ["skillunit:build"]
       }
     }
   },

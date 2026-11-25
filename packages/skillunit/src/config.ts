@@ -3,7 +3,6 @@
  * every run. Every field is optional and every field can be overridden from the command line.
  *
  *   skill: ./skills/my-skill     # folder with SKILL.md
- *   specs: ./specs               # a spec file, a folder of them, or a list of either
  *   context: "…"                 # one sentence about what the skill is for
  *   model: { provider: typesafe, name: jev-latest }   # a provider of models/providers.ts, or the path of a module: ./model.mjs
  *   thresholds:
@@ -34,8 +33,9 @@ export interface Thresholds {
   choice: number;
   /**
    * A verdict whose deciding number is closer than this to its threshold is borderline: the
-   * next run may decide it the other way. Measured on `typesafe`: across five runs of the dogfood
-   * specs and tinyfetch's with no change, a test whose answer stayed the same moved by 0.12 at most.
+   * next run may decide it the other way. Measured on `typesafe`: across five runs of the
+   * repository's own model tests and tinyfetch's with no change, a test whose answer stayed the
+   * same moved by 0.12 at most.
    */
   margin: number;
   yes: number;
@@ -45,8 +45,6 @@ export interface Thresholds {
 export interface Config {
   /** Absolute path of the folder with SKILL.md. */
   skill: string;
-  /** Absolute paths of spec files or folders. */
-  specs: string[];
   context?: string;
   model: ModelConfig;
   thresholds: Thresholds;
@@ -101,20 +99,17 @@ export interface ExamplesConfig {
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { choice: 0.5, yes: 0.7, no: 0.3, margin: 0.13 };
-/** Folder with the spec files when the settings do not say. */
-export const DEFAULT_SPECS = 'specs';
 export const CONFIG_FILE = 'skillunit.yaml';
 
-const KEYS = new Set(['skill', 'source', 'specs', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
+const KEYS = new Set(['skill', 'source', 'context', 'model', 'thresholds', 'examples', 'lint', 'proof']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
- * is the current folder and the specs are in `./specs`. Paths in the file are relative to
- * the file itself.
+ * is the current folder. Paths in the file are relative to the file itself.
  */
 export function loadConfig(path?: string): Config {
   const file = resolve(path ?? CONFIG_FILE);
-  const config: Config = { skill: resolve('.'), specs: [resolve(DEFAULT_SPECS)], model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS } };
+  const config: Config = { skill: resolve('.'), model: { provider: 'typesafe' }, thresholds: { ...DEFAULT_THRESHOLDS } };
   if (!existsSync(file)) {
     if (path) throw new Error(`config file not found: ${file}`);
     return config;
@@ -131,16 +126,10 @@ export function loadConfig(path?: string): Config {
   config.configDir = root;
   config.configFile = file;
   config.skill = root;
-  config.specs = [resolve(root, DEFAULT_SPECS)];
 
   if (raw.skill !== undefined) {
     if (typeof raw.skill !== 'string') throw fail('`skill` must be a path');
     config.skill = resolve(root, raw.skill);
-  }
-  if (raw.specs !== undefined) {
-    const list = Array.isArray(raw.specs) ? raw.specs : [raw.specs];
-    if (list.some((s: unknown) => typeof s !== 'string')) throw fail('`specs` must be a path or a list of paths');
-    config.specs = list.map((s: string) => resolve(root, s));
   }
   if (raw.context !== undefined) {
     if (typeof raw.context !== 'string') throw fail('`context` must be text');

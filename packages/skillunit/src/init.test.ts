@@ -20,21 +20,21 @@ describe('init', () => {
   it('writes the settings at the project root, pointing at the skill folder', () => {
     const root = project();
     expect(init('skills/my-skill', root)).toEqual([
-      'created skillunit.yaml and specs/example.yaml',
-      'next: run `skillunit lint`, then `skillunit test --dry-run`',
+      'created skillunit.yaml',
+      'next: run `skillunit lint`',
+      'a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them',
     ]);
-    expect(existsSync(join(root, 'specs', 'example.yaml'))).toBe(true);
+    expect(existsSync(join(root, 'specs'))).toBe(false);
     expect(existsSync(join(root, 'skills', 'my-skill', 'skillunit.yaml'))).toBe(false);
     const config = loadConfig(join(root, 'skillunit.yaml'));
     expect(config.skill).toBe(join(root, 'skills', 'my-skill'));
-    expect(config.specs).toEqual([join(root, 'specs')]);
     expect(config.configDir).toBe(root);
     expect(config.examples?.ts).toBeUndefined();
     // Building the skill from the tests is there to turn on, commented out.
     expect(config.source).toBeUndefined();
     const text = readFileSync(join(root, 'skillunit.yaml'), 'utf8');
-    expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run" }\n');
-    expect(readFileSync(join(root, 'specs', 'example.yaml'), 'utf8')).toContain('# unit: some-unit-id    # the unit this test is about: the report shows the test under it\n');
+    expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts\n');
+    expect(text).not.toContain('specs');
   });
 
   it('turns on the type-check when the project has a tsconfig.json', () => {
