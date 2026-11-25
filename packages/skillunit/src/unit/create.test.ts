@@ -17,7 +17,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
   const fake = add('') as RunnerIt<{ n: number }>;
   if (options.skip !== false) fake.skip = add('skip');
   if (options.only !== false) fake.only = add('only');
-  const unit = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
+  const { unit, ask } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
   /** Runs every test that is not skipped; returns each one's error message, or `ok`. */
   const run = async () => {
     const out: string[] = [];
@@ -31,7 +31,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
     }
     return out;
   };
-  return { unit, tests, records, run };
+  return { unit, ask, tests, records, run };
 }
 
 const noop: UnitBody<unknown> = () => {};
@@ -170,7 +170,7 @@ describe('a spec with a mistake', () => {
     const message = async (spec: unknown) => (await fails('a-unit', spec)).message;
     expect(await message(null)).toBe('unit `a-unit`: the spec must be an object, such as `{ when: …, do: … }`');
     expect(await message({ do: 'y.' })).toBe('unit `a-unit`: `when` is missing: every unit says when it applies');
-    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, check, values)');
+    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, check, values, ask, examples)');
     expect(await message({ when: '', do: 'y.' })).toBe('unit `a-unit`: `when` must be text that is not empty');
     expect(await message({ when: 'x.', do: 'one.\n\ntwo.' })).toBe('unit `a-unit`: `do` has a blank line; a label is one paragraph');
     expect(await message({ when: 'x.', do: 'y.', paths: [] })).toMatch(/`do` and `decide` are two kinds/);
@@ -185,6 +185,209 @@ describe('a spec with a mistake', () => {
     expect(await message({ when: 'x.', value: 'y.', values: { 'a.b': 1 } })).toBe('unit `a-unit`: the value name `a.b` must be letters, digits and hyphens, such as `max-retries`');
     expect(await message({ when: 'x.', value: 'y.', values: { n: Infinity } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got null');
     expect(await message({ when: 'x.', value: 'y.', values: { n: { a: 1 } } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got {"a":1}');
+  });
+});
+
+describe('questions for the decision model', () => {
+  const question = { scenario: 'The user asks how long a request waits.', question: 'What should the agent answer?', options: { right: '10 seconds', longer: '30 seconds' }, expect: 'right' };
+
+  it('one question takes the id of its unit, and goes in the record', async () => {
+    const r = runner();
+    r.unit('default-timeout', { when: 'x.', value: '10 seconds.', ask: question }, noop);
+    expect(await r.run()).toEqual(['ok']);
+    expect(r.records[0]!.record).toMatchObject({ status: 'passed', ask: [{ id: 'default-timeout', ...question }] });
+  });
+
+  it('a list: the questions without an id take `<unit id>.2`, `<unit id>.3` by their place', async () => {
+    const r = runner();
+    const yesNo = { scenario: 'The code sets no timeout.', question: 'Does the request give up after 10 seconds?', expect: 'Yes' };
+    r.unit('default-timeout', { when: 'x.', value: 'y.', ask: [question, { ...question, id: 'timeout-per-method' }, yesNo] }, noop);
+    expect(await r.run()).toEqual(['ok']);
+    const ask = (r.records[0]!.record as { ask: { id: string; expect: string }[] }).ask;
+    expect(ask.map((q) => q.id)).toEqual(['default-timeout', 'timeout-per-method', 'default-timeout.3']);
+    expect(ask[2]).toEqual({ id: 'default-timeout.3', scenario: yesNo.scenario, question: yesNo.question, expect: 'yes' });
+  });
+
+  it('keeps several phrasings, options as a list, `none` as the answer, `with` and `section`', async () => {
+    const r = runner();
+    const q = { scenario: ['First phrasing.', 'Second phrasing.'], question: 'Which?', options: ['raise', 'off'], expect: 'none', with: ['reference.md'], section: 'Timeouts' };
+    r.unit('never-disable-timeout', { when: 'x.', do: 'y.', ask: q }, noop);
+    expect(await r.run()).toEqual(['ok']);
+    expect(r.records[0]!.record).toMatchObject({ ask: [{ id: 'never-disable-timeout', ...q }] });
+  });
+
+  it('a unit whose body fails leaves no questions', async () => {
+    const r = runner();
+    r.unit('default-timeout', { when: 'x.', value: 'y.', ask: question }, () => {
+      throw new Error('expected 5000 to be 10000');
+    });
+    expect(await r.run()).toEqual(['expected 5000 to be 10000']);
+    expect(r.records[0]!.record).not.toHaveProperty('ask');
+  });
+
+  it('two questions of the run with one id: the second unit fails and names the first', async () => {
+    const r = runner();
+    r.unit('default-timeout', { when: 'x.', value: 'y.', ask: question }, noop);
+    r.unit('retry-delay', { when: 'x.', value: 'y.', ask: { ...question, id: 'default-timeout' } }, noop);
+    const [first, second] = await r.run();
+    expect(first).toBe('ok');
+    expect(second).toMatch(/^unit `retry-delay`: the question `default-timeout` has the id of a question of the unit `default-timeout` \(.*create\.test\.ts:\d+\); give one of them another `id`$/);
+    expect(r.records[1]!.record).toMatchObject({ id: 'retry-delay', status: 'failed', error: second });
+  });
+
+  it('says what is wrong with a question, and fails its test before the body runs', async () => {
+    const message = async (ask: unknown) => {
+      const r = runner();
+      let ran = false;
+      r.unit('a-unit', { when: 'x.', do: 'y.', ask } as UnitSpec, () => void (ran = true));
+      const [m] = await r.run();
+      expect(ran).toBe(false);
+      expect(r.records[0]!.record).toMatchObject({ status: 'failed', error: m });
+      return m;
+    };
+    const q = { scenario: 's.', question: 'q?', options: { raise: 'r', off: 'o' }, expect: 'raise' };
+    expect(await message({ ...q, expect: 'lower' })).toBe('unit `a-unit`: the question `a-unit`: `expect` is "lower", which is not an option (use one of: raise, off, none)');
+    expect(await message([q, { ...q, expect: 'lower' }])).toMatch(/^unit `a-unit`: the question `a-unit\.2`: `expect` is "lower"/);
+    expect(await message({ ...q, options: undefined, expect: 'maybe' })).toBe('unit `a-unit`: the question `a-unit`: a question without `options` is answered yes or no, so `expect` must be `yes` or `no`; got "maybe"');
+    expect(await message({ ...q, options: { raise: 'r', none: 'n' } })).toBe('unit `a-unit`: the question `a-unit`: `none` is added to every question with options; remove it from `options`');
+    expect(await message({ ...q, options: { raise: 'r' } })).toBe('unit `a-unit`: the question `a-unit`: `options` needs at least two options');
+    expect(await message({ ...q, options: ['raise', 'raise'] })).toBe('unit `a-unit`: the question `a-unit`: `options` lists a label twice');
+    expect(await message({ ...q, file: 'SKILL.md' })).toBe('unit `a-unit`: the question `a-unit`: unknown key `file` (allowed: id, scenario, question, options, expect, with, section)');
+    expect(await message({ ...q, section: [] })).toBe('unit `a-unit`: the question `a-unit`: `section` must be a heading of the built file, or a list of headings');
+    expect(await message({ ...q, scenario: [] })).toBe('unit `a-unit`: the question `a-unit`: `scenario` must be a sentence or a list of sentences');
+    expect(await message({ ...q, question: '' })).toBe('unit `a-unit`: the question `a-unit`: `question` must be text that is not empty');
+    expect(await message({ ...q, with: ['a.md', 'a.md'] })).toBe('unit `a-unit`: the question `a-unit`: `with` lists the same file twice');
+    expect(await message({ ...q, id: 'Two words' })).toBe('unit `a-unit`: question 1: `id` must be kebab-case, such as `retry-delay`; got "Two words"');
+    expect(await message([q, { ...q, id: 'a-unit' }])).toBe('unit `a-unit`: the question `a-unit`: two questions of the unit have this id; give one of them another `id`');
+    expect(await message([])).toBe('unit `a-unit`: `ask` is an empty list; give a question, or leave `ask` out');
+    expect(await message('What should the agent do?')).toBe('unit `a-unit`: `ask` takes a question, such as `{ scenario, question, options, expect }`, or a list of them; item 1 is "What should the agent do?"');
+  });
+});
+
+describe('a unit with no body', () => {
+  it('passes, and its record says it has no body', async () => {
+    const r = runner();
+    r.unit('never-disable-timeout', { when: 'a request may take long.', do: 'raise `timeout`, never set it to `0`.', check: 'forbid `/timeout:\\s*0\\b/` in ts' });
+    r.unit('connect-timeout', { when: 'the user asks for a connect timeout.', value: 'there is none.' });
+    expect(r.tests.map((t) => t.name)).toEqual(['rule never-disable-timeout: raise `timeout`, never set it to `0`.', 'fact connect-timeout: there is none.']);
+    expect(await r.run()).toEqual(['ok', 'ok']);
+    expect(r.records.map((x) => x.record)).toEqual([
+      expect.objectContaining({ id: 'never-disable-timeout', status: 'passed', kind: 'rule', body: false, examples: [] }),
+      expect.objectContaining({ id: 'connect-timeout', status: 'passed', kind: 'fact', body: false, value: 'there is none.' }),
+    ]);
+  });
+
+  it('a unit with a body has no `body` in its record', async () => {
+    const r = runner();
+    r.unit('one-client', { when: 'x.', do: 'y.' }, noop);
+    await r.run();
+    expect(r.records[0]!.record).not.toHaveProperty('body');
+  });
+
+  it('takes questions, and goes through `skip`, `only` and a loop like any unit', async () => {
+    const r = runner();
+    const ask = { scenario: 'The code uploads a file that can take two minutes.', question: 'What does the agent do?', options: { raise: 'Set `timeout` above 10000', off: 'Set `timeout: 0`' }, expect: 'raise' };
+    r.unit('never-disable-timeout', { when: 'x.', do: 'y.', ask });
+    r.unit.skip('skipped-advice', { when: 'x.', do: 'y.' });
+    for (const n of [1, 2]) r.unit(`advice-${n}`, { when: 'x.', do: 'y.' });
+    expect(r.tests.map((t) => t.how)).toEqual(['', 'skip', '', '']);
+    expect(await r.run()).toEqual(['ok', 'ok', 'ok']);
+    expect(r.records.map((x) => x.record.id)).toEqual(['never-disable-timeout', 'advice-1', 'advice-2']);
+    expect(r.records[0]!.record).toMatchObject({ body: false, ask: [{ id: 'never-disable-timeout', ...ask }] });
+  });
+
+  it('shows examples in any language from `examples`, before those of `u.example`', async () => {
+    const r = runner();
+    r.unit('init-first', { when: 'x.', do: 'y.', examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }] });
+    r.unit('outcomes', { when: 'x.', value: 'y.', examples: [{ lang: 'yaml', text: 'a: 1\n' }] }, (u) => u.example('text', 'from the body'));
+    expect(await r.run()).toEqual(['ok', 'ok']);
+    expect(r.records.map((x) => (x.record as { examples: unknown[] }).examples)).toEqual([
+      [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }],
+      [{ lang: 'yaml', text: 'a: 1\n' }, { lang: 'text', text: 'from the body' }],
+    ]);
+  });
+
+  it('`examples` with a mistake, or on a decision, fails', async () => {
+    const r = runner();
+    r.unit('a-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'two words', text: 'z' }] });
+    r.unit('b-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'sh' }] } as never);
+    r.unit('c-rule', { when: 'x.', do: 'y.', examples: { lang: 'sh', text: 'z' } } as never);
+    r.unit('a-decision', { when: 'x.', paths: [{ path: 'one', when: 'y.' }], examples: [{ lang: 'sh', text: 'z' }] });
+    expect(await r.run()).toEqual([
+      'unit `a-rule`: each example has a fence language in `lang`, such as `sh` or `yaml`; got "two words"',
+      'unit `b-rule`: the `sh` example needs its text in `text`',
+      "unit `c-rule`: `examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`",
+      'unit `a-decision`: a decision shows its examples in its paths, from the regions `skill:a-decision.<path>`; `examples` is for a rule or a fact',
+    ]);
+  });
+
+  it('a fact with no body needs `value`, and a third argument that is not a function fails', async () => {
+    const r = runner();
+    r.unit('connect-timeout', { when: 'x.' });
+    r.unit('one-client', { when: 'x.', do: 'y.' }, 5000 as never);
+    expect(await r.run()).toEqual([
+      'unit `connect-timeout`: the fact has no Value; a unit with no body gives `value` in its spec',
+      'unit `one-client`: the third argument is the body of the test, a function; leave it out for a unit no test proves',
+    ]);
+    expect(r.records.map((x) => x.record.status)).toEqual(['failed', 'failed']);
+  });
+});
+
+describe('ask()', () => {
+  const question = { scenario: 'The user wants a request repeated when the server answers 503.', question: 'Which file does the agent read?', options: { retries: '`features/retries.md`', errors: '`features/errors.md`' }, expect: 'retries' };
+
+  it('leaves a record of the question, about the file it names', async () => {
+    const r = runner();
+    r.ask('which-file-for-retries', { file: 'features/index.md', ...question, with: 'features/retries.md', section: 'Files' });
+    expect(r.tests.map((t) => t.name)).toEqual(['question which-file-for-retries: Which file does the agent read?']);
+    expect(await r.run()).toEqual(['ok']);
+    expect(r.records[0]!.record).toEqual({
+      skillunit: 1,
+      id: 'which-file-for-retries',
+      file: expect.stringMatching(/create\.test\.ts$/),
+      line: expect.any(Number),
+      test: 'question which-file-for-retries: Which file does the agent read?',
+      status: 'passed',
+      kind: 'question',
+      skillFile: 'features/index.md',
+      ask: [{ id: 'which-file-for-retries', ...question, with: 'features/retries.md', section: 'Files' }],
+    });
+  });
+
+  it('without `file`, the question is about SKILL.md', async () => {
+    const r = runner();
+    r.ask('which-file-for-retries', question);
+    await r.run();
+    expect(r.records[0]!.record).toMatchObject({ kind: 'question', skillFile: 'SKILL.md' });
+  });
+
+  it('shares its ids with the questions of units, and its record key with none of them', async () => {
+    const r = runner();
+    r.unit('default-timeout', { when: 'x.', value: 'y.', ask: { ...question, id: 'which-file-for-retries' } }, noop);
+    r.ask('which-file-for-retries', question);
+    r.ask('default-timeout', question);
+    const [, second, third] = await r.run();
+    expect(second).toMatch(/^ask `which-file-for-retries`: the question `which-file-for-retries` has the id of a question of the unit `default-timeout` \(.*create\.test\.ts:\d+\); give one of them another `id`$/);
+    // A question may take the id of a unit that has no question of that id.
+    expect(third).toBe('ok');
+    expect(new Set(r.records.map((x) => x.key)).size).toBe(3);
+    expect(r.records[1]!.record).toMatchObject({ kind: 'question', status: 'failed', error: second });
+  });
+
+  it('says what is wrong, and fails its test', async () => {
+    const message = async (id: string, spec: unknown) => {
+      const r = runner();
+      r.ask(id, spec as never);
+      const [m] = await r.run();
+      return { message: m, records: r.records.map((x) => x.record) };
+    };
+    expect((await message('which-file', { ...question, expect: 'index' })).message).toBe('ask `which-file`: `expect` is "index", which is not an option (use one of: retries, errors, none)');
+    expect((await message('which-file', { ...question, file: '' })).message).toBe('ask `which-file`: `file` must be the path of a built file of the skill, such as `SKILL.md`');
+    expect((await message('which-file', { ...question, with: ['SKILL.md'] })).message).toBe('ask `which-file`: `with` lists SKILL.md, the file the question is about; remove it');
+    expect((await message('which-file', { ...question, id: 'other' })).message).toBe('ask `which-file`: unknown key `id` (allowed: file, scenario, question, options, expect, with, section)');
+    const bad = await message('Which File', question);
+    expect(bad.message).toBe('ask `Which File`: the id must be kebab-case, such as `which-file-for-retries`');
+    expect(bad.records).toEqual([]);
   });
 });
 

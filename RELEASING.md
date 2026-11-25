@@ -31,7 +31,7 @@ optional scope, `fix(lint): …`. Below 1.0, each bump is one step smaller than 
 That is Nx's `adjustSemverBumpsForZeroMajorVersion`, on by default. A commit counts only if it
 changes a file of the package: something under `packages/skillunit/`, or a file the package
 ships from the root, `README.md`, `LICENSE`, `docs/` and `skills/skillunit/` (the `shipped`
-inputs in `packages/skillunit/package.json`). A `fix:` that changes only `.github/`, `specs/`,
+inputs in `packages/skillunit/package.json`). A `fix:` that changes only `.github/`, `skills-src/`,
 `tools/` or `apps/` releases nothing, and the run lists it among the commits it ignores, with
 that reason. Nx decides this the way `nx affected` does, and the run's list uses the same code;
 if the list has commits that count and Nx finds nothing to release, the run stops and says so.

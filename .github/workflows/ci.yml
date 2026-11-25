@@ -17,7 +17,7 @@ jobs:
       - run: npm ci
       # Typecheck, build and test every project; `check` runs the tests again through `proof.run`.
       - run: npx nx run-many -t typecheck build test
-      # Needs no API key: lint, proof, and the specs load, their headings exist and requests fit.
+      # Needs no API key: lint, proof, and the questions can be asked, their headings exist and requests fit.
       - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
       - working-directory: apps/tinyfetch
         run: node ../../packages/skillunit/dist/cli.js check --dry-run --reporter github
@@ -39,7 +39,7 @@ jobs:
           cache: npm
       # Without the secret the steps below are skipped and the job would pass having run nothing.
       - if: env.TYPESAFE_API_KEY == ''
-        run: echo "::warning title=Model tests did not run::TYPESAFE_API_KEY is not set for this repository, so the skill's specs and the scenarios that ask the model were skipped."
+        run: echo "::warning title=Model tests did not run::TYPESAFE_API_KEY is not set for this repository, so the skill's questions and the scenarios that ask the model were skipped."
       - run: npm ci
       # The build and the tests; `check` runs the tests again through `proof.run` and builds the skills.
       - run: npx nx run-many -t build test -p skillunit tinyfetch

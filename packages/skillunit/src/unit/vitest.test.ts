@@ -165,4 +165,40 @@ describe('skillunit/vitest', () => {
     );
     expect(located.records).toEqual([expect.objectContaining({ id: 'one-client', file: 'tests/a.test.ts', line: 3 })]);
   });
+  it('writes the questions in the records, with options built from the code, and asks nothing', () => {
+    const test = `import { ask as question, unit } from $ENTRY;
+const DEFAULT_TIMEOUT = 10_000;
+const ask = (expect: string) => ({
+  scenario: 'The user asks how long a request waits when the code sets nothing.',
+  question: 'What should the agent answer?',
+  options: { right: \`\${DEFAULT_TIMEOUT / 1000} seconds\`, longer: \`\${(3 * DEFAULT_TIMEOUT) / 1000} seconds\` },
+  expect,
+});
+unit('default-timeout', { when: 'x.', value: 'y.', ask: ask('right') }, () => {});
+unit('retry-delay', { when: 'x.', value: 'y.', ask: ask('shorter') }, () => {});
+unit('never-disable-timeout', { when: 'x.', do: 'y.', ask: { ...ask('right'), id: 'upload-timeout' } });
+question('which-file', { file: 'features/index.md', scenario: 's.', question: 'Which file?', options: ['retries', 'errors'], expect: 'retries' });
+`;
+    // No key for any model: the run must not need one.
+    const env = Object.keys(process.env).filter((k) => /_API_KEY$/.test(k));
+    const saved = env.map((k) => [k, process.env[k]] as const);
+    env.forEach((k) => delete process.env[k]);
+    let r: ReturnType<typeof vitest>;
+    try {
+      r = vitest({ 'tests/a.test.ts': test });
+    } finally {
+      saved.forEach(([k, v]) => (process.env[k] = v));
+    }
+    expect(r.status).toBe(1);
+    expect(r.byId('default-timeout')).toEqual([
+      expect.objectContaining({
+        status: 'passed',
+        ask: [{ id: 'default-timeout', scenario: expect.any(String), question: 'What should the agent answer?', options: { right: '10 seconds', longer: '30 seconds' }, expect: 'right' }],
+      }),
+    ]);
+    expect(r.byId('retry-delay')).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringContaining('`expect` is "shorter", which is not an option') })]);
+    expect(r.byId('never-disable-timeout')).toEqual([expect.objectContaining({ status: 'passed', body: false, line: 11, ask: [expect.objectContaining({ id: 'upload-timeout' })] })]);
+    expect(r.byId('which-file')).toEqual([expect.objectContaining({ status: 'passed', kind: 'question', line: 12, skillFile: 'features/index.md', ask: [expect.objectContaining({ id: 'which-file' })] })]);
+    expect(r.output).toContain('`expect` is "shorter", which is not an option (use one of: right, longer, none)');
+  });
 });

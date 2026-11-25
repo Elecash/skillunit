@@ -8,7 +8,7 @@ import type { Report as TestReport } from '../test/runner.js';
 import type { UnitKind } from '../units/types.js';
 
 /** Bumped only when a field changes meaning or disappears. */
-export const REPORT_SCHEMA = 5;
+export const REPORT_SCHEMA = 6;
 
 export type Command = 'lint' | 'proof' | 'test' | 'check';
 
@@ -31,9 +31,9 @@ export interface ReportUnit {
   file: string;
   /** Line of the unit's heading. */
   line: number;
-  /** When the skill is built (`source`, and the proof ran): from a test, or written by hand in the source. */
-  from?: 'test' | 'hand';
-  /** From a test: where the test declares it, from the skill folder. */
+  /** When the skill is built (`source`, and the proof ran): proved by a test, or declared with no body. */
+  from?: 'test' | 'declared';
+  /** Where it is declared, from the skill folder. */
   test?: { file: string; line: number };
 }
 

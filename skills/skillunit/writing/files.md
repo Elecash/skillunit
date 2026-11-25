@@ -6,7 +6,7 @@ A skill is a tree an agent walks by task. `SKILL.md` says what the library is, h
 
 Lint reports a file that nothing leads to from `SKILL.md`, directly or through other files. A link leads to it, and so does its relative path written in text, in a code span or in a fence with no language or `text`; a path in a `ts` example is code and does not. A bare file name, `strings.md`, leads to it only while no other file of the skill has that name.
 
-Small files keep each request to the decision model small, let an agent load only what its task needs, and let `test --changed` run only the specs of the files that changed. Lint warns about a file above about 300 lines.
+Small files keep each request to the decision model small, let an agent load only what its task needs, and let `test --changed` ask only the questions about the files that changed. Lint warns about a file above about 300 lines.
 
 ## Layout of a file
 

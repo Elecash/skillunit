@@ -132,16 +132,26 @@ rules, or a `decision`.
 - Ids are kebab-case, unique across the skill, and name the instruction, not the topic:
   `retry-idempotent-only`, not `retries`.
 
-## Units from tests
+## Units declared in code
 
-A skill built with [proof](proof.md) has two kinds of unit, and both read the same in the skill
-an agent gets.
+In a skill built with [proof](proof.md), every unit is declared in code and the source holds a
+`{{unit:<id>}}` slot where each one goes. The built skill has the units in the format above, so
+lint and the decision model read them as in any skill. A unit heading written in the source is an
+error.
 
-**A unit goes in a test when a test can check what it says.** A default, which failures are
-retried, what a failed request throws, a call that returns what the rule says it returns: the
-test that checks it declares the unit with `unit()`, and the source holds `{{unit:<id>}}` where
-it goes. Advice that no test can check stays in the source, written by hand: "raise `timeout` for
-an upload", "create one client per API", what a server does with a repeated POST.
+**A unit goes in the test that checks what it says.** A default, which failures are retried,
+what a failed request throws, a call that returns what the rule says it returns: the test that
+checks it declares the unit with `unit(id, spec, body)`.
+
+**A unit no test can check is declared with no body.** Advice and claims about something outside
+the library, such as "raise `timeout` for an upload", "create one client per API" or what a
+server does with a repeated POST, are declared with `unit(id, spec)`. The report calls such a
+unit declared, never proved. Put these declarations in files named `*.skill.test.ts`, which
+`proof.run` runs.
+
+**The questions about a unit go with it.** The `ask` of a unit holds the
+[questions](questions.md) for the decision model about it, and `ask()` those about the prose of a
+file. An option that repeats a value of the code is built from it, as the sentence is.
 
 **Build the sentence from the code where the code has the value.**
 
@@ -154,8 +164,8 @@ first. A value built from the constant changes with it, and the change shows up 
 sentence about behaviour, such as which statuses are retried, can be built from what the body
 observes, case by case, with `u.value()`. Whatever stays literal, the body asserts.
 
-**Where slots go.** A `{{unit:<id>}}` goes where the unit would be written by hand: alone on its
-line, under `## Rules`, in the file about its topic. A table or a sentence of the reference part
+**Where slots go.** A `{{unit:<id>}}` goes where the unit belongs in the built skill: alone on
+its line, under `## Rules`, in the file about its topic. A table or a sentence of the reference part
 that repeats a default uses `{{value:<id>.<name>}}`, and the test lists the value in `values`, so
 the table and the unit cannot disagree.
 
@@ -257,8 +267,9 @@ Three ways to keep it short and complete:
 
 ## Tests
 
-SkillUnit's test layer asks a decision model closed questions about the skill, from the specs
-([writing specs](writing-specs.md)). How a question is asked decides what its answer can tell.
+SkillUnit's test layer asks a decision model closed questions about the skill, which the tests
+declare with their units ([questions](questions.md)). How a question is asked decides what its
+answer can tell.
 
 **Write a choice test unless the decision has exactly two outcomes.** SkillUnit adds `none` to
 every choice test, so a model that finds nothing in the skill picks `none` and the test fails. A

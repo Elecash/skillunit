@@ -1,6 +1,6 @@
 /**
- * A unit from a test, as the skill holds it: the format a unit written by hand has, so lint and
- * the model tests read both the same way.
+ * A unit declared in a test, as the skill holds it: the labelled format that lint and the model
+ * tests read.
  *
  * ```md
  * ### fact: default-timeout

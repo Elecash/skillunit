@@ -1,8 +1,8 @@
 /**
  * Builds a skill from its source and the units the tests left. In a Markdown file of the source,
  * `{{unit:<id>}}` alone on a line is where the unit of a test goes, and `{{value:<id>.<name>}}`,
- * anywhere, a fenced block included, is a value of a unit. A unit written by hand stays as it is.
- * Every other file is copied as it is. Braces around something that cannot be an id, such as
+ * anywhere, a fenced block included, is a value of a unit. A unit heading in the source is an
+ * error: every unit is declared in code, with `unit()`. Every other file is copied as it is. Braces around something that cannot be an id, such as
  * `{{unit:<id>}}` in a sentence about slots, are text.
  *
  * The build is in memory: the proof layer formats it, compares it with the skill folder or
@@ -39,15 +39,16 @@ export interface BuildProblem {
   unit?: string;
 }
 
-/** A unit of the built skill: from a test, through a slot, or written by hand in the source. */
+/** A unit of the built skill, through its slot. */
 export interface BuiltUnit {
   id: string;
   kind: UnitKind | null;
-  from: 'test' | 'hand';
-  /** The slot, or the heading of the unit by hand: absolute source file and line. */
+  /** `test`: a test proves it; `declared`: it was declared with no body, so no test does. */
+  from: 'test' | 'declared';
+  /** The slot: absolute source file and line. */
   source: { file: string; line: number };
-  /** From a test: what it left. `missing` when no test left the unit. */
-  state: 'passed' | 'failed' | 'missing' | 'hand';
+  /** What its declaration left. `missing` when nothing left the unit. */
+  state: 'passed' | 'failed' | 'missing';
   /** From a test: where it is declared, when a record says. */
   test?: { file: string; line: number };
   /** From a failed test: the message of what failed. */
@@ -106,8 +107,6 @@ export function buildSkill(input: BuildInput): Build {
   const built: BuiltFile[] = [];
   const units: BuiltUnit[] = [];
   const slots = new Map<string, { file: string; line: number }>();
-  /** Units by hand, by id, from every Markdown file of the source. */
-  const hand = new Map<string, { file: string; line: number }>();
   let values = 0;
   /** Files with the first of two slots for one id. */
   const twice = new Set<string>();
@@ -129,7 +128,7 @@ export function buildSkill(input: BuildInput): Build {
       add(abs, line, message, unit);
     };
     let fence: string | null = null;
-    /** The source with the slots blanked, for the parser to find the units by hand. */
+    /** The source with the slots blanked, for the parser to find unit headings written in it. */
     const prose: string[] = [];
 
     lines.forEach((raw, i) => {
@@ -156,7 +155,7 @@ export function buildSkill(input: BuildInput): Build {
         }
         slots.set(id, { file: abs, line });
         const record = byId.get(id);
-        const base = { id, from: 'test' as const, source: { file: abs, line }, file: rel };
+        const base = { id, from: record?.status === 'passed' && record.body === false ? ('declared' as const) : ('test' as const), source: { file: abs, line }, file: rel };
         if (!record) {
           units.push({ ...base, kind: null, state: 'missing' });
           return fail(line, `no test left the unit \`${id}\`: ${input.missingReason}`, id);
@@ -210,11 +209,7 @@ export function buildSkill(input: BuildInput): Build {
       origins.push({ kind: 'source', file: abs, line });
     });
 
-    for (const u of parseFile(prose.join('\n'), rel).units) {
-      const first = hand.get(u.id);
-      if (!first) hand.set(u.id, { file: abs, line: u.line });
-      units.push({ id: u.id, kind: u.kind, from: 'hand', source: { file: abs, line: u.line }, state: 'hand', file: rel });
-    }
+    for (const u of parseFile(prose.join('\n'), rel).units) fail(u.line, `units are declared with \`unit()\`; put \`{{unit:${u.id}}}\` here`, u.id);
     built.push({ file: rel, text: out.join(eol), origins, broken });
   }
 
@@ -222,9 +217,7 @@ export function buildSkill(input: BuildInput): Build {
 
   // ---------------------------------------------------------------- what has no place
   for (const [id, record] of byId) {
-    const byHand = hand.get(id);
-    if (byHand) add(byHand.file, byHand.line, `the unit \`${id}\` is written here by hand, and the test at ${place(record)} declares it too; keep one`, id);
-    else if (!slots.has(id)) add(record.abs, record.line, `this test declares the unit \`${id}\`, and no file of \`source\` has \`{{unit:${id}}}\` where it goes`, id);
+    if (!slots.has(id)) add(record.abs, record.line, `this test declares the unit \`${id}\`, and no file of \`source\` has \`{{unit:${id}}}\` where it goes`, id);
   }
   for (const [id, region] of input.regions) {
     const unit = id.split('.')[0]!;

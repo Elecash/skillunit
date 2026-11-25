@@ -19,42 +19,42 @@ Lint  skill
   ✓ 6 files, all clean
   12 units · 19 examples type-checked with TypeScript 5.6.3
 
-Units  proof ran `npx vitest run` in 0.4 s, exit 0 · test dry run: nothing sent
-
+Units  proof ran `npx vitest run` in 0.5 s, exit 0 · test dry run: nothing sent
+  …
   skill/SKILL.md
-    test   · specs/skill.yaml:13  which-file-for-retries  ready
+    test   · src/tinyfetch.skill.test.ts:136  which-file-for-retries  ready
     await-every-request  rule
-      proof  ✓ from a test src/tinyfetch.test.ts:56
-      test   · specs/skill.yaml:4  await-the-call  ready
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:57
+      test   · src/tinyfetch.test.ts:57  await-the-call  ready
 
   skill/features/retries.md
     retry-defaults  fact
-      proof  ✓ from a test src/tinyfetch.test.ts:185
-      test   · specs/retries.yaml:51  retry-delay-default  ready
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:227
+      test   · src/tinyfetch.test.ts:227  retry-delay-default  ready
     what-is-retried  fact
-      proof  ✓ from a test src/tinyfetch.test.ts:166
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:208
       test   –
     retry-idempotent-only  rule
-      proof  – by hand
-      test   · specs/retries.yaml:4  post-no-retry  ready
-      test   · specs/retries.yaml:15  patch-no-retry  ready
-      test   · specs/retries.yaml:26  retry-methods  ready
-      test   · specs/retries.yaml:36  put-may-retry  ready
-      test   · specs/retries.yaml:45  get-may-retry  ready
+      proof  – declared, no test, src/tinyfetch.skill.test.ts:59
+      test   · src/tinyfetch.skill.test.ts:59  post-no-retry  ready
+      test   · src/tinyfetch.skill.test.ts:59  patch-no-retry  ready
+      test   · src/tinyfetch.skill.test.ts:59  retry-methods  ready
+      test   · src/tinyfetch.skill.test.ts:59  put-may-retry  ready
+      test   · src/tinyfetch.skill.test.ts:59  get-may-retry  ready
   …
 
   12 units · 6 proof and test · 3 proof only · 3 test only · 0 not covered
-  12 units · 9 from tests · 3 by hand · 3 values in prose
+  12 units · 9 proved by a test · 3 declared without one · 3 values in prose
   16 tests
 
 OK  lint ok · proof ok · test dry run ok, 16 tests ready
 ```
 
-A `–` is a layer with nothing on that unit, and `by hand` a unit written in the source rather than declared in a test. A unit with neither proof nor a test reads `not covered`.
+Each `test` line is a question for the decision model, at the line of the test file that declares it. A `–` is a layer with nothing on that unit, and `declared, no test` a unit declared with no body, such as advice, which no test proves. A unit with neither proof nor a question reads `not covered`.
 
 What it costs to run:
 
-- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill, plus the time of the project's tests, which proof runs. The decision model answers a spec, a file of tests, in under a second, however many tests it holds: 58 tests in 8 specs take about 1.5 seconds on TypeSafe and 3 on OpenAI.
+- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill, plus the time of the tests that declare units, which proof runs. The decision model answers the questions about one file in under a second, however many there are: 58 questions about 8 files take about 1.5 seconds on TypeSafe and 3 on OpenAI.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 
@@ -65,34 +65,34 @@ npm install --save-dev skillunit
 npx skillunit init skills/my-skill
 ```
 
-`init` writes `skillunit.yaml` and a first spec, and lint works at once:
+`init` writes `skillunit.yaml`, and lint works at once:
 
 ```sh
 npx skillunit lint
 ```
 
-Proof builds the skill from a source folder and the units your tests declare. Move the skill to a source folder, set `source` and `proof.run` in `skillunit.yaml`, wrap the tests that check what a unit says in `unit()` from `skillunit/vitest`, and put `{{unit:<id>}}` in the source where each one goes. Then build the skill, and commit both folders:
+Proof builds the skill from a source folder and the units your tests declare. Move the skill to a source folder and set `source` and `proof.run` in `skillunit.yaml`. Then declare each unit in code with `unit()` from `skillunit/vitest`: around the test that checks what it says, or with no body for advice no test can check. Put `{{unit:<id>}}` in the source where each one goes, build the skill, and commit both folders:
 
 ```yaml
 skill: ./skills/my-skill
 source: ./skills-src/my-skill
 proof:
-  run: "npx vitest run"
+  run: "npx vitest run skill.test"   # the test files that declare units: *.skill.test.ts
 ```
 
 ```sh
 npx skillunit proof --write
 ```
 
-[Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) has the `unit()` API, the slots, and the JSON a test in another language writes.
+The questions for the decision model go with their unit, in its `ask`, and a question about the prose of a file goes in `ask()`. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) has the `unit()` API, the slots, and the JSON a test in another language writes; [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) has the fields of a question.
 
-SkillUnit ships a skill that teaches an agent to write a skill in units, to write its examples and specs, and to act on a report. Install it with [skills.sh](https://skills.sh):
+SkillUnit ships a skill that teaches an agent to write a skill in units, to declare its units and questions in tests, to write its examples, and to act on a report. Install it with [skills.sh](https://skills.sh):
 
 ```sh
 npx skills add https://github.com/Elecash/skillunit --skill skillunit
 ```
 
-Then ask the agent, for example: "Rewrite `skills/my-skill` in units and add SkillUnit specs for it."
+Then ask the agent, for example: "Rewrite `skills/my-skill` in units, declared in our tests with SkillUnit, with questions for each."
 
 The test layer needs a decision model:
 
@@ -102,7 +102,7 @@ The test layer needs a decision model:
 | [OpenAI Decisions](https://developers.openai.com/api/docs/guides/decisions) | `openai` | `gpt-6-luna` | `OPENAI_API_KEY` |
 | Your own | a module that exports a `DecisionModel` | any | [see the configuration](https://github.com/Elecash/skillunit/blob/main/docs/configuration.md#a-decision-model-of-your-own) |
 
-Pick one with `model: { provider: openai }` in `skillunit.yaml`, or `--provider openai` for a single run. Models can answer the same test differently (OpenAI's is more decisive than Jev), so pick one and write your tests for it. Put that provider's key in the environment, or in a `.env` file next to `skillunit.yaml` or at the root of the repository. Then run every layer:
+Pick one with `model: { provider: openai }` in `skillunit.yaml`, or `--provider openai` for a single run. Models can answer the same question differently (OpenAI's is more decisive than Jev), so pick one and write your questions for it. Put that provider's key in the environment, or in a `.env` file next to `skillunit.yaml` or at the root of the repository. Then run every layer:
 
 ```sh
 npx skillunit check
@@ -112,7 +112,7 @@ npx skillunit check
 
 ### Units
 
-Each instruction of a skill is a unit: a heading with its kind and its id, labelled paragraphs that the agent reads, and an optional `Check` that lint reads. There are three kinds. The examples are from [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch/skill), the decision without its optional labels, and the [style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md) describes the format.
+Each instruction of a skill is a unit: a heading with its kind and its id, labelled paragraphs that the agent reads, and an optional `Check` that lint reads. There are three kinds. The examples are from the built skill of [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch/skill), the decision without its optional labels, and the [style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md) describes the format. In a skill built with proof, every unit is declared in code and the build writes it in this format.
 
 **A rule** is a constraint on what the agent writes.
 
@@ -177,11 +177,11 @@ An example of the skill still passes `retryDelay`:
 1) skill/features/retries.md:19  -  does not type-check: TS2353 Object literal may only specify known properties, and 'retryDelay' does not exist in type 'RequestOptions'.
 ```
 
-**An example breaks a rule.** In `skill/features/retries.md`, in the `Right` example of the rule above:
+**An example breaks a rule.** The `Right` example of the rule above is a region of `src/tinyfetch.skill.test.ts`, where the rule is declared. Change it and build the skill:
 
 ```diff
--await tf.get("https://api.example.com/users", { retry: 3 });
-+await tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });
+-await tf.get('https://api.example.com/users', { retry: 3 });
++await tf.post('https://api.example.com/orders', { item: 42 }, { retry: 3 });
 ```
 
 ```
@@ -190,7 +190,7 @@ An example of the skill still passes `retryDelay`:
 
 ### Proof
 
-A unit that a test can check is declared in that test, and the skill is built from a source folder and the tests. A unit no test can check, such as the rule above, which is about what a server does with a repeated request, is written in the source by hand. `skillunit proof` runs the tests through `proof.run`, builds the skill, and compares it with the skill folder. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes `unit()`, the slots and the settings.
+A unit that a test can check is declared in that test, and the skill is built from a source folder and the tests. A unit no test can check, such as the rule above, which is about what a server does with a repeated request, is declared with `unit()` and no body, and the report calls it declared, never proved. `skillunit proof` runs the tests through `proof.run`, builds the skill, and compares it with the skill folder. [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md) describes `unit()`, the slots and the settings.
 
 **The code changes, and a fact would be false.** tinyfetch's test builds the `Value` of `default-timeout` from the constant:
 
@@ -220,16 +220,31 @@ The tests pass, since they assert what the constant says. The built skill now sa
 ```
   skill/features/timeouts.md
     default-timeout  fact
-      proof  ✓ from a test src/tinyfetch.test.ts:215
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:268
       proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
-               from the test of `default-timeout`, src/tinyfetch.test.ts:215
+               from the test of `default-timeout`, src/tinyfetch.test.ts:268
 ```
 
-The options table, which shows the default through `{{value:default-timeout.ms}}`, fails too. `skillunit proof --write` rewrites both, and the change to the skill goes in the same pull request as the change to the code.
+The options table, which shows the default through `{{value:default-timeout.ms}}`, fails too. `skillunit proof --write` rewrites both, and the change to the skill goes in the same pull request as the change to the code. The question about the default needs no edit either: its options are built from the same constant, so after the build it offers 5 seconds as the right answer.
 
 ### Test
 
-A spec is a YAML list of closed questions about one file of the skill. A decision model reads the file and gives each answer a probability, and a test passes when the expected answer wins with a high enough probability. [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md) describes the format.
+The questions for the decision model are declared in code with their unit, in its `ask`, so an option can use what the code has:
+
+```ts
+ask: {
+  scenario: 'The user asks how long a tinyfetch request waits before it gives up, when the code sets nothing.',
+  question: 'What should the agent answer?',
+  options: {
+    right: `${DEFAULT_TIMEOUT / 1000} seconds`,
+    longer: `${(3 * DEFAULT_TIMEOUT) / 1000} seconds`,
+    forever: 'It waits until the server answers',
+  },
+  expect: 'right',
+},
+```
+
+The test runner only records them. SkillUnit asks them about the skill folder: a decision model reads the file that holds the unit and gives each answer a probability, and a question passes when the expected answer wins with a high enough probability. [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) describes the fields.
 
 **A sentence contradicts a rule.** In `skill-src/features/retries.md`, the source of the skill, in the prose above the rules:
 
@@ -238,20 +253,22 @@ A spec is a YAML list of closed questions about one file of the skill. A decisio
 +The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
 ```
 
-The model still picks `no-retry` for a POST, but the new sentence pulls it down to 47%, under the threshold, so the test fails. The PATCH test passes at 54%, close enough to the threshold to be marked borderline:
+The model still picks `no-retry` for a POST and for a PATCH, but the new sentence pulls both down to 42%, under the threshold, so both questions fail. The question about which methods may get `retry` passes at 62%, close enough to the threshold to be marked borderline:
 
 ```
   skill/features/retries.md
     retry-idempotent-only  rule
-      test   ✗ specs/retries.yaml:4  post-no-retry  no-retry 0.47
+      test   ✗ src/tinyfetch.skill.test.ts:59  post-no-retry  no-retry 0.42
                scenario:  A payment is sent with `tf.post` to an API that sometimes answers 503.
                question:  Should the agent pass `retry` to that call?
                expected:  no-retry
-               got:       no-retry · probability 0.47, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
-                          no-retry 47% · none 30% · retry 23%
-               phrasings: 0.56  0.47 (probability of "no-retry" for each; the median decides)
-      test   ~ specs/retries.yaml:15  patch-no-retry  no-retry 0.54
-               probability 0.54, threshold 0.50 · borderline: the next run may fail it
+               got:       no-retry · probability 0.42, threshold 0.50 · right answer, under the threshold, borderline: the next run may pass it
+                          no-retry 42% · retry 32% · none 26%
+               phrasings: 0.44  0.42 (probability of "no-retry" for each; the median decides)
+      test   ✗ src/tinyfetch.skill.test.ts:59  patch-no-retry  no-retry 0.42
+               …
+      test   ~ src/tinyfetch.skill.test.ts:59  retry-methods  idempotent 0.62
+               probability 0.62, threshold 0.50 · borderline: the next run may fail it
 ```
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
@@ -275,7 +292,7 @@ The check runs the tests itself, through `proof.run`, and ends with:
 OK  lint ok · proof ok · test dry run ok, 16 tests ready
 ```
 
-Then break one thing at a time. Each experiment starts from a clean tree, and `git checkout .` undoes it. The first three need no key. The skill people write is in `skill-src`; `skill` is built from it.
+Then break one thing at a time. Each experiment starts from a clean tree, and `git checkout .` undoes it. The first three need no key. The skill people write is in `skill-src`, `skill` is built from it, and the units are declared in `src/tinyfetch.test.ts` and, for those no test proves, `src/tinyfetch.skill.test.ts`.
 
 ### An option renamed in the code
 
@@ -287,7 +304,7 @@ In `src/types.ts`, rename the option `retryDelay` to `backoff`, then run `npx sk
 
 ### An example that breaks its own rule
 
-In `skill-src/features/retries.md`, change the `Right` example of `retry-idempotent-only` to `await tf.post("https://api.example.com/orders", { item: 42 }, { retry: 3 });`, then build the skill with `npx skillunit proof --write` and run `npx skillunit lint`:
+In `src/tinyfetch.skill.test.ts`, change the region `skill:retry-idempotent-only`, the `Right` example of the rule, to `await tf.post('https://api.example.com/orders', { item: 42 }, { retry: 3 });`, then build the skill with `npx skillunit proof --write` and run `npx skillunit lint`:
 
 ```
 1) skill/features/retries.md:45  retry-idempotent-only  breaks `retry-idempotent-only`: `.post("https://api.example.com/orders", { item: 42 }, { ret…` matches its `Check` (features/retries.md:48)
@@ -302,13 +319,13 @@ In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`, and change no
     proof  ✗ skill/features/timeouts.md:15  this line is not what the build gives: the build has `| 'timeout' | number (ms) | '5_000' | …`, the skill has `| 'timeout' | number (ms) | '10_000' | …`. …
              from the source, skill-src/features/timeouts.md:15
     default-timeout  fact
-      proof  ✓ from a test src/tinyfetch.test.ts:215
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:268
       proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
-               from the test of `default-timeout`, src/tinyfetch.test.ts:215
+               from the test of `default-timeout`, src/tinyfetch.test.ts:268
     never-disable-timeout  rule
-      proof  – by hand
+      proof  – declared, no test, src/tinyfetch.skill.test.ts:120
 
-  12 units · 9 from tests · 3 by hand · 3 values in prose · 1 file out of date
+  12 units · 9 proved by a test · 3 declared without one · 3 values in prose · 1 file out of date
 
 Failed
   skill/features/timeouts.md › proof skill/features/timeouts.md:15
@@ -317,17 +334,18 @@ Failed
 FAILED  proof 2 errors, 0 warnings
 ```
 
-The first finding is the row of the options table whose `Default` comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes.
+The first finding is the row of the options table whose `Default` comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes. With a key, `npx skillunit check` then asks the question about the default with 5 seconds as its right option, and it passes.
 
 ### A sentence that contradicts a rule
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill-src/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), build the skill with `npx skillunit proof --write`, then run `npx skillunit test`. It fails `post-no-retry`, and `patch-no-retry` passes close to its threshold. The output ends with:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill-src/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), build the skill with `npx skillunit proof --write`, then run `npx skillunit test`. It fails `post-no-retry`, and in our runs `patch-no-retry` too, near its threshold. The output ends with:
 
 ```
 Failed
-  skill/features/retries.md › retry-idempotent-only › specs/retries.yaml:4  post-no-retry
+  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  post-no-retry
+  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  patch-no-retry
 
-FAILED  test 15/16 passed (2 borderline)
+FAILED  test 14/16 passed (3 borderline)
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.
@@ -359,7 +377,8 @@ A complete example may import and declare again what the `Setup` declares: its o
 ## Docs and license
 
 - [Style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md): how to write a skill in units, and its index
-- [Writing specs](https://github.com/Elecash/skillunit/blob/main/docs/writing-specs.md): the spec format, and how to write a test that fails when it should
+- [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md): where the questions for the decision model go, and how to write one that fails when it should
+- [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md): units declared in tests, the source and its slots, which tests `proof.run` runs
 - [Configuration](https://github.com/Elecash/skillunit/blob/main/docs/configuration.md): `skillunit.yaml`, the key, decision models
 - [Command line](https://github.com/Elecash/skillunit/blob/main/docs/cli.md): commands, options, reporters, exit codes
 - [CI](https://github.com/Elecash/skillunit/blob/main/docs/ci.md): the workflow, pull requests from forks, what a run costs

@@ -20,7 +20,7 @@ export const OPENAI_DEFAULT_MODEL = 'gpt-6-luna';
 export const OPENAI_LIMITS = { perQuestionTokens: 922_000, perRequestTokens: 922_000, questionsPerRequest: 400, optionsPerQuestion: 255 };
 
 const TIMEOUT_MS = 60_000;
-/** The longest `Retry-After` the one retry waits for; a longer one fails the spec instead. */
+/** The longest `Retry-After` the one retry waits for; a longer one fails the request instead. */
 const MAX_RETRY_WAIT_MS = 20_000;
 
 export interface OpenAIOptions {

@@ -73,7 +73,7 @@ describe('fromOpenAI', () => {
   });
 
   it('leaves the choice to be judged on its top probability', () => {
-    // Recorded on 2026-11-23 for `prefer-choice` of SkillUnit's own specs: right answer, confidence 0.25.
+    // Recorded on 2026-11-23 for `prefer-choice` of SkillUnit's own questions: right answer, confidence 0.25.
     const spread: OpenAIResponse = {
       model: 'gpt-6-luna',
       answers: [{ type: 'choice', name: 'pick', choice: 'choice', probabilities: [{ value: 'choice', probability: 0.5 }, { value: 'yes-no', probability: 0.16 }, { value: 'none', probability: 0.34 }], confidence: 0.25 }],

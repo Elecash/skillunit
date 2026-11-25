@@ -6,7 +6,7 @@ A skill is a tree an agent walks by task. `SKILL.md` says what the library is, h
 
 Lint reports a file that nothing leads to from `SKILL.md`, directly or through other files. A link leads to it, and so does its relative path written in text, in a code span or in a fence with no language or `text`; a path in a `ts` example is code and does not. A bare file name, `strings.md`, leads to it only while no other file of the skill has that name.
 
-Small files keep each request to the decision model small, let an agent load only what its task needs, and let `test --changed` run only the specs of the files that changed. Lint warns about a file above about 300 lines.
+Small files keep each request to the decision model small, let an agent load only what its task needs, and let `test --changed` ask only the questions about the files that changed. Lint warns about a file above about 300 lines.
 
 ## Layout of a file
 
@@ -34,22 +34,10 @@ The reference sections describe how things work. The units decide what the agent
 
 ## Rules
 
-### rule: one-task-per-file
-
-When: a skill grows, or a file covers more than one task.
-
-Do: give each task its own file, named after the thing or feature it covers, and split a file when an agent doing one task needs only part of it.
-
-Even when: the two tasks share a few rules; the shared rule lives in the more specific file, and the other links to it.
+{{unit:one-task-per-file}}
 
 {{unit:index-every-file}}
 
 {{unit:rules-section-last}}
 
-### rule: instructions-only-in-units
-
-When: a sentence in a reference section tells the agent what to do, or gives an exception to a rule.
-
-Do: write the instruction as a unit, and the exception inside its unit, under `Even when`; the prose only describes.
-
-Even when: the exception is one short clause; the reader follows the most specific rule it finds, so an exception stated before the rule loses to it.
+{{unit:instructions-only-in-units}}

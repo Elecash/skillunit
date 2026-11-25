@@ -1,15 +1,17 @@
 /**
- * The reader: asks a decision model every test of a spec in one request. The skill text is the
- * state and each phrasing of a scenario is one question about it. The model answers the
- * questions apart from each other, so each answer depends on the skill text alone. A spec with
- * `with` also puts the other files the agent reads in the state, under `references`.
+ * The reader: asks a decision model every question about one file of the skill in one
+ * request. The skill text is the state and each phrasing of a scenario is one question about
+ * it. The model answers the questions apart from each other, so each answer depends on the
+ * skill text alone. Questions with `with` also put the other files the agent reads in the
+ * state, under `references`.
  *
  * The framing, the automatic `none` option, the thresholds and the token checks live here, not
  * in the adapters, so every model is asked and judged the same way.
  */
 import type { Thresholds } from '../config.js';
 import type { DecisionAnswer, DecisionModel, DecisionQuestion, DecisionRequest } from '../models/index.js';
-import { NONE, type TestCase } from './spec.js';
+import { NONE } from '../unit/contract.js';
+import type { TestCase } from './questions.js';
 
 export interface Verdict {
   id: string;
@@ -38,11 +40,11 @@ export interface Verdict {
   /** The phrasing of the scenario this verdict comes from: the median one when there are several. */
   scenario: string;
   question: string;
-  /** The unit the test names, if any. */
+  /** The unit the question is about, if any. */
   unit?: string;
-  /** Line of the test in its spec file. */
-  line?: number;
-  /** For a test with several phrasings: `expectedProb` of each, in the order of the spec. */
+  /** Where the question is declared: the absolute path of the test file, and the line. */
+  declared?: { file: string; line: number };
+  /** For a test with several phrasings: `expectedProb` of each, in the order they were declared. */
   variants?: number[];
 }
 
@@ -173,7 +175,7 @@ export function judge(test: TestCase, answer: DecisionAnswer | undefined, th: Th
     scenario: test.scenarios[phrasing]!,
     question: test.question,
     ...(test.unit ? { unit: test.unit } : {}),
-    ...(test.line ? { line: test.line } : {}),
+    ...(test.declared ? { declared: test.declared } : {}),
   };
   const near = (value: number, threshold: number) => Math.abs(value - threshold) < th.margin;
   const missing = (why: string): Verdict => ({ ...base, answer: why, confidence: 0, expectedProb: 0, pass: false, weak: false, borderline: false });

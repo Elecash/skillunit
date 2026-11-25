@@ -4,16 +4,18 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { CONFIG_FILE, loadConfig, type Config, type Thresholds } from './config.js';
+import { readRecords, type Records } from './build/records.js';
+import { CONFIG_FILE, loadConfig, type Config, type ProofConfig, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
 import { Git } from './git.js';
 import { init } from './init.js';
 import { ConfigError, lintSkill } from './lint/index.js';
 import type { LintResult } from './lint/types.js';
 import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
-import { runProof, traceSkill, type OriginLookup, type ProofResult, type ProofSkipped } from './proof/index.js';
+import { runFailure, runProof, runTests, traceSkill, type OriginLookup, type ProofResult, type ProofSkipped, type TestRun } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
+import { collectQuestions, type QuestionProblem } from './test/questions.js';
 import { runAll, type Report } from './test/runner.js';
 import { parseSkill } from './units/index.js';
 
@@ -26,10 +28,11 @@ const HELP = `SkillUnit checks that an agent skill still says what the code it d
 Usage
   skillunit check [options]           lint, proof and test: what CI runs
   skillunit lint [skill] [options]    the skill's format, examples, Check rules and links
-  skillunit proof [options]           run the project's tests, build the skill from \`source\` and the
-                                      units the tests declare, and compare it with the skill folder
-  skillunit test [specs...] [options] ask a decision model the spec tests about the skill
-  skillunit init [skill]              create skillunit.yaml and a first spec here, for that skill folder
+  skillunit proof [options]           run the tests that declare units, build the skill from \`source\`
+                                      and those units, and compare it with the skill folder
+  skillunit test [options]            run the tests that declare units, and ask a decision model the
+                                      questions they declare about the skill folder
+  skillunit init [skill]              create skillunit.yaml here, for that skill folder
 
 Options
   --config <file>     settings file (default: ./skillunit.yaml, if it exists)
@@ -37,11 +40,11 @@ Options
   --reporter <name>   table (default), json, junit or github
   --json              the same as --reporter json
   --compact           proof, test and check, with the table reporter: one row per unit
-  --no-run            proof and check: do not run proof.run; build from the units already left
+  --no-run            proof, test and check: do not run proof.run; use the units already left
 
 Options for test and check
-  --dry-run           check that specs load, headings exist and requests fit; send nothing
-  --changed           test only the specs of skill files that changed in git since --base
+  --dry-run           check that the questions can be asked and requests fit; send nothing
+  --changed           ask only the questions about skill files that changed in git since --base
   --base <ref>        with --changed: compare HEAD with its merge base with this ref (default:
                       the pull request's target branch, else the default branch)
   --provider <name>   decision model provider, instead of the one in the settings: ${PROVIDER_NAMES.join(', ')}
@@ -69,7 +72,6 @@ ${ENVIRONMENT}
 interface Args {
   config?: string;
   skill?: string;
-  specs: string[];
   base?: string;
   dryRun: boolean;
   changed: boolean;
@@ -86,7 +88,7 @@ interface Args {
 const OPTIONS: Record<Command, string[]> = {
   lint: [],
   proof: ['--compact', '--write', '--no-run'],
-  test: ['--compact', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  test: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
   check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
 };
 
@@ -101,7 +103,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { specs: [], dryRun: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
+  const args: Args = { dryRun: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -144,8 +146,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     else positional.push(flag);
   }
   if (args.base !== undefined && !args.changed) usage('--base only works with --changed');
-  if (command === 'test') args.specs = positional;
-  else if (command === 'check' && positional.length) usage('check takes no paths; use --skill and the settings');
+  if ((command === 'test' || command === 'check') && positional.length) usage(`${command} takes no paths; use --skill and the settings`);
   else if (command === 'proof' && positional.length) usage('proof takes no paths; it builds `skill` from `source`, as the settings say');
   else if (positional.length > 1) usage(`${command} takes one skill folder`);
   else if (positional[0]) args.skill = positional[0];
@@ -163,7 +164,6 @@ async function runCommand(command: Command, args: Args) {
     usage((e as Error).message);
   }
   if (args.skill) config.skill = resolve(args.skill);
-  if (args.specs.length) config.specs = args.specs.map((p) => resolve(p));
   if (args.provider && args.provider !== config.model.provider) config.model = { provider: args.provider };
   if (args.model) {
     if (config.model.provider === 'module') usage('--model sets the model of a provider that ships with SkillUnit; the settings use a model module. Add --provider to use one');
@@ -173,9 +173,13 @@ async function runCommand(command: Command, args: Args) {
   // `proof --write` builds the skill folder, so it may not exist yet.
   if (!existsSync(config.skill) && !(command === 'proof' && args.write)) usage(`no skill folder at ${config.skill}`);
 
-  const testing = command === 'test' || command === 'check';
+  // The questions are in the records the tests leave, which only a skill built from `source` has.
+  const testing = (command === 'test' || command === 'check') && config.proof !== undefined;
   if (command === 'proof' && !(config.source && config.proof)) {
     usage(`no \`source\` in ${config.configFile ?? CONFIG_FILE}: the proof builds \`skill\` from \`source\`, the folder people write, and the units the tests declare`);
+  }
+  if (command === 'test' && !(config.source && config.proof)) {
+    usage(`no \`source\` in ${config.configFile ?? CONFIG_FILE}: the questions are declared in the tests, with \`unit()\` and \`ask()\`, for a skill built from \`source\``);
   }
   if (config.source && !existsSync(config.source) && (command === 'proof' || command === 'check')) usage(`no source folder at ${config.source}`);
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
@@ -213,9 +217,14 @@ async function runCommand(command: Command, args: Args) {
       const model = await loadModel(config.model);
       const changed = args.changed ? changedSkillFiles(config.skill, args.base) : undefined;
       const select = changed ? changedSelection(changed) : undefined;
-      testResult = await runAll(config, model, { dryRun: args.dryRun, ...(select ? { select } : {}) });
+      const cfg = config.proof!;
+      // `check` ran the tests in its proof, which reports what went wrong with them.
+      const own = command === 'test' ? runTests(cfg, args.noRun) : undefined;
+      const records = readRecords(cfg.units, cfg.cwd);
+      const problems = own ? recordProblems(cfg, own, records) : [];
+      const collected = collectQuestions(records.units, records.questions, config.skill, skill.units);
+      testResult = await runAll(config, model, collected, { dryRun: args.dryRun, problems, ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
       if (changed) testResult.changed = { ref: changed.ref, commit: changed.commit };
-      if (args.specs.length) testResult.paths = args.specs;
     }
     const report = buildReport(command, {
       units: skill.units.map((u) => {
@@ -231,9 +240,26 @@ async function runCommand(command: Command, args: Args) {
     process.exitCode = report.ok ? 0 : 1;
   } catch (e) {
     if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
-    if (e instanceof Error && /^(spec path not found|no \.yaml spec files)/.test(e.message)) usage(e.message);
     throw e;
   }
+}
+
+/**
+ * What `test` on its own reports about the tests it ran, which `check` leaves to its proof: a run
+ * that did not exit with 0, a record that is not valid, and a test that failed, whose questions
+ * were not asked.
+ */
+function recordProblems(cfg: ProofConfig, own: TestRun, records: Records): QuestionProblem[] {
+  const out: QuestionProblem[] = [];
+  const failure = runFailure(cfg, own, records.units.length + records.questions.length > 0);
+  if (failure) out.push({ message: failure });
+  for (const p of records.problems) out.push({ declared: { file: p.path, line: 1 }, message: p.message });
+  for (const r of [...records.units, ...records.questions]) {
+    if (r.status !== 'failed') continue;
+    const what = r.kind === 'question' ? `\`ask('${r.id}')\` failed, so it was not asked` : `the test of the unit \`${r.id}\` failed, so its questions were not asked`;
+    out.push({ id: r.id, ...(r.kind === 'question' ? {} : { unit: r.id }), declared: { file: r.abs, line: r.line }, message: `${what}: ${r.error}` });
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------- init

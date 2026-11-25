@@ -32,19 +32,7 @@ Lint runs each `Check` over every fenced block in the languages it names and ove
 
 ## Rules
 
-### decision: pick-a-kind
-
-When: the agent turns an instruction of the skill into a unit.
-
-Decide: which kind of unit to write.
-
-- **rule** — a constraint on what the agent writes or does: one `Do`.
-
-- **decision** — the agent chooses between paths that depend on the situation: one `- **path** — condition` item per path under `Decide`.
-
-- **fact** — a value the agent must state exactly, such as a default or a limit: `Value`, and `Unknown` for what the value does not cover.
-
-Even when: a rule seems to need two `Do` lines; that is two rules, or a decision.
+{{unit:pick-a-kind}}
 
 {{unit:one-label-per-paragraph}}
 

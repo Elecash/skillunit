@@ -40,19 +40,20 @@ export interface ProofOptions {
 /** What ran the tests: the command, with how long it took and what it exited with, or why nothing did. */
 export type RunReport = { command: string; status: number | null; ms: number } | { skipped: 'no-run' | 'not-set' };
 
-export type UnitProofState = 'passed' | 'failed' | 'missing' | 'hand';
+export type UnitProofState = 'passed' | 'failed' | 'missing';
 
 export interface UnitProof {
   id: string;
   /** Null for a slot whose test left no unit. */
   kind: UnitKind | null;
-  from: 'test' | 'hand';
-  /** `passed`: built from its test; `failed`: its test failed; `missing`: no test left it; `hand`: written in the source. */
+  /** `test`: a test proves it; `declared`: it was declared with no body, so no test does. */
+  from: 'test' | 'declared';
+  /** `passed`: built from its declaration; `failed`: its test failed; `missing`: nothing left it. */
   state: UnitProofState;
   /** The file of the skill the unit is built into, from the skill folder, and the line of its heading there (1 when it is not there). */
   file: string;
   line: number;
-  /** The slot, or the heading of the unit by hand, from the skill folder. */
+  /** The slot, from the skill folder. */
   source: { file: string; line: number };
   /** Where its test declares it, from the skill folder. */
   test?: { file: string; line: number };
@@ -82,9 +83,10 @@ export interface ProofResult {
   problems: Problem[];
   summary: {
     units: number;
-    /** Units built from a test that passed. */
-    fromTests: number;
-    byHand: number;
+    /** Units built from a test that passed: proved. */
+    proved: number;
+    /** Units built from a declaration with no body: no test proves them. */
+    declared: number;
     /** Slots whose test failed. */
     failed: number;
     /** Slots no test left a unit for. */
@@ -115,6 +117,42 @@ export type OriginLookup = (file: string, line: number) => Origin | undefined;
  */
 const TAIL = 30;
 
+/** What running `proof.run` gave. */
+export interface TestRun {
+  run: RunReport;
+  /** How the run ended when it did not exit with 0: `exited with 1`, `did not run: …`, `did not finish (SIGTERM)`. */
+  ended: string | null;
+  /** The end of its output. */
+  tail: string;
+}
+
+/**
+ * Runs `proof.run` through the shell, from the folder of `skillunit.yaml`, after emptying the
+ * `proof.units` folder of its records. Nothing runs with `noRun` or when `proof.run` is not set.
+ */
+export function runTests(cfg: ProofConfig, noRun: boolean): TestRun {
+  if (!cfg.run) return { run: { skipped: 'not-set' }, ended: null, tail: '' };
+  if (noRun) return { run: { skipped: 'no-run' }, ended: null, tail: '' };
+  emptyRecords(cfg.units);
+  const started = Date.now();
+  const done = spawnSync(cfg.run, { shell: true, cwd: cfg.cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+  const run = { command: cfg.run, status: done.status, ms: Date.now() - started };
+  let ended: string | null = null;
+  if (done.error) ended = `did not run: ${done.error.message}`;
+  else if (done.status === null) ended = `did not finish (${done.signal ?? 'stopped'})`;
+  else if (done.status !== 0) ended = `exited with ${done.status}`;
+  const tail = lastLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`, TAIL);
+  return { run, ended, tail };
+}
+
+/** The error for a run that did not exit with 0, with the end of its output; null for one that did. */
+export function runFailure(cfg: ProofConfig, { ended, tail }: TestRun, leftRecords: boolean): string | null {
+  if (ended === null) return null;
+  const units = relative(cfg.cwd, cfg.units).split('\\').join('/') || '.';
+  const what = leftRecords ? `\`proof.run\` (\`${cfg.run}\`) ${ended}: a test failed, or the run did` : `\`proof.run\` (\`${cfg.run}\`) ${ended} and left no unit in \`${units}\``;
+  return `${what}${tail ? `. The end of its output:\n${tail}` : ''}`;
+}
+
 export function proof(options: ProofOptions): ProofResult {
   return runProof(options).result;
 }
@@ -132,22 +170,7 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const units = fromProject(cfg.units);
 
   // ---------------------------------------------------------------- 1, 2: the tests
-  let run: RunReport;
-  let tail = '';
-  /** How the run ended when it did not exit with 0: `exited with 1`, `did not run: …`, `did not finish (SIGTERM)`. */
-  let ended: string | null = null;
-  if (!cfg.run) run = { skipped: 'not-set' };
-  else if (options.noRun) run = { skipped: 'no-run' };
-  else {
-    emptyRecords(cfg.units);
-    const started = Date.now();
-    const done = spawnSync(cfg.run, { shell: true, cwd: cfg.cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
-    run = { command: cfg.run, status: done.status, ms: Date.now() - started };
-    if (done.error) ended = `did not run: ${done.error.message}`;
-    else if (done.status === null) ended = `did not finish (${done.signal ?? 'stopped'})`;
-    else if (done.status !== 0) ended = `exited with ${done.status}`;
-    tail = lastLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`, TAIL);
-  }
+  const { run, ended, tail } = runTests(cfg, options.noRun === true);
 
   // ---------------------------------------------------------------- 3: the build
   const records = readRecords(cfg.units, cfg.cwd);
@@ -155,10 +178,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   // A run that did not exit with 0 fails the proof, whatever units it left: a failing test is a
   // failure, whether or not it declares a unit. A unit whose test failed is reported on its slot too.
   const ranAndFailed = ended !== null;
-  if (ended !== null) {
-    const what = records.units.length ? `\`proof.run\` (\`${cfg.run}\`) ${ended}: a test failed, or the run did` : `\`proof.run\` (\`${cfg.run}\`) ${ended} and left no unit in \`${units}\``;
-    add(settings.file, settings.line('run'), `${what}${tail ? `. The end of its output:\n${tail}` : ''}`);
-  }
+  const failure = runFailure(cfg, { run, ended, tail }, records.units.length + records.questions.length > 0);
+  if (failure) add(settings.file, settings.line('run'), failure);
   const missingReason =
     'skipped' in run
       ? run.skipped === 'no-run'
@@ -278,8 +299,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     problems,
     summary: {
       units: unitResults.length,
-      fromTests: count('passed'),
-      byHand: count('hand'),
+      proved: unitResults.filter((u) => u.state === 'passed' && u.from === 'test').length,
+      declared: unitResults.filter((u) => u.state === 'passed' && u.from === 'declared').length,
       failed: count('failed'),
       missing: count('missing'),
       values: build.values,

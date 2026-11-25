@@ -47,7 +47,21 @@ describe('index', () => {
     ).toEqual(['SKILL.md:3 error: the link to `features/gone.md#a` does not resolve']);
   });
 
-  unit('index-every-file', { when: 'the agent adds a file to a skill.', do: 'add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.' }, (u) => {
+  unit('index-every-file', {
+      when: 'the agent adds a file to a skill.',
+      do: 'add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.',
+      ask: {
+        id: 'new-file-index',
+        scenario: 'The agent adds `features/i18n.md` to a skill.',
+        question: 'Where must a link to it go?',
+        options: {
+          index: 'In the "Where to look" table of `SKILL.md`, as a row from the task to the file',
+          sibling: 'In the file that covers the closest feature',
+          nowhere: 'Nowhere; agents search the folder',
+        },
+        expect: 'index',
+      },
+    }, (u) => {
     u.example('md', '| Retry a request that failed | [features/retries.md](features/retries.md) |');
     expect(
       indexOf({

@@ -19,12 +19,44 @@
  *   "value": "10 seconds (`timeout: 10000`), for every method.",
  *   "unknown": "tinyfetch has no separate connect timeout; say so instead of inventing one.",
  *   "values": { "seconds": 10 },
+ *   "ask": [
+ *     {
+ *       "id": "default-timeout",
+ *       "scenario": "The user asks how long a request waits when the code sets nothing.",
+ *       "question": "What should the agent answer?",
+ *       "options": { "right": "10 seconds", "longer": "30 seconds" },
+ *       "expect": "right"
+ *     }
+ *   ],
  *   "examples": []
  * }
  * ```
  *
- * When it threw, the same `skillunit`, `id`, `file`, `line` and `test`, with
- * `"status": "failed"` and the error's message in `error`. A skipped test leaves nothing.
+ * `ask` holds the questions for the decision model, in the form `unit()` takes them: one question
+ * or a list, with or without `id`. SkillUnit checks them again when it reads the record.
+ *
+ * A unit declared with no body, which no test proves, has `"body": false`.
+ *
+ * A question about the prose of a file, declared with `ask()`, leaves `"kind": "question"`, its
+ * own `id`, the built file it is about in `skillFile`, and itself in `ask`:
+ *
+ * ```json
+ * {
+ *   "skillunit": 1,
+ *   "status": "passed",
+ *   "kind": "question",
+ *   "id": "which-file-for-retries",
+ *   "file": "src/skill.test.ts",
+ *   "line": 12,
+ *   "test": "question which-file-for-retries: Which file does the agent read?",
+ *   "skillFile": "SKILL.md",
+ *   "ask": [{ "id": "which-file-for-retries", "scenario": "…", "question": "…", "options": ["retries", "errors"], "expect": "retries" }]
+ * }
+ * ```
+ *
+ * When a test threw, or its spec has a mistake, the same `skillunit`, `id`, `file`, `line` and
+ * `test`, with `"status": "failed"` and the error's message in `error`; a question keeps
+ * `"kind": "question"`. A skipped test leaves nothing.
  *
  * `file` is the test file, from the folder of `skillunit.yaml`, with `/`; `line` is where the
  * unit is declared, from 1. This module imports nothing, so a runner in a browser can use it.
@@ -61,6 +93,44 @@ export interface UnitSpec {
   check?: string;
   /** Named values the prose of the skill may use, as `{{value:<id>.<name>}}`. */
   values?: Record<string, UnitScalar>;
+  /** Questions for the decision model about this unit: one, or a list. */
+  ask?: UnitQuestion | UnitQuestion[];
+  /**
+   * A rule or a fact: blocks to show, such as a command or a config. They come before the blocks
+   * of `u.example`, and are how a unit with no body shows an example in a language its file is not.
+   */
+  examples?: UnitExample[];
+}
+
+/**
+ * A question for the decision model: given the skill and `scenario`, does it answer `expect`?
+ * SkillUnit asks it after the build. The test runner never does.
+ */
+export interface UnitQuestion {
+  /** Defaults to the unit's id for its first question, then `<unit id>.2`, `<unit id>.3`. */
+  id?: string;
+  /** The situation, or several phrasings of it. Each is asked on its own; the median counts. */
+  scenario: string | string[];
+  question: string;
+  /** Labels and what each means, or labels alone. Without options, the question is yes or no. */
+  options?: Record<string, string | null> | string[];
+  /** An option, `none` (SkillUnit adds it to every question with options), or `yes` or `no`. */
+  expect: string;
+  /** Other files of the skill the model reads too: `all`, a path, or a list of paths. */
+  with?: string | string[];
+  /** Headings of the built file to cut out for the model. Without it, the model reads the whole file. */
+  section?: string | string[];
+}
+
+/** What `ask(id, spec)` takes: a question about the prose of `file`, a built file of the skill. */
+export interface AskSpec extends Omit<UnitQuestion, 'id'> {
+  /** Defaults to `SKILL.md`. */
+  file?: string;
+}
+
+/** A question as the helper writes it: with its id. */
+export interface AskedQuestion extends UnitQuestion {
+  id: string;
 }
 
 export type UnitScalar = string | number | boolean;
@@ -85,6 +155,8 @@ interface RecordBase {
 export interface PassedUnit extends RecordBase {
   status: 'passed';
   kind: UnitKind;
+  /** `false` when the unit was declared with no body: no test proves it. */
+  body?: false;
   when: string;
   do?: string;
   value?: string;
@@ -94,24 +166,46 @@ export interface PassedUnit extends RecordBase {
   evenWhen?: string;
   check?: string;
   values?: Record<string, UnitScalar>;
+  ask?: AskedQuestion[];
   /** The blocks of `u.example`, in the order of the calls. */
   examples: UnitExample[];
 }
 
 export interface FailedUnit extends RecordBase {
   status: 'failed';
+  /** Set when the record is of a question declared with `ask()`. */
+  kind?: 'question';
   /** The message of what the body or the spec threw. */
   error: string;
 }
 
-export type UnitRecord = PassedUnit | FailedUnit;
+/** What `ask()` leaves. */
+export interface PassedQuestion extends RecordBase {
+  status: 'passed';
+  kind: 'question';
+  /** The built file the question is about, from the skill folder. */
+  skillFile: string;
+  ask: AskedQuestion[];
+}
+
+export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion;
 
 /** A unit id: kebab-case, as lint wants it. */
 export const UNIT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** The name of a path of a decision, or of a value. */
 export const UNIT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i;
 
-const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values'] as const;
+/** The id of a question: kebab-case words, and `.` before the number of a default id. */
+export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
+/** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
+export const NONE = 'none';
+
+const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values', 'ask', 'examples'] as const;
+/** A fence language: what `u.example` and `examples` take. */
+export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
+const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
+/** The file a question about prose reads when it names none. */
+export const DEFAULT_SKILL_FILE = 'SKILL.md';
 
 /** The spec has a mistake that the test cannot run with. */
 export class UnitSpecError extends Error {
@@ -173,5 +267,117 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
       }
     }
   }
+  if (s.examples !== undefined) {
+    if (kind === 'decision') fail(`a decision shows its examples in its paths, from the regions \`skill:${id as string}.<path>\`; \`examples\` is for a rule or a fact`);
+    if (!Array.isArray(s.examples)) fail("`examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`");
+    for (const x of s.examples as unknown[]) {
+      const { lang, text, ...rest } = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
+      if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) fail(`each example has a fence language in \`lang\`, such as \`sh\` or \`yaml\`; got ${JSON.stringify(lang)}`);
+      if (typeof text !== 'string') fail(`the \`${lang as string}\` example needs its text in \`text\``);
+      if (Object.keys(rest).length) fail(`an example has an unknown key \`${Object.keys(rest)[0]}\` (allowed: lang, text)`);
+    }
+  }
+  if (s.ask !== undefined) checkQuestions(id as string, s.ask);
   return kind;
+}
+
+/**
+ * The questions of `ask`, each with its id, after checking them. Throws a `UnitSpecError` that
+ * names the question and says what to fix.
+ */
+export function checkQuestions(unitId: string, ask: unknown): AskedQuestion[] {
+  const list = Array.isArray(ask) ? ask : [ask];
+  const unitFail = (message: string): never => {
+    throw new UnitSpecError(`unit \`${unitId}\`: ${message}`);
+  };
+  if (!list.length) unitFail('`ask` is an empty list; give a question, or leave `ask` out');
+  const seen = new Set<string>();
+  return list.map((q: unknown, i: number) => {
+    if (!q || typeof q !== 'object' || Array.isArray(q)) {
+      unitFail(`\`ask\` takes a question, such as \`{ scenario, question, options, expect }\`, or a list of them; item ${i + 1} is ${JSON.stringify(q) ?? String(q)}`);
+    }
+    const raw = q as Record<string, unknown>;
+    if (raw.id !== undefined && (typeof raw.id !== 'string' || !QUESTION_ID.test(raw.id))) {
+      unitFail(`question ${i + 1}: \`id\` must be kebab-case, such as \`retry-delay\`; got ${JSON.stringify(raw.id)}`);
+    }
+    const id = (raw.id as string | undefined) ?? (i ? `${unitId}.${i + 1}` : unitId);
+    const fail = (message: string): never => unitFail(`the question \`${id}\`: ${message}`);
+    if (seen.has(id)) fail('two questions of the unit have this id; give one of them another `id`');
+    seen.add(id);
+    return checkQuestion(id, raw, QUESTION_KEYS, fail);
+  });
+}
+
+/**
+ * The file and the question of `ask(id, spec)`, after checking them. Throws a `UnitSpecError`
+ * that says what to fix.
+ */
+export function checkAsk(id: unknown, spec: unknown): { skillFile: string; question: AskedQuestion } {
+  const fail = (message: string): never => {
+    throw new UnitSpecError(`ask ${typeof id === 'string' ? `\`${id}\`` : String(id)}: ${message}`);
+  };
+  if (typeof id !== 'string' || !QUESTION_ID.test(id)) fail('the id must be kebab-case, such as `which-file-for-retries`');
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) fail('the spec must be an object, such as `{ file, scenario, question, options, expect }`');
+  const { file, ...raw } = spec as Record<string, unknown>;
+  if (file !== undefined && (typeof file !== 'string' || !file.trim())) fail('`file` must be the path of a built file of the skill, such as `SKILL.md`');
+  const skillFile = (file as string | undefined) ?? DEFAULT_SKILL_FILE;
+  const question = checkQuestion(id as string, raw, ['file', ...QUESTION_KEYS.filter((k) => k !== 'id')], fail);
+  const others = question.with === undefined ? [] : Array.isArray(question.with) ? question.with : [question.with];
+  if (others.includes(skillFile)) fail(`\`with\` lists ${skillFile}, the file the question is about; remove it`);
+  return { skillFile, question };
+}
+
+/** One question, checked, with `id`. `allowed` is the keys it may have, for the message. */
+function checkQuestion(id: string, raw: Record<string, unknown>, allowed: readonly string[], fail: (message: string) => never): AskedQuestion {
+  const extra = Object.keys(raw).find((k) => !allowed.includes(k));
+  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${allowed.join(', ')})`);
+
+  const scenario = raw.scenario;
+  const scenarios = Array.isArray(scenario) ? scenario : [scenario];
+  if (!scenarios.length || scenarios.some((x) => typeof x !== 'string' || !x.trim())) fail('`scenario` must be a sentence or a list of sentences');
+  if (typeof raw.question !== 'string' || !raw.question.trim()) fail('`question` must be text that is not empty');
+  if (typeof raw.expect !== 'string' || !raw.expect.trim()) fail('`expect` must be an option, `none`, or `yes` or `no` when there are no options');
+
+  const out: AskedQuestion = { id, scenario: Array.isArray(scenario) ? [...(scenario as string[])] : (scenario as string), question: raw.question as string, expect: raw.expect as string };
+  if (raw.options === undefined) {
+    const expect = out.expect.toLowerCase();
+    if (expect !== 'yes' && expect !== 'no') fail(`a question without \`options\` is answered yes or no, so \`expect\` must be \`yes\` or \`no\`; got ${JSON.stringify(raw.expect)}`);
+    out.expect = expect;
+  } else {
+    const labels = optionLabels(raw.options, fail);
+    if (labels.includes(NONE)) fail('`none` is added to every question with options; remove it from `options`');
+    if (new Set(labels).size !== labels.length) fail('`options` lists a label twice');
+    if (labels.length < 2) fail('`options` needs at least two options');
+    if (out.expect !== NONE && !labels.includes(out.expect)) fail(`\`expect\` is ${JSON.stringify(out.expect)}, which is not an option (use one of: ${[...labels, NONE].join(', ')})`);
+    out.options = Array.isArray(raw.options) ? [...(raw.options as string[])] : { ...(raw.options as Record<string, string | null>) };
+  }
+  if (raw.with !== undefined) {
+    const w = raw.with;
+    const paths = Array.isArray(w) ? w : [w];
+    if (!paths.length || paths.some((p) => typeof p !== 'string' || !p.trim())) fail('`with` must be `all`, a path, or a list of paths inside the skill folder');
+    if (new Set(paths).size !== paths.length) fail('`with` lists the same file twice');
+    if (Array.isArray(w) && w.includes('all')) fail('`with: all` stands alone, not in a list');
+    out.with = Array.isArray(w) ? [...(w as string[])] : (w as string);
+  }
+  if (raw.section !== undefined) {
+    const sec = raw.section;
+    const headings = Array.isArray(sec) ? sec : [sec];
+    if (!headings.length || headings.some((h) => typeof h !== 'string' || !h.trim())) fail('`section` must be a heading of the built file, or a list of headings');
+    out.section = Array.isArray(sec) ? [...(sec as string[])] : (sec as string);
+  }
+  return out;
+}
+
+/** The labels of `options`: the keys of a map, or the items of a list. */
+function optionLabels(options: unknown, fail: (message: string) => never): string[] {
+  if (Array.isArray(options)) {
+    if (options.some((l) => typeof l !== 'string' || !l.trim())) fail('each item of an `options` list is a label');
+    return options as string[];
+  }
+  if (!options || typeof options !== 'object') fail('`options` must be labels and what each means, such as `{ raise: \'…\', off: \'…\' }`, or a list of labels');
+  for (const [label, text] of Object.entries(options as object)) {
+    if (!label.trim()) fail('an option has an empty label');
+    if (text !== null && typeof text !== 'string') fail(`the option \`${label}\` needs text, or \`null\``);
+  }
+  return Object.keys(options as object);
 }

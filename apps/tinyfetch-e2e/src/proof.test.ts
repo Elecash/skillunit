@@ -3,12 +3,14 @@
  * longer matches its tests, and the build that fixes it. The scenarios check which units are
  * reported; these check what is said about them.
  */
+import { spawnSync } from 'node:child_process';
 import { afterAll, describe, expect, it } from 'vitest';
-import { App, type Run } from './app.js';
+import { App, CLI, type Run } from './app.js';
 
 afterAll(() => App.removeAll());
 
 const TEST = 'src/tinyfetch.test.ts';
+const DECLARED = 'src/tinyfetch.skill.test.ts';
 const errors = (run: Run) => (run.report.proof.problems as any[]).filter((p) => p.severity === 'error');
 const lineOf = (text: string, needle: string) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
 
@@ -75,9 +77,12 @@ describe('the proof of tinyfetch', () => {
       'body-as-object',
       'check-with-is-http-error',
       'default-timeout',
+      'never-disable-timeout',
+      'one-client-per-api',
       'query-in-options',
       'response-body',
       'retry-defaults',
+      'retry-idempotent-only',
       'what-a-failed-request-throws',
       'what-is-retried',
     ]);
@@ -93,6 +98,52 @@ describe('the proof of tinyfetch', () => {
     expect(found[0]).toMatchObject({ file: '../skillunit.yaml', line: lineOf(app.read('skillunit.yaml'), 'run:') });
     expect(found[0].message).toMatch(/^`proof\.run` \(`npx vitest run`\) exited with 1: a test failed, or the run did\. The end of its output:\n.*fails on purpose/s);
     expect(check.report.proof.units.filter((u: any) => u.from === 'test').every((u: any) => u.state === 'passed')).toBe(true);
+  });
+
+  it('a unit heading in the source: the error names the file and the line, and says where units go', () => {
+    const app = App.copy('heading');
+    app.write('skill-src/features/errors.md', `${app.read('skill-src/features/errors.md')}\n### rule: log-failed-requests\n\nWhen: code logs a failed request.\n\nDo: log the method and the URL.\n`);
+    const [finding] = errors(app.run('proof'));
+    expect(finding).toEqual(
+      expect.objectContaining({
+        file: '../skill-src/features/errors.md',
+        line: lineOf(app.read('skill-src/features/errors.md'), '### rule: log-failed-requests'),
+        unit: 'log-failed-requests',
+        message: 'units are declared with `unit()`; put `{{unit:log-failed-requests}}` here',
+      }),
+    );
+  });
+
+  it('a question whose `expect` names no option: the test of its unit fails and says why', () => {
+    const app = App.copy('bad-expect');
+    app.edit(TEST, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
+    const finding = errors(app.run('proof')).find((p) => p.unit === 'retry-defaults' && p.message.startsWith('the test of'));
+    expect(finding.message).toMatch(
+      /^the test of `retry-defaults` \(src\/tinyfetch\.test\.ts:\d+\) failed, so it left no unit: unit `retry-defaults`: the question `retry-delay-default`: `expect` is "right", which is not an option \(use one of: default, ms1000, none-wait, none\)$/,
+    );
+  });
+
+  it('a unit with no body reads as declared with no test, and never as proved', () => {
+    const app = App.copy('declared');
+    const proof = app.run('proof');
+    const declared = (proof.report.proof.units as any[]).filter((u) => u.from === 'declared').map((u) => u.id);
+    expect(declared).toEqual(['one-client-per-api', 'retry-idempotent-only', 'never-disable-timeout']);
+    expect(proof.report.proof.summary).toMatchObject({ units: 12, proved: 9, declared: 3 });
+    const table = spawnSync(process.execPath, [CLI, 'proof'], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }).stdout;
+    expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${DECLARED}:`);
+    expect(table).not.toContain(`proved by a test, ${DECLARED}`);
+    expect(table).toContain('12 units · 9 proved by a test · 3 declared without one');
+  });
+
+  it('check --dry-run with no key: every question is ready, and nothing is sent', () => {
+    const app = App.copy('no-key');
+    const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.endsWith('_API_KEY')));
+    const run = spawnSync(process.execPath, [CLI, 'check', '--dry-run', '--json'], { cwd: app.root, encoding: 'utf8', env });
+    expect(run.status).toBe(0);
+    const test = JSON.parse(run.stdout).test;
+    expect(test.summary).toMatchObject({ tests: 16, passed: 16, usage: { input_tokens: 0, output_tokens: 0 } });
+    expect(test.requests.flatMap((r: any) => r.verdicts).every((v: any) => v.answer === '(dry run)' && v.declared)).toBe(true);
+    expect(test.problems).toEqual([]);
   });
 
   it('--no-run uses the units an earlier run left', () => {

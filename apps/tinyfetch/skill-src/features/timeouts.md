@@ -37,20 +37,4 @@ await report.catch(() => undefined);
 
 {{unit:default-timeout}}
 
-### rule: never-disable-timeout
-
-When: a request may take long, such as an upload or a report.
-
-Do: raise `timeout` to a number of milliseconds that fits the request, and never set it to `0`.
-
-Right:
-
-```ts
-await tf.post(
-  "https://api.example.com/uploads",
-  { size: 1 },
-  { timeout: 120_000 },
-);
-```
-
-Check: forbid `/timeout:\s*0\b/` in ts
+{{unit:never-disable-timeout}}

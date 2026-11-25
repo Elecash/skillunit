@@ -30,20 +30,4 @@ console.log(orders.length);
 
 ## Rules
 
-### decision: one-client-per-api
-
-When: the code makes several requests to the same API.
-
-Decide: whether to create a client.
-
-- **shared** — the requests share a base URL or headers: create one client with `create` and reuse it.
-
-  ```ts
-  const api = create({ baseUrl: "https://api.example.com/v1/" });
-  await api.get("users");
-  await api.get("orders");
-  ```
-
-- **direct** — one request, or requests to unrelated hosts: call `tf` with full URLs.
-
-Even when: the requests sit in different files: export the client from one module and import it.
+{{unit:one-client-per-api}}

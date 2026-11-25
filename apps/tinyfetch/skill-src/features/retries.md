@@ -25,16 +25,4 @@ await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
 
 {{unit:what-is-retried}}
 
-### rule: retry-idempotent-only
-
-When: a request may be retried.
-
-Do: enable `retry` only for GET, HEAD, PUT and DELETE.
-
-Right:
-
-```ts
-await tf.get("https://api.example.com/users", { retry: 3 });
-```
-
-Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
+{{unit:retry-idempotent-only}}

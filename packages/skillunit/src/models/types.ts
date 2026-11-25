@@ -68,6 +68,6 @@ export interface DecisionModel {
     /** Options of one choice question, the `none` SkillUnit adds included. No limit when absent. */
     optionsPerQuestion?: number;
   };
-  /** Rejects on a failed request; SkillUnit reports it as a spec that could not run. */
+  /** Rejects on a failed request; SkillUnit reports it as a request that could not run. */
   decide(request: DecisionRequest): Promise<DecisionResult>;
 }
