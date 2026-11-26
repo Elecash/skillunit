@@ -36,19 +36,32 @@ unit('declare-in-the-test-that-checks-it', {
 });
 
 unit('build-the-sentence-from-the-code', {
-  when: 'the sentence of a unit in a test names a value the code has, such as a default or the name of an error.',
-  do: 'build it from the code in a template string, such as `${DEFAULT_TIMEOUT / 1000} seconds`, and list the value in `values` when the reference part of the skill repeats it.',
-  evenWhen: 'the value looks fixed; a value typed into the sentence is a second copy that nothing compares with the code.',
-  ask: {
-    id: 'value-from-the-code',
-    scenario: 'The agent declares the fact `default-timeout` in a test. The code exports `DEFAULT_TIMEOUT = 10_000`.',
-    question: 'How should the agent write the value of the fact?',
-    options: {
-      built: '`${DEFAULT_TIMEOUT / 1000} seconds`, built from the constant',
-      literal: '`10 seconds`, typed into the sentence',
+  when: 'a unit in a test states a value that defines behaviour, such as a default, a limit or how a wait grows.',
+  do: 'give the value a name in the code, such as `export const RETRY_TIMES = 2`; use that name in the code and in the assertion of the test, build the sentence from it in a template string, such as `${RETRY_TIMES}x the one before`, and list it in `values`. Type no number into the sentence, and no word that stands for one, such as "doubled", "twice" or "half".',
+  evenWhen: 'the code has the value only as a literal, such as `retryDelay * 2 ** n`: give it a name in the code first, then write the unit. `unit()` fails a unit with a body whose text has a number none of its `values` is.',
+  ask: [
+    {
+      id: 'value-from-the-code',
+      scenario: 'The agent declares the fact `default-timeout` in a test. The code exports `DEFAULT_TIMEOUT = 10_000`.',
+      question: 'How should the agent write the value of the fact?',
+      options: {
+        built: '`${DEFAULT_TIMEOUT / 1000} seconds`, built from the constant',
+        literal: '`10 seconds`, typed into the sentence',
+      },
+      expect: 'built',
     },
-    expect: 'built',
-  },
+    {
+      id: 'literal-in-the-code',
+      scenario: 'The code waits `retryDelay * 2 ** n` before each new attempt, and the agent declares in a test the fact that says how the wait grows.',
+      question: 'How should the agent state how the wait grows?',
+      options: {
+        name: 'Name the factor in the code, such as `RETRY_TIMES = 2`, use the name in the code and in the assertion, and build the sentence from it',
+        word: 'Write "doubled before each next one" in the sentence, and assert the second wait in the body',
+        literal: 'Build the sentence with `2x` and assert `2 * DEFAULT_RETRY_DELAY` in the body',
+      },
+      expect: 'name',
+    },
+  ],
 });
 
 unit('region-or-example', {
@@ -109,14 +122,14 @@ unit('rebuild-after-the-code-moved', {
 
 unit('fix-the-unit-when-its-test-fails', {
   when: 'the test of a unit fails after a change to the code.',
-  do: 'read the change; when the code is right, correct the test\'s assertions and any literal in its sentence, then run `npx skillunit proof` again.',
+  do: 'read the change; when the code is right, correct the assertions of the test. When its sentence or its assertion has the value as a literal, give the value a name in the code and build both from that name, then run `npx skillunit proof` again.',
   evenWhen: 'skipping the test would make the test run pass; the slot then has no unit, and the proof fails on it.',
   ask: {
     id: 'test-fails',
     scenario: 'The team changed what a failed request throws on purpose, and the test that declares `what-a-failed-request-throws` now fails on its assertion.',
     question: 'What should the agent do?',
     options: {
-      fix: `Correct the test's assertions and any literal in its sentence, then run the proof again`,
+      fix: 'Correct the assertions, build the sentence from a name the code gives the value, and run the proof again',
       skip: 'Skip the test until someone updates the skill',
     },
     expect: 'fix',

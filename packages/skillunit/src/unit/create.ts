@@ -16,7 +16,7 @@
  * This module imports nothing from Node at load time: a runner that cannot write files passes
  * its own `write`, and the default one is loaded only when a unit is written.
  */
-import { checkAsk, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
+import { checkAsk, checkNumbers, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
 
 /** What the body of a unit gets, besides the runner's own context. */
 export interface UnitContext {
@@ -153,6 +153,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               if (kind === 'fact' && value === undefined) {
                 throw new Error(`unit \`${id}\`: the fact has no Value; give \`value\` in its spec or call \`u.value(text)\` in its body`);
               }
+              checkNumbers(id, { ...spec, value });
             } catch (e) {
               if (options.isSkip?.(e)) throw e;
               await failed(e);

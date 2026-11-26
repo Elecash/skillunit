@@ -5,7 +5,7 @@ description: Make HTTP requests to JSON APIs with tinyfetch. Use when code calls
 
 # tinyfetch
 
-tinyfetch is a small HTTP client for JSON APIs, built on `fetch`. It sends bodies as JSON, parses JSON responses, and throws an `HttpError` for any status outside 200–299.
+tinyfetch is a small HTTP client for JSON APIs, built on `fetch`.
 
 Setup:
 
@@ -34,7 +34,7 @@ console.log(users.length);
 
 When: the code calls a tinyfetch method.
 
-Do: `await` the call, or return its promise: every method returns a promise, of the parsed body for all but `head`, whose promise resolves with nothing.
+Do: `await` the call, or return its promise: every method returns a promise.
 
 Right:
 

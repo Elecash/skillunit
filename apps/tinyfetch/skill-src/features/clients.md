@@ -10,11 +10,11 @@ import { create } from "tinyfetch";
 
 ## Options
 
-| Option    | Type        | Meaning                                                 |
-| --------- | ----------- | ------------------------------------------------------- |
-| `baseUrl` | string      | prefix of every path                                    |
-| `headers` | object      | headers sent with every request                         |
-| `timeout` | number (ms) | timeout of every request, unless a request sets its own |
+| Option    | Type        |
+| --------- | ----------- |
+| `baseUrl` | string      |
+| `headers` | object      |
+| `timeout` | number (ms) |
 
 ```ts
 const api = create({
@@ -29,5 +29,7 @@ console.log(orders.length);
 ```
 
 ## Rules
+
+{{unit:client-options}}
 
 {{unit:one-client-per-api}}

@@ -1,4 +1,4 @@
-/** The server answered with a status outside 200–299. */
+/** The server answered with a response that is not `ok`. */
 export class HttpError extends Error {
   constructor(
     readonly status: number,

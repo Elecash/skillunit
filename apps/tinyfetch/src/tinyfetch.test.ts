@@ -1,12 +1,12 @@
-// A `unit()` is a test that declares a unit of the skill: its sentence is built here, from the
-// code where the code has the value, and `skillunit proof` puts it where `skill-src` has
+// A `unit()` is a test that declares a unit of the skill: every value it states has a name in the
+// code, and the sentence and the assertions use that name. `skillunit proof` puts it where `skill-src` has
 // `{{unit:<id>}}`. A `#region skill:<id>` in its body is the unit's example, and its `ask` holds
 // the questions for the decision model, with options built from the code too. See docs/proof.md.
 import { unit } from 'skillunit/vitest';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, vi } from 'vitest';
 import { HttpError, isHttpError, tf, TimeoutError } from './index.js';
-import { DEFAULT_RETRY, DEFAULT_RETRY_DELAY } from './retry.js';
-import { DEFAULT_TIMEOUT } from './timeout.js';
+import { DEFAULT_RETRY, DEFAULT_RETRY_DELAY, RETRIED_STATUS, RETRY_TIMES } from './retry.js';
+import { DEFAULT_TIMEOUT, NO_TIMEOUT } from './timeout.js';
 
 type Reply = { status?: number; body?: unknown; delay?: number; type?: string } | Error;
 const calls: { url: string; init: RequestInit }[] = [];
@@ -36,6 +36,15 @@ function serve(...replies: Reply[]) {
 /** 10000 as `10_000`, the way the skill's examples write numbers. */
 const underscored = (n: number) => n.toLocaleString('en-US').replace(/,/g, '_');
 
+/** Each method of the default client, by its name, called on `url`. */
+function methods(url: string): Record<string, () => Promise<unknown>> {
+  const { create: _, ...client } = tf;
+  return Object.fromEntries(
+    Object.entries(client).map(([name, method]) => [name, () => (method.length > 2 ? (method as (p: string, b: unknown) => Promise<unknown>)(url, {}) : (method as (p: string) => Promise<unknown>)(url))]),
+  );
+}
+const everyMethod = (url: string) => Object.values(methods(url));
+
 /** `a`, `a and b`, `a, b and c`. */
 const and = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
@@ -46,19 +55,36 @@ afterEach(() => {
 });
 
 describe('tinyfetch', () => {
-  it('joins the base URL, encodes the query and parses JSON', async () => {
-    serve({ body: [{ id: 1 }] });
-    const api = tf.create({ baseUrl: 'https://api.example.com/v1/', headers: { authorization: 'Bearer t' } });
-    expect(await api.get('users', { query: { page: 2, q: 'a b' } })).toEqual([{ id: 1 }]);
-    expect(calls[0]!.url).toBe('https://api.example.com/v1/users?page=2&q=a+b');
-    expect(calls[0]!.init.headers).toMatchObject({ authorization: 'Bearer t', accept: 'application/json' });
-  });
+  unit(
+    'client-options',
+    {
+      when: 'the code creates a client with `create`.',
+      value: "`baseUrl` is the prefix of every path, `headers` are sent with every request, and `timeout` is the timeout of every request that sets none; a request's own `timeout` wins.",
+    },
+    async () => {
+      serve({ body: [{ id: 1 }] }, { body: [] });
+      const api = tf.create({ baseUrl: 'https://api.example.com/v1/', headers: { authorization: 'Bearer t' } });
+      expect(await api.get('users', { query: { page: 2, q: 'a b' } })).toEqual([{ id: 1 }]);
+      await api.post('orders', {});
+      expect(calls.map((c) => c.url)).toEqual(['https://api.example.com/v1/users?page=2&q=a+b', 'https://api.example.com/v1/orders']);
+      for (const c of calls) expect(c.init.headers).toMatchObject({ authorization: 'Bearer t', accept: 'application/json' });
+
+      vi.useFakeTimers();
+      const slow = tf.create({ timeout: DEFAULT_TIMEOUT / 2 });
+      serve({ delay: 10 * DEFAULT_TIMEOUT }, { delay: 10 * DEFAULT_TIMEOUT });
+      const fromClient = slow.get('http://x/slow').catch((e: unknown) => e);
+      const fromRequest = slow.get('http://x/slow', { timeout: DEFAULT_TIMEOUT / 4 }).catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT);
+      expect(await fromClient).toMatchObject({ name: 'TimeoutError', timeout: DEFAULT_TIMEOUT / 2 });
+      expect(await fromRequest).toMatchObject({ name: 'TimeoutError', timeout: DEFAULT_TIMEOUT / 4 });
+    },
+  );
 
   unit(
     'await-every-request',
     {
       when: 'the code calls a tinyfetch method.',
-      do: '`await` the call, or return its promise: every method returns a promise, of the parsed body for all but `head`, whose promise resolves with nothing.',
+      do: '`await` the call, or return its promise: every method returns a promise.',
       ask: {
         id: 'await-the-call',
         scenario: 'The code needs the name of user 1 from the API and logs it.',
@@ -71,16 +97,39 @@ describe('tinyfetch', () => {
       },
     },
     async () => {
-      serve({ body: { name: 'Ada' } }, { body: { name: 'Ada' } });
+      serve({ body: { name: 'Ada' } });
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       // #region skill:await-every-request
       const user = await tf.get<{ name: string }>('https://api.example.com/users/1');
       console.log(user.name);
       // #endregion
       expect(log).toHaveBeenCalledWith('Ada');
-      expect(await tf.head('https://api.example.com/users/1')).toBeUndefined();
+      for (const call of everyMethod('http://x/a')) {
+        serve({ body: { name: 'Ada' } });
+        const pending = call();
+        expect(pending).toBeInstanceOf(Promise);
+        await pending;
+      }
     },
   );
+
+  // What each method resolves to, as the body observes it: a method added to the client, or one
+  // that changes what it returns, changes the sentence.
+  unit('method-results', { when: 'the code reads what a request resolves to.' }, async (u) => {
+    const body: string[] = [];
+    const nothing: string[] = [];
+    for (const [name, call] of Object.entries(methods('http://x/a'))) {
+      serve({ body: { id: 1 } });
+      const result = await call();
+      if (result === undefined) nothing.push(`\`${name}\``);
+      else {
+        expect(result).toEqual({ id: 1 });
+        body.push(`\`${name}\``);
+      }
+    }
+    const parts = [body.length ? `${and(body)} resolve to the body of the response` : '', nothing.length ? `${and(nothing)} ${nothing.length > 1 ? 'resolve' : 'resolves'} to \`undefined\`` : ''];
+    u.value(`${parts.filter(Boolean).join('; ')}.`);
+  });
 
   unit(
     'response-body',
@@ -154,7 +203,7 @@ describe('tinyfetch', () => {
     'what-a-failed-request-throws',
     {
       when: 'a tinyfetch call fails.',
-      value: `a status outside 200–299 throws an \`${HttpError.name}\` with the \`status\` and the parsed \`body\`; a timeout throws a \`${TimeoutError.name}\`; a network failure throws what \`fetch\` threw.`,
+      value: `a response that is not \`ok\`, as \`fetch\` sets it, throws an \`${HttpError.name}\` with the \`status\` and the parsed \`body\`; a timeout throws a \`${TimeoutError.name}\`; a network failure throws what \`fetch\` threw.`,
     },
     async () => {
       serve({ status: 404, body: { error: 'not found' } });
@@ -205,22 +254,31 @@ describe('tinyfetch', () => {
   );
 
   // The sentence is what the body observes, case by case: a change in what is retried shows up as
-  // a change in the skill, not as a failed test.
-  unit('what-is-retried', { when: 'a request with `retry` fails.' }, async (u) => {
-    const cases: [string, Reply][] = [
-      ['a network error', new TypeError('fetch failed')],
-      ['a 5xx status', { status: 503 }],
-      ['a 4xx status', { status: 400 }],
-      ['a timeout', { delay: 50 }],
+  // a change in the skill, not as a failed test. Each case is sampled more than once, and its
+  // samples must agree.
+  unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
+    // Statuses an API answers, on the side of the constant each is on, and the two next to it.
+    const statuses = [400, 404, 429, 499, 500, 502, 503, 599];
+    const above = [RETRIED_STATUS, ...statuses.filter((s) => s >= RETRIED_STATUS)];
+    const under = [RETRIED_STATUS - 1, ...statuses.filter((s) => s < RETRIED_STATUS)];
+    const cases: [string, Reply[]][] = [
+      ['a network error', [new TypeError('fetch failed')]],
+      [`a status of ${RETRIED_STATUS} or above`, above.map((status) => ({ status }))],
+      [`a status under ${RETRIED_STATUS}`, under.map((status) => ({ status }))],
+      ['a timeout', [{ delay: 50 }]],
     ];
     const retried: string[] = [];
     const never: string[] = [];
-    for (const [name, reply] of cases) {
-      serve(reply, { body: 'ok' });
-      await tf.get('http://x/a', { retry: 1, retryDelay: 1, timeout: 10 }).catch(() => undefined);
-      (calls.length > 1 ? retried : never).push(name);
+    for (const [name, replies] of cases) {
+      const seen = new Set<boolean>();
+      for (const reply of replies) {
+        serve(reply, { body: 'ok' });
+        await tf.get('http://x/a', { retry: 1, retryDelay: 1, timeout: 10 }).catch(() => undefined);
+        seen.add(calls.length > 1);
+      }
+      expect([...seen], `the samples of ${name} agree`).toHaveLength(1);
+      (seen.has(true) ? retried : never).push(name);
     }
-    expect(retried.length + never.length).toBe(cases.length);
     const parts = [retried.length ? `${and(retried)} ${retried.length > 1 ? 'are' : 'is'} retried` : 'nothing is retried', never.length ? `${and(never)} never ${never.length > 1 ? 'are' : 'is'}` : ''];
     u.value(`${parts.filter(Boolean).join('; ')}.`);
   });
@@ -229,8 +287,8 @@ describe('tinyfetch', () => {
     'retry-defaults',
     {
       when: 'a request sets no `retry`, or no `retryDelay`.',
-      value: `\`retry\` is ${DEFAULT_RETRY}, ${DEFAULT_RETRY === 0 ? 'so a failed request is not repeated' : `so a failed request is repeated up to ${DEFAULT_RETRY} times`}; \`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, doubled before each next one.`,
-      values: { retry: DEFAULT_RETRY, 'retry-delay': DEFAULT_RETRY_DELAY },
+      value: `\`retry\` is ${DEFAULT_RETRY}, ${DEFAULT_RETRY === 0 ? 'so a failed request is not repeated' : `so a failed request is repeated up to ${DEFAULT_RETRY} times`}; \`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, and each next wait is ${RETRY_TIMES}x the one before.`,
+      values: { retry: DEFAULT_RETRY, 'retry-delay': DEFAULT_RETRY_DELAY, 'retry-times': RETRY_TIMES },
       ask: {
         id: 'retry-delay-default',
         scenario: 'The agent sets `retry` and leaves `retryDelay` out.',
@@ -257,7 +315,7 @@ describe('tinyfetch', () => {
       expect(calls).toHaveLength(1);
       await vi.advanceTimersByTimeAsync(1);
       expect(calls).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(2 * DEFAULT_RETRY_DELAY - 1);
+      await vi.advanceTimersByTimeAsync(RETRY_TIMES * DEFAULT_RETRY_DELAY - 1);
       expect(calls).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(1);
       expect(calls).toHaveLength(3);
@@ -299,35 +357,46 @@ describe('tinyfetch', () => {
     },
     async () => {
       vi.useFakeTimers();
-      const methods = [
-        () => tf.get('http://x/slow'),
-        () => tf.head('http://x/slow'),
-        () => tf.post('http://x/slow', {}),
-        () => tf.put('http://x/slow', {}),
-        () => tf.patch('http://x/slow', {}),
-        () => tf.delete('http://x/slow'),
-      ];
-      serve(...methods.map(() => ({ delay: 10 * DEFAULT_TIMEOUT, body: 'late' })));
-      const pending = methods.map((call) => (call() as Promise<unknown>).catch((e: unknown) => e));
+      const all = everyMethod('http://x/slow');
+      serve(...all.map(() => ({ delay: 10 * DEFAULT_TIMEOUT, body: 'late' })));
+      const pending = all.map((call) => call().catch((e: unknown) => e));
       await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT - 1);
-      expect(calls).toHaveLength(methods.length);
+      expect(calls).toHaveLength(all.length);
       await vi.advanceTimersByTimeAsync(1);
       for (const result of await Promise.all(pending)) expect(result).toMatchObject({ name: 'TimeoutError', timeout: DEFAULT_TIMEOUT });
     },
   );
 
-  it('times out with a TimeoutError, and never with timeout 0', async () => {
-    serve({ delay: 50, body: 'late' });
-    await expect(tf.get('http://x/slow', { timeout: 10 })).rejects.toBeInstanceOf(TimeoutError);
-    serve({ delay: 20, body: 'late' });
-    expect(await tf.get('http://x/slow', { timeout: 0 })).toBe('late');
-  });
+  unit(
+    'timeout-off',
+    {
+      when: 'a request sets `timeout`.',
+      value: `the request is aborted with a \`${TimeoutError.name}\` after that many milliseconds; a \`timeout\` of ${NO_TIMEOUT} turns the timeout off, and the request waits until the server answers.`,
+      values: { off: NO_TIMEOUT },
+    },
+    async () => {
+      vi.useFakeTimers();
+      serve({ delay: 10 * DEFAULT_TIMEOUT, body: 'late' }, { delay: 10 * DEFAULT_TIMEOUT, body: 'late' });
+      const limited = tf.get('http://x/slow', { timeout: DEFAULT_TIMEOUT / 2 }).catch((e: unknown) => e);
+      const off = tf.get('http://x/slow', { timeout: NO_TIMEOUT });
+      await vi.advanceTimersByTimeAsync(10 * DEFAULT_TIMEOUT);
+      expect(await limited).toMatchObject({ name: TimeoutError.name, timeout: DEFAULT_TIMEOUT / 2 });
+      expect(await off).toBe('late');
+    },
+  );
 
-  it('cancels with the caller signal', async () => {
-    serve({ delay: 50, body: 'late' });
-    const controller = new AbortController();
-    const pending = tf.get('http://x/slow', { signal: controller.signal });
-    controller.abort(new Error('cancelled'));
-    await expect(pending).rejects.toThrow('cancelled');
-  });
+  unit(
+    'cancel-with-signal',
+    {
+      when: 'the code passes `signal` and aborts it.',
+      value: 'the request rejects with the reason the signal was aborted with.',
+    },
+    async () => {
+      serve({ delay: 50, body: 'late' });
+      const controller = new AbortController();
+      const pending = tf.get('http://x/slow', { signal: controller.signal });
+      controller.abort(new Error('cancelled'));
+      await expect(pending).rejects.toThrow('cancelled');
+    },
+  );
 });

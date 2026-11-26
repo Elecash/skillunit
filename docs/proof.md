@@ -57,7 +57,7 @@ The body gets a context, and the runner's own context after it:
   outcomes.
 
 ```ts
-unit('what-is-retried', { when: 'a request with `retry` fails.' }, async (u) => {
+unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
   const retried: string[] = [];
   const never: string[] = [];
   for (const [name, reply] of cases) {
@@ -113,6 +113,44 @@ import { createUnit } from 'skillunit/unit';
 
 export const { unit, ask } = createUnit(it);
 ```
+
+### No value typed twice
+
+- Every value that defines behaviour has a name in the code: a constant, a property, a member of
+  an enum.
+- The code uses that name, the assertion of the test uses it, and the sentence of the unit is
+  built from it.
+- A unit with a test has no number typed into its sentence, and no word that stands for one,
+  such as "doubled", "twice" or "half".
+- When the code has the value only as a literal, give it a name in the code before writing the
+  unit.
+
+`unit()` checks the part of this a tool can see. In a unit with a body, every number in `when`,
+`do`, `value`, `decide`, `evenWhen`, `unknown`, the `when` of each path, and the `Value` the body
+sets with `u.value()`, must be one of the unit's `values`: a value that is that number, or text
+that has it as a number of its own. A number is digits, with `_` groups and a decimal part, not
+right after a letter, a digit, `_` or `.`, so `300 ms`, `10_000`, `2x` and `5xx` have one and
+`utf8` and `sha256` do not; `10_000` and `10000` are the same number. Any other number fails the
+test of the unit, which leaves a failed record:
+
+```text
+unit `retry-defaults`: the number 2 in `Value` is none of the unit's `values`. Give the value a
+name in the code, build the sentence from that name, and list it in `values`
+```
+
+There is no exception for a URL, a version, a port or a date: each would let a number of the code
+through. A number that is meant, such as the one in a host name, costs one line and is on record
+as meant:
+
+```ts
+const SITE = '500miles.com';
+unit('report-site', { when: 'the code sends a report.', do: `send it to \`${SITE}\`.`, values: { site: SITE } }, () => {
+  expect(reportUrl()).toContain(SITE);
+});
+```
+
+A unit with no body is not checked: advice may give a number the code does not have. SkillUnit
+holds a record written by a test in another language to the same check when it reads it.
 
 ## A unit no test proves
 
@@ -425,9 +463,12 @@ the record, not when pytest runs the test.
 
 ## What it does not do
 
-- A literal in a description that its body does not check can be false. `do: 'retry only GET'`
-  passes with a body that asserts nothing about methods. Build the sentence from the code where
-  the code has the value, and assert the rest.
+- A word that stands for a number, such as "doubled" or "half", passes the number rule, and so
+  does a `values` entry typed by hand, `values: { times: 2 }`, where the code has the value under
+  a name. Both are the rule of [no value typed twice](#no-value-typed-twice), which only a reader
+  checks.
+- Other words of a sentence that its body does not check can be false. `do: 'retry only GET'`
+  passes with a body that asserts nothing about methods.
 - A body that asserts nothing still leaves its unit. Proof knows the test ran and passed, and
   not what it checked.
 - A body that builds its sentence from what it observes does not go red when the behaviour

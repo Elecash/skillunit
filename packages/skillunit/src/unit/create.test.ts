@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UnitRecord, UnitSpec } from './contract.js';
+import { checkNumbers, numbersIn, type UnitRecord, type UnitSpec } from './contract.js';
 import { callerPlace, createUnit, pathOf, type RunnerIt, type UnitBody } from './create.js';
 
 interface Registered {
@@ -88,11 +88,11 @@ describe('each kind, from the keys of the spec', () => {
 describe('what the body gives', () => {
   it('sets the value of a fact, over the one of the spec', async () => {
     const r = runner();
-    r.unit('what-is-retried', { when: 'the user asks which failures are retried.' }, (u) => u.value('network errors and 5xx.'));
+    r.unit('what-is-retried', { when: 'the user asks which failures are retried.' }, (u) => u.value('network errors and server errors.'));
     r.unit('retry-delay', { when: 'no delay is set.', value: 'from the spec.' }, (u) => u.value('from the body.'));
     expect(r.tests.map((t) => t.name)).toEqual(['fact what-is-retried: the user asks which failures are retried.', 'fact retry-delay: from the spec.']);
     expect(await r.run()).toEqual(['ok', 'ok']);
-    expect(r.records.map((x) => (x.record as { value?: string }).value)).toEqual(['network errors and 5xx.', 'from the body.']);
+    expect(r.records.map((x) => (x.record as { value?: string }).value)).toEqual(['network errors and server errors.', 'from the body.']);
   });
 
   it('adds blocks, in the order of the calls', async () => {
@@ -140,6 +140,52 @@ describe('what the body gives', () => {
       'unit `outcomes`: `u.example` takes a fence language first, such as `text` or `json`; got "two words"',
     ]);
     expect(r.records.map((x) => x.record.status)).toEqual(['failed', 'failed', 'failed', 'failed']);
+  });
+});
+
+describe('a number typed into the text of a unit with a body', () => {
+  it('finds a number: digits with `_` groups and a decimal part, not right after a letter, a digit, `_` or `.`', () => {
+    expect(numbersIn('waits 300 ms, `10_000` in all, 0.5 of it, 2x, a 5xx status')).toEqual(['300', '10_000', '0.5', '2', '5']);
+    expect(numbersIn('utf8, h2 and sha256')).toEqual([]);
+    expect(numbersIn('HTTP/2 and version 1.2.3')).toEqual(['2', '1.2']);
+    expect(numbersIn('set `timeout: 0`')).toEqual(['0']);
+  });
+
+  it('a number one of `values` is passes: a number, or text that has it, equal once `_` is taken out', () => {
+    expect(() => checkNumbers('a', { when: 'x.', value: '300 ms, 10_000 in all.', values: { delay: 300, total: 10000 } })).not.toThrow();
+    expect(() => checkNumbers('a', { when: 'x.', value: '10000 ms.', values: { ms: '10_000' } })).not.toThrow();
+    expect(() => checkNumbers('a', { when: 'x.', do: 'send the report to `500miles.com`.', values: { site: '500miles.com' } })).not.toThrow();
+  });
+
+  it('any other number fails, and the message names it, its label, and what to do', () => {
+    const typed = (spec: UnitSpec) => () => checkNumbers('retry-defaults', spec);
+    const advice = 'Give the value a name in the code, build the sentence from that name, and list it in `values`';
+    expect(typed({ when: 'x.', value: 'a status outside 200–299 throws.' })).toThrow(`unit \`retry-defaults\`: the number 200 in \`Value\` is none of the unit's \`values\`. ${advice}`);
+    expect(typed({ when: 'x.', value: '500 ms.', values: { total: '1500' } })).toThrow('the number 500 in `Value`');
+    expect(typed({ when: 'over HTTP/2.', do: 'y.' })).toThrow('the number 2 in `When`');
+    expect(typed({ when: 'x.', do: 'y.', evenWhen: 'it is `1.2.3`.' })).toThrow('the number 1.2 in `Even when`');
+    expect(typed({ when: 'x.', value: 'y.', unknown: 'say 7.' })).toThrow('the number 7 in `Unknown`');
+    expect(typed({ when: 'x.', decide: 'pick 1.', paths: [{ path: 'a', when: 'b.' }] })).toThrow('the number 1 in `Decide`');
+    expect(typed({ when: 'x.', paths: [{ path: 'cache', when: 'it repeats 3 times.' }] })).toThrow('the number 3 in the path `cache`');
+    expect(typed({ when: 'x.', do: 'set `timeout: 0`.', values: { on: true } })).toThrow('the number 0 in `Do`');
+  });
+
+  it('unit(): a body that passes with a typed number fails its test and leaves a failed record; `u.value` is held to it too', async () => {
+    const r = runner();
+    r.unit('what-a-failed-request-throws', { when: 'a call fails.', value: 'a status outside 200–299 throws.' }, noop);
+    r.unit('what-is-retried', { when: 'a call fails.' }, (u) => u.value('a 5xx status is retried.'));
+    r.unit('retry-delay', { when: 'x.', values: { ms: 300 } }, (u) => u.value('300 ms.'));
+    const out = await r.run();
+    expect(out[0]).toMatch(/^unit `what-a-failed-request-throws`: the number 200 in `Value` is none of the unit's `values`/);
+    expect(out[1]).toMatch(/^unit `what-is-retried`: the number 5 in `Value`/);
+    expect(out[2]).toBe('ok');
+    expect(r.records.map((x) => x.record.status)).toEqual(['failed', 'failed', 'passed']);
+  });
+
+  it('a unit with no body is not checked: advice may give a number the code does not have', async () => {
+    const r = runner();
+    r.unit('never-disable-timeout', { when: 'an upload.', do: 'set `timeout: 120_000`.' });
+    expect(await r.run()).toEqual(['ok']);
   });
 });
 
@@ -194,7 +240,7 @@ describe('questions for the decision model', () => {
 
   it('one question takes the id of its unit, and goes in the record', async () => {
     const r = runner();
-    r.unit('default-timeout', { when: 'x.', value: '10 seconds.', ask: question }, noop);
+    r.unit('default-timeout', { when: 'x.', value: '10 seconds.', values: { seconds: 10 }, ask: question }, noop);
     expect(await r.run()).toEqual(['ok']);
     expect(r.records[0]!.record).toMatchObject({ status: 'passed', ask: [{ id: 'default-timeout', ...question }] });
   });

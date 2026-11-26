@@ -12,8 +12,8 @@ import { tf, TimeoutError } from "tinyfetch";
 
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
-| `timeout` | number (ms) | `{{value:default-timeout.ms}}` | abort the request after this long; `0` turns the timeout off |
-| `signal` | AbortSignal | none | cancel the request, and any retry still to come |
+| `timeout` | number (ms) | `{{value:default-timeout.ms}}` | abort the request after this long; `{{value:timeout-off.off}}` turns the timeout off |
+| `signal` | AbortSignal | none | cancel the request |
 
 ```ts
 try {
@@ -37,4 +37,8 @@ await report.catch(() => undefined);
 
 {{unit:default-timeout}}
 
+{{unit:timeout-off}}
+
 {{unit:never-disable-timeout}}
+
+{{unit:cancel-with-signal}}

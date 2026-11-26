@@ -13,7 +13,7 @@ import { tf } from "tinyfetch";
 | Option | Type | Default | Meaning |
 | --- | --- | --- | --- |
 | `retry` | number | {{value:retry-defaults.retry}} | extra attempts after the first one |
-| `retryDelay` | number (ms) | {{value:retry-defaults.retry-delay}} | wait before the first new attempt, doubled each time |
+| `retryDelay` | number (ms) | {{value:retry-defaults.retry-delay}} | wait before the first new attempt; each next wait is {{value:retry-defaults.retry-times}}x the one before |
 
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });

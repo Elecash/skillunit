@@ -54,11 +54,11 @@ describe('the proof of tinyfetch', () => {
 
   it('a long line that differs at its end: the message shows both ends, and the JSON both lines', () => {
     const app = App.copy('long-line');
-    app.edit('skill/features/retries.md', 'doubled before each next one', 'tripled before each next one');
+    app.edit('skill/features/retries.md', 'each next wait is 2x the one before.', 'each next wait is 3x the one before.');
     const [finding] = errors(app.run('proof'));
     expect(finding.unit).toBe('retry-defaults');
-    expect(finding.message).toMatch(/the build has `….*doubled before each next one\.`, the skill has `….*tripled before each next one\.`\./);
-    expect(finding.lines.skill).toBe(finding.lines.build.replace('doubled', 'tripled'));
+    expect(finding.message).toMatch(/the build has `….*each next wait is 2x the one before\.`, the skill has `….*each next wait is 3x the one before\.`\./);
+    expect(finding.lines.skill).toBe(finding.lines.build.replace('2x', '3x'));
   });
 
   it('settings with no `proof.sources`: the build keeps every region example, and writes nothing', () => {
@@ -109,14 +109,18 @@ describe('the proof of tinyfetch', () => {
     expect(errors(proof).filter((p) => p.message.startsWith('no test left the unit')).map((p) => p.unit).sort()).toEqual([
       'await-every-request',
       'body-as-object',
+      'cancel-with-signal',
       'check-with-is-http-error',
+      'client-options',
       'default-timeout',
+      'method-results',
       'never-disable-timeout',
       'one-client-per-api',
       'query-in-options',
       'response-body',
       'retry-defaults',
       'retry-idempotent-only',
+      'timeout-off',
       'what-a-failed-request-throws',
       'what-is-retried',
     ]);
@@ -124,7 +128,8 @@ describe('the proof of tinyfetch', () => {
 
   it('an ordinary test that fails: check fails on proof.run, names the test, and every unit still comes from its test', () => {
     const app = App.copy('red-run');
-    app.edit(TEST, "  it('cancels with the caller signal'", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  it('cancels with the caller signal'");
+    app.edit(TEST, "  unit(\n    'cancel-with-signal',", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  unit(\n    'cancel-with-signal',");
+    app.edit(TEST, "import { afterEach, describe, expect, vi } from 'vitest';", "import { afterEach, describe, expect, it, vi } from 'vitest';");
     const check = app.run('check', '--dry-run');
     expect(check.code).toBe(1);
     const found = errors(check);
@@ -162,11 +167,11 @@ describe('the proof of tinyfetch', () => {
     const proof = app.run('proof');
     const declared = (proof.report.proof.units as any[]).filter((u) => u.from === 'declared').map((u) => u.id);
     expect(declared).toEqual(['one-client-per-api', 'retry-idempotent-only', 'never-disable-timeout']);
-    expect(proof.report.proof.summary).toMatchObject({ units: 12, proved: 9, declared: 3 });
+    expect(proof.report.proof.summary).toMatchObject({ units: 16, proved: 13, declared: 3 });
     const table = spawnSync(process.execPath, [CLI, 'proof'], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }).stdout;
     expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${DECLARED}:`);
     expect(table).not.toContain(`proved by a test, ${DECLARED}`);
-    expect(table).toContain('12 units · 9 proved by a test · 3 declared without one');
+    expect(table).toContain('16 units · 13 proved by a test · 3 declared without one');
   });
 
   it('check --dry-run with no key: every question is ready, and nothing is sent', () => {

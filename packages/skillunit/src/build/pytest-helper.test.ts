@@ -31,6 +31,10 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
         '    unit("two-lines", when="the user asks.", value="10 seconds.", values={"n": "ten\\nseconds"})',
         '',
         '',
+        'def test_typed_number(unit):',
+        '    unit("typed-number", when="the user asks.", value="a 5xx status is retried.")',
+        '',
+        '',
         'def test_bad_lang(unit):',
         '    unit("bad-lang", when="the user asks.", do="run it.", examples=[{"lang": "sh\\n### rule: injected", "text": "x"}])',
         '',
@@ -44,6 +48,7 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
     expect(records.problems.map((p) => p.message.replace(/^[\w-]+\.[0-9a-f]{8}\.json: /, ''))).toEqual([
       'each example has a fence language in `lang`, such as `sh` or `yaml`; got "sh\\n### rule: injected"',
       'unit `two-lines`: the value `n` has a line break; a value is one line, since `{{value:two-lines.n}}` puts it inside a line',
+      "unit `typed-number`: the number 5 in `Value` is none of the unit's `values`. Give the value a name in the code, build the sentence from that name, and list it in `values`",
     ]);
   });
 

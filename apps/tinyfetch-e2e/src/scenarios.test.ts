@@ -50,7 +50,9 @@ describe('tinyfetch scenarios', () => {
         proofWarnings: [...(want.proofWarnings ?? [])].sort(),
         failing: real ? [...(want.failing ?? [])].sort() : [],
       });
-      const clean = !want.lint?.length && !want.proof?.length && !want.failing?.length && !(real && want.oneFails?.length);
+      // Every test that failed was checked above to be one the scenario allows, so `check` fails
+      // exactly when one did, or when lint or proof report something.
+      const clean = !want.lint?.length && !want.proof?.length && !(real && seen.failing.length);
       expect(run.code).toBe(clean ? 0 : 1);
     });
   }

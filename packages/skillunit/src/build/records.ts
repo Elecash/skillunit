@@ -4,7 +4,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
+import { checkNumbers, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
 
 /** A record, with the absolute path of its test file and of the record itself. */
 export type ReadUnit = (PassedUnit | FailedUnit) & { path: string; abs: string };
@@ -96,6 +96,14 @@ export function checkRecord(raw: unknown): string | undefined {
   }
   if (kind !== found) return `\`kind\` is ${JSON.stringify(kind)}, and the keys make it a ${found}`;
   if (found === 'fact' && spec.value === undefined) return 'a fact needs `value`';
+  // As `unit()` checks it: a unit a test proves has no number its `values` does not have.
+  if (body !== false) {
+    try {
+      checkNumbers(id as string, spec as Parameters<typeof checkNumbers>[1]);
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
   if (!Array.isArray(examples) || examples.some((x) => !x || typeof (x as UnitExample).lang !== 'string' || typeof (x as UnitExample).text !== 'string')) {
     return '`examples` must be a list of `{ "lang": …, "text": … }`';
   }

@@ -139,6 +139,42 @@ In a skill built with [proof](proof.md), every unit is declared in code and the 
 lint and the decision model read them as in any skill. A unit heading written in the source is an
 error.
 
+**No value is typed twice.**
+
+- Every value that defines behaviour has a name in the code: a constant, a property, a member of
+  an enum.
+- The code uses that name, the assertion of the test uses it, and the sentence of the unit is
+  built from it.
+- A unit with a test has no number typed into its sentence, and no word that stands for one,
+  such as "doubled", "twice" or "half".
+- When the code has the value only as a literal, give it a name in the code before writing the
+  unit.
+
+tinyfetch's skill said the wait between retries is "doubled". The code had `retryDelay * 2 ** n`,
+the test asserted `2 * DEFAULT_RETRY_DELAY`, and the sentence had the word: one value, written
+three times by hand. When the code went to `3 ** n`, the test went red, the assertion was edited,
+and `check` passed with "doubled" in two lines of the skill.
+
+```ts
+// Before: the value is a literal in the code, in the assertion and in the sentence.
+await sleep(retryDelay * 2 ** n);
+await vi.advanceTimersByTimeAsync(2 * DEFAULT_RETRY_DELAY - 1);
+value: `\`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, doubled before each next one.`,
+
+// After: one name, in all three, and in `values` for the table.
+export const RETRY_TIMES = 2;
+await sleep(retryDelay * RETRY_TIMES ** n);
+await vi.advanceTimersByTimeAsync(RETRY_TIMES * DEFAULT_RETRY_DELAY - 1);
+value: `\`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, and each next wait is ${RETRY_TIMES}x the one before.`,
+values: { 'retry-delay': DEFAULT_RETRY_DELAY, 'retry-times': RETRY_TIMES },
+```
+
+Now changing `RETRY_TIMES` to 3, and nothing else, leaves every test green and fails the proof on
+the two lines of the skill that say "2x", until `skillunit proof --write` makes them "3x".
+`unit()` holds a unit with a body to the part of the rule a tool can see: a number in its text
+that none of its `values` is fails its test ([proof](proof.md#no-value-typed-twice)). A word such
+as "doubled" it cannot see.
+
 **A unit goes in the test that checks what it says.** A default, which failures are retried,
 what a failed request throws, a call that returns what the rule says it returns: the test that
 checks it declares the unit with `unit(id, spec, body)`.
@@ -153,16 +189,10 @@ unit declared, never proved. Put these declarations in files named `*.skill.test
 [questions](questions.md) for the decision model about it, and `ask()` those about the prose of a
 file. An option that repeats a value of the code is built from it, as the sentence is.
 
-**Build the sentence from the code where the code has the value.**
-
-```ts
-value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${DEFAULT_TIMEOUT}\`), for every method.`,
-```
-
-A value typed into the sentence is a second copy, kept by hand, that no test compares with the
-first. A value built from the constant changes with it, and the change shows up in the skill. A
-sentence about behaviour, such as which statuses are retried, can be built from what the body
-observes, case by case, with `u.value()`. Whatever stays literal, the body asserts.
+**A sentence about behaviour can be built from what the body observes.** Which statuses are
+retried, what each method resolves to: the body tries each case and builds the sentence with
+`u.value()`, so a change in the code changes the sentence. The boundary it samples around is a
+name of the code too, such as `RETRIED_STATUS`.
 
 **Where slots go.** A `{{unit:<id>}}` goes where the unit belongs in the built skill: alone on
 its line, under `## Rules`, in the file about its topic. A table or a sentence of the reference part
@@ -313,10 +343,10 @@ import { tf } from "tinyfetch";
 
 ## Options
 
-| Option       | Type        | Meaning                                              |
-| ------------ | ----------- | ---------------------------------------------------- |
-| `retry`      | number      | extra attempts after the first one                   |
-| `retryDelay` | number (ms) | wait before the first new attempt, doubled each time |
+| Option       | Type        | Default | Meaning                                                                |
+| ------------ | ----------- | ------- | ---------------------------------------------------------------------- |
+| `retry`      | number      | 0       | extra attempts after the first one                                     |
+| `retryDelay` | number (ms) | 300     | wait before the first new attempt; each next wait is 2x the one before |
 
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
@@ -328,13 +358,13 @@ await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
 
 When: a request sets no `retry`, or no `retryDelay`.
 
-Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, doubled before each next one.
+Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, and each next wait is 2x the one before.
 
 ### fact: what-is-retried
 
 When: a request with `retry` fails.
 
-Value: a network error and a 5xx status are retried; a 4xx status and a timeout never are.
+Value: a network error and a status of 500 or above are retried; a status under 500 and a timeout never are.
 
 ### rule: retry-idempotent-only
 

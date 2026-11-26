@@ -68,7 +68,7 @@ export const scenarios: Scenario[] = [
     name: 'removed option',
     change: 'delete `retryDelay` from the code, leave the skill',
     apply(app) {
-      app.edit('src/types.ts', '  /** Milliseconds to wait before the first new attempt, doubled each time. Default 300. */\n  retryDelay?: number;\n', '');
+      app.edit('src/types.ts', '  /** Milliseconds to wait before the first new attempt; each next wait is `RETRY_TIMES` times the one before. Default `DEFAULT_RETRY_DELAY`. */\n  retryDelay?: number;\n', '');
       app.edit('src/request.ts', '    options.retry,\n    options.retryDelay,\n', '    options.retry,\n');
       app.edit('src/retry.ts', 'retry = DEFAULT_RETRY, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = DEFAULT_RETRY): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
       app.commit('Drop retryDelay');
@@ -84,8 +84,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/index.ts', 'export { create, tf,', 'export { createClient, tf,');
       app.commit('Rename create to createClient');
     },
-    // The test that calls `tf.create` fails too, so the run does.
-    expect: { lint: ['types skill/features/clients.md - TS2305'], proof: ['../skillunit.yaml'] },
+    // The units whose bodies call `tf.create`, or every method of `tf`, fail too, so the run does;
+    // `default-timeout` also has a value in a table.
+    expect: { lint: ['types skill/features/clients.md - TS2305'], proof: ['await-every-request', 'client-options', 'default-timeout', 'default-timeout', 'method-results', '../skillunit.yaml'] },
   },
   {
     name: 'stale example',
@@ -110,8 +111,9 @@ export const scenarios: Scenario[] = [
     },
     expect: {
       lint: ['types skill/features/requests.md - TS1005', 'types skill/features/requests.md query-in-options TS2353'],
-      // The test that declares `query-in-options` fails without the option, and so does the run.
-      proof: ['query-in-options', '../skillunit.yaml'],
+      // The tests that declare `query-in-options` and `client-options` fail without the option, and
+      // so does the run.
+      proof: ['client-options', 'query-in-options', '../skillunit.yaml'],
     },
   },
   {
@@ -172,11 +174,10 @@ export const scenarios: Scenario[] = [
       app.build();
       app.commit('Say retries are always safe');
     },
-    // The sentence replaces the one that points to the rules. Measured on Jev over five runs:
-    // post-no-retry ends at 0.35 to 0.43 and patch-no-retry at 0.41 to 0.49, so both failed every
-    // time; patch-no-retry is close enough to its threshold to pass one day. retry-methods, which
-    // asks about every method, passed at 0.63 to 0.73.
-    expect: { failing: ['post-no-retry'], mayFail: ['patch-no-retry', 'retry-methods'] },
+    // The sentence replaces the one that points to the rules. Measured on Jev on 2026-11-26, over
+    // five runs: post-no-retry ended at 0.50 to 0.58 and patch-no-retry at 0.50 to 0.57, borderline
+    // passes, since the rule wins; retry-methods passed at 0.74 to 0.77. Either may fail on a run.
+    expect: { mayFail: ['post-no-retry', 'patch-no-retry', 'retry-methods'] },
   },
   // A unit with no body is declared in code like any other: its sentence changes there, and the
   // skill follows only after a build.
@@ -198,7 +199,10 @@ export const scenarios: Scenario[] = [
       app.build();
       app.commit('Soften the retry rule');
     },
-    // The weakened rule names no method, so the test that asks for the list fails too.
+    // The weakened rule names no method, so the test that asks for the list fails too. Measured on
+    // Jev on 2026-11-26, over four runs: retry-methods answered `none` at 0.63 to 0.75 and
+    // put-may-retry `no-retry` at 0.66 to 0.71, wrong answers every time. This is the README's
+    // example of the test layer.
     expect: { failing: ['put-may-retry', 'retry-methods'], mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   {
@@ -232,9 +236,9 @@ export const scenarios: Scenario[] = [
       app.edit(TEST, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
       app.commit('Rename an option');
     },
-    // The test of the unit fails, so neither the unit nor its two values in the options table are
+    // The test of the unit fails, so neither the unit nor its three values in the options table are
     // built, and the run does not exit with 0.
-    expect: { proof: ['retry-defaults', 'retry-defaults', 'retry-defaults', '../skillunit.yaml'] },
+    expect: { proof: ['retry-defaults', 'retry-defaults', 'retry-defaults', 'retry-defaults', '../skillunit.yaml'] },
   },
   ...(['preserve', 'always', 'never'] as const).map(
     (proseWrap): Scenario => ({
@@ -250,8 +254,7 @@ export const scenarios: Scenario[] = [
     }),
   ),
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
-  // stops reporting what the README shows. The contradicting sentence is the scenario
-  // `contradicting prose` above.
+  // stops reporting what the README shows. The vague rule is the scenario `ambiguous rule` above.
   {
     name: 'README 1: renamed option',
     change: 'in `src/types.ts`, rename the option `retryDelay` to `backoff`',
@@ -308,13 +311,44 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'proof 2: a 4xx is now retried',
-    change: 'in `src/retry.ts`, retry a 4xx status too, leave the skill and the tests',
+    change: 'in `src/retry.ts`, lower `RETRIED_STATUS` to 400, leave the skill and the tests',
     apply(app) {
-      app.edit('src/retry.ts', 'error.status >= 500', 'error.status >= 400');
+      app.edit('src/retry.ts', 'export const RETRIED_STATUS = 500;', 'export const RETRIED_STATUS = 400;');
       app.commit('Retry 4xx');
     },
-    // The body of `what-is-retried` observes each case, so no test fails: the sentence changes.
+    // The sentence of `what-is-retried` is built from the constant and what the body observes, so
+    // no test fails: the sentence changes.
     expect: { proof: ['what-is-retried'] },
+  },
+  {
+    name: 'proof 2b: one status retried by a literal',
+    change: 'in `src/retry.ts`, retry a 429 too, past the constant, leave the skill and the tests',
+    apply(app) {
+      app.edit('src/retry.ts', 'error.status >= RETRIED_STATUS;', 'error.status >= RETRIED_STATUS || error.status === 429;');
+      app.commit('Retry 429');
+    },
+    // The body samples 429 among the statuses under the constant, and they no longer agree.
+    expect: { proof: ['what-is-retried', '../skillunit.yaml'] },
+  },
+  {
+    name: 'no value typed twice 1: the constant changes',
+    change: 'in `src/retry.ts`, change `RETRY_TIMES` from 2 to 3, and edit nothing else',
+    apply(app) {
+      app.edit('src/retry.ts', 'export const RETRY_TIMES = 2;', 'export const RETRY_TIMES = 3;');
+      app.commit('Triple the wait');
+    },
+    // No test fails: the assertion uses the constant. The table row and the Value both change.
+    expect: { proof: ['features/retries.md', 'retry-defaults'] },
+  },
+  {
+    name: 'no value typed twice 2: a number typed into a sentence',
+    change: 'type a number into the Value of `cancel-with-signal`',
+    apply(app) {
+      app.edit(TEST, "value: 'the request rejects with the reason the signal was aborted with.',", "value: 'the request rejects with the reason the signal was aborted with, within 5 ms.',");
+      app.commit('Type a number');
+    },
+    // The test of the unit fails on the number, so the unit is not built, and the run fails.
+    expect: { proof: ['cancel-with-signal', '../skillunit.yaml'] },
   },
   {
     name: 'proof 3: a unit from a test edited in skill/',
@@ -351,7 +385,8 @@ export const scenarios: Scenario[] = [
     name: 'proof 10: an ordinary test fails',
     change: 'add a test that declares no unit and fails',
     apply(app) {
-      app.edit(TEST, "  it('cancels with the caller signal'", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  it('cancels with the caller signal'");
+      app.edit(TEST, "  unit(\n    'cancel-with-signal',", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  unit(\n    'cancel-with-signal',");
+    app.edit(TEST, "import { afterEach, describe, expect, vi } from 'vitest';", "import { afterEach, describe, expect, it, vi } from 'vitest';");
       app.commit('A failing test');
     },
     expect: { proof: ['../skillunit.yaml'] },

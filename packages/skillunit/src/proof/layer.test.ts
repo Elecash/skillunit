@@ -248,7 +248,7 @@ describe('a skill folder edited by hand', () => {
 
   it('a long line that differs past its first 100 characters: each side is shown around the difference, and the JSON keeps both whole', () => {
     const value = 'a failed request is sent again after a wait of 300 ms before the first new attempt, which grows before each next one: doubled.';
-    const root = project({ ...GOOD, 'tmp/skill-units/default-timeout.0001.json': record('default-timeout', 10, { kind: 'fact', when: 'x.', value, values: { seconds: 10, ms: 10000 } }) });
+    const root = project({ ...GOOD, 'tmp/skill-units/default-timeout.0001.json': record('default-timeout', 10, { kind: 'fact', when: 'x.', value, values: { seconds: 10, ms: 10000, delay: 300 } }) });
     run(root, {}, { write: true });
     const built = read(root, 'skill/SKILL.md');
     writeFileSync(join(root, 'skill/SKILL.md'), built.replace('one: doubled.', 'one: tripled.'));
@@ -466,6 +466,17 @@ describe('questions in a record', () => {
       '../tmp/skill-units/a.json:1 - error: a.json: `skillFile` must be the built file the question is about, such as `SKILL.md` [test ../tests/a.test.ts:40]',
       '../tmp/skill-units/b.json:1 - error: b.json: the question in `ask` has the id `other`, and the record `which-file` [test ../tests/a.test.ts:40]',
       '../tmp/skill-units/c.json:1 - error: c.json: a question has no `when` [test ../tests/a.test.ts:40]',
+    ]);
+  });
+
+  it('a record of a unit with a body is held to the number rule; one with no body is not', () => {
+    const root = project({
+      ...GOOD,
+      'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', when: 'a request failed with a 5xx status.', do: 'test the error with `isHttpError` first.' }),
+      'tmp/skill-units/by-hand.0004.json': record('by-hand', 40, { kind: 'rule', body: false, when: 'calling one API 3 times.', do: 'reuse one client.' }),
+    });
+    expect(errors(run(root)).filter((e) => e.includes('.json'))).toEqual([
+      "../tmp/skill-units/check-status.0002.json:1 check-status error: check-status.0002.json: unit `check-status`: the number 5 in `When` is none of the unit's `values`. Give the value a name in the code, build the sentence from that name, and list it in `values` [test ../tests/a.test.ts:20]",
     ]);
   });
 

@@ -7,7 +7,7 @@ export type Method = 'GET' | 'HEAD' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /**
  * One request: the path joined to the client's `baseUrl`, the query encoded, the body sent as
- * JSON, and the response parsed as JSON when it is JSON. A status outside 200–299 throws an
+ * JSON, and the response parsed as JSON when it is JSON. A response that is not `ok` throws an
  * HttpError.
  */
 export async function request<T>(client: ClientOptions, method: Method, path: string, body: unknown, options: RequestOptions = {}): Promise<T> {

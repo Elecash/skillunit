@@ -10,11 +10,11 @@ import { create } from "tinyfetch";
 
 ## Options
 
-| Option    | Type        | Meaning                                                 |
-| --------- | ----------- | ------------------------------------------------------- |
-| `baseUrl` | string      | prefix of every path                                    |
-| `headers` | object      | headers sent with every request                         |
-| `timeout` | number (ms) | timeout of every request, unless a request sets its own |
+| Option    | Type        |
+| --------- | ----------- |
+| `baseUrl` | string      |
+| `headers` | object      |
+| `timeout` | number (ms) |
 
 ```ts
 const api = create({
@@ -29,6 +29,12 @@ console.log(orders.length);
 ```
 
 ## Rules
+
+### fact: client-options
+
+When: the code creates a client with `create`.
+
+Value: `baseUrl` is the prefix of every path, `headers` are sent with every request, and `timeout` is the timeout of every request that sets none; a request's own `timeout` wins.
 
 ### decision: one-client-per-api
 

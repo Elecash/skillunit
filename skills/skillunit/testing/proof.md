@@ -39,11 +39,11 @@ unit("retry-defaults", { when: "a request sets no `retry`.", value: `\`retry\` i
 
 ### rule: build-the-sentence-from-the-code
 
-When: the sentence of a unit in a test names a value the code has, such as a default or the name of an error.
+When: a unit in a test states a value that defines behaviour, such as a default, a limit or how a wait grows.
 
-Do: build it from the code in a template string, such as `${DEFAULT_TIMEOUT / 1000} seconds`, and list the value in `values` when the reference part of the skill repeats it.
+Do: give the value a name in the code, such as `export const RETRY_TIMES = 2`; use that name in the code and in the assertion of the test, build the sentence from it in a template string, such as `${RETRY_TIMES}x the one before`, and list it in `values`. Type no number into the sentence, and no word that stands for one, such as "doubled", "twice" or "half".
 
-Even when: the value looks fixed; a value typed into the sentence is a second copy that nothing compares with the code.
+Even when: the code has the value only as a literal, such as `retryDelay * 2 ** n`: give it a name in the code first, then write the unit. `unit()` fails a unit with a body whose text has a number none of its `values` is.
 
 ### decision: region-or-example
 
@@ -81,7 +81,7 @@ npx skillunit proof --write
 
 When: the test of a unit fails after a change to the code.
 
-Do: read the change; when the code is right, correct the test's assertions and any literal in its sentence, then run `npx skillunit proof` again.
+Do: read the change; when the code is right, correct the assertions of the test. When its sentence or its assertion has the value as a literal, give the value a name in the code and build both from that name, then run `npx skillunit proof` again.
 
 Even when: skipping the test would make the test run pass; the slot then has no unit, and the proof fails on it.
 

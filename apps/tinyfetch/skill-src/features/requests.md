@@ -1,6 +1,6 @@
 # tinyfetch — requests
 
-Send a request and read its response: the six methods, query parameters and JSON bodies.
+Send a request and read its response: the methods, query parameters and JSON bodies.
 
 Setup:
 
@@ -10,14 +10,14 @@ import { tf } from "tinyfetch";
 
 ## Methods
 
-| Method | Call                            | Resolves to     |
-| ------ | ------------------------------- | --------------- |
-| GET    | `tf.get(path, options)`         | the parsed body |
-| HEAD   | `tf.head(path, options)`        | nothing         |
-| POST   | `tf.post(path, body, options)`  | the parsed body |
-| PUT    | `tf.put(path, body, options)`   | the parsed body |
-| PATCH  | `tf.patch(path, body, options)` | the parsed body |
-| DELETE | `tf.delete(path, options)`      | the parsed body |
+| Method | Call                            |
+| ------ | ------------------------------- |
+| GET    | `tf.get(path, options)`         |
+| HEAD   | `tf.head(path, options)`        |
+| POST   | `tf.post(path, body, options)`  |
+| PUT    | `tf.put(path, body, options)`   |
+| PATCH  | `tf.patch(path, body, options)` |
+| DELETE | `tf.delete(path, options)`      |
 
 The type parameter names the shape the code expects:
 
@@ -29,6 +29,8 @@ console.log(user.name);
 ```
 
 ## Rules
+
+{{unit:method-results}}
 
 {{unit:response-body}}
 

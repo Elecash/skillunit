@@ -57,7 +57,7 @@ unit(
   {
     when: 'the user asks how long a request waits by default.',
     value: \`\${DEFAULT_TIMEOUT / 1000} seconds (\\\`timeout: \${DEFAULT_TIMEOUT}\\\`), for every method.\`,
-    values: { seconds: DEFAULT_TIMEOUT / 1000 },
+    values: { seconds: DEFAULT_TIMEOUT / 1000, ms: DEFAULT_TIMEOUT },
   },
   () => {
     expect(DEFAULT_TIMEOUT).toBe(10_000);
@@ -70,7 +70,7 @@ describe('retries', () => {
   });
 
   for (const status of [503, 404]) {
-    unit(\`status-\${status}\`, { when: \`the server answers \${status}.\`, do: 'read the status first.' }, () => {
+    unit(\`status-\${status}\`, { when: \`the server answers \${status}.\`, do: 'read the status first.', values: { status } }, () => {
       expect(calls).toEqual(['setup']);
       calls.push(String(status));
     });
@@ -78,7 +78,7 @@ describe('retries', () => {
 
   unit('what-is-retried', { when: 'the user asks which failures are retried.' }, (u) => {
     expect(calls).toEqual(['setup']);
-    u.value('network errors and 5xx responses are retried; 4xx responses are not.');
+    u.value('network errors and server errors are retried; client errors are not.');
     u.example('text', 'network error  retried\\n404            not retried');
   });
 });
@@ -121,7 +121,7 @@ describe('skillunit/vitest', () => {
         kind: 'fact',
         when: 'the user asks how long a request waits by default.',
         value: '10 seconds (`timeout: 10000`), for every method.',
-        values: { seconds: 10 },
+        values: { seconds: 10, ms: 10000 },
         examples: [],
       },
     ]);
@@ -138,7 +138,7 @@ describe('skillunit/vitest', () => {
     expect(run.byId('what-is-retried')).toEqual([
       expect.objectContaining({
         status: 'passed',
-        value: 'network errors and 5xx responses are retried; 4xx responses are not.',
+        value: 'network errors and server errors are retried; client errors are not.',
         examples: [{ lang: 'text', text: 'network error  retried\n404            not retried' }],
       }),
     ]);

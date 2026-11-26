@@ -3,6 +3,7 @@
 // the tests and never run. See docs/proof.md.
 import { ask, unit } from 'skillunit/vitest';
 import { create, tf } from './index.js';
+import { NO_TIMEOUT } from './timeout.js';
 
 export async function examples() {
   // #region skill:one-client-per-api.shared
@@ -119,15 +120,15 @@ unit('retry-idempotent-only', {
 
 unit('never-disable-timeout', {
   when: 'a request may take long, such as an upload or a report.',
-  do: 'raise `timeout` to a number of milliseconds that fits the request, and never set it to `0`.',
-  check: 'forbid `/timeout:\\s*0\\b/` in ts',
+  do: `raise \`timeout\` to a number of milliseconds that fits the request, and never set it to \`${NO_TIMEOUT}\`.`,
+  check: `forbid \`/timeout:\\s*${NO_TIMEOUT}\\b/\` in ts`,
   ask: {
     id: 'long-upload',
     scenario: 'An upload with `tf.post` can take up to two minutes.',
     question: 'What should the agent set?',
     options: {
       raise: '`timeout: 120_000`',
-      off: '`timeout: 0`, so the upload never times out',
+      off: `\`timeout: ${NO_TIMEOUT}\`, so the upload never times out`,
     },
     expect: 'raise',
   },

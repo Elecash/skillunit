@@ -283,6 +283,54 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
 }
 
 /**
+ * A number in the text of a unit: digits, with `_` groups and an optional decimal part, not right
+ * after a letter, a digit, `_` or `.`. So `300 ms`, `10_000`, `0.5`, `2x` and `5xx` have one,
+ * and `utf8`, `h2` and `sha256` do not.
+ */
+const NUMBER = /(?<![\p{L}\d_.])\d+(?:_\d+)*(?:\.\d+)?/gu;
+
+/** The numbers of `text`, as written, in order. */
+export function numbersIn(text: string): string[] {
+  return text.match(NUMBER) ?? [];
+}
+
+/** Two numbers are the same when they are equal once `_` is taken out. */
+const numeric = (written: string) => Number(written.replaceAll('_', ''));
+
+/** The text of a unit the number rule reads, by its label. */
+type NumberedText = Pick<UnitSpec, 'when' | 'do' | 'value' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'values'>;
+
+/**
+ * Throws a `UnitSpecError` when the text of a unit has a number that none of its `values` is:
+ * a value that is that number, or text that has it as a number of its own. For a unit with a
+ * body, with the `Value` the body set: a number typed into the sentence is one no test checks.
+ */
+export function checkNumbers(id: string, spec: NumberedText): void {
+  const allowed = new Set<number>();
+  for (const v of Object.values(spec.values ?? {})) {
+    if (typeof v === 'number') allowed.add(v);
+    else if (typeof v === 'string') for (const n of numbersIn(v)) allowed.add(numeric(n));
+  }
+  const labels: [string, string | undefined][] = [
+    ['`When`', spec.when],
+    ['`Do`', spec.do],
+    ['`Value`', spec.value],
+    ['`Decide`', spec.decide],
+    ...(spec.paths ?? []).map((p): [string, string] => [`the path \`${p.path}\``, p.when]),
+    ['`Unknown`', spec.unknown],
+    ['`Even when`', spec.evenWhen],
+  ];
+  for (const [label, text] of labels) {
+    if (typeof text !== 'string') continue;
+    const typed = numbersIn(text).find((n) => !allowed.has(numeric(n)));
+    if (typed === undefined) continue;
+    throw new UnitSpecError(
+      `unit \`${id}\`: the number ${typed} in ${label} is none of the unit's \`values\`. Give the value a name in the code, build the sentence from that name, and list it in \`values\``,
+    );
+  }
+}
+
+/**
  * The questions of `ask`, each with its id, after checking them. Throws a `UnitSpecError` that
  * names the question and says what to fix.
  */

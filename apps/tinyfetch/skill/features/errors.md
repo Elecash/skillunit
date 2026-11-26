@@ -14,7 +14,7 @@ import { isHttpError, tf } from "tinyfetch";
 
 When: a tinyfetch call fails.
 
-Value: a status outside 200–299 throws an `HttpError` with the `status` and the parsed `body`; a timeout throws a `TimeoutError`; a network failure throws what `fetch` threw.
+Value: a response that is not `ok`, as `fetch` sets it, throws an `HttpError` with the `status` and the parsed `body`; a timeout throws a `TimeoutError`; a network failure throws what `fetch` threw.
 
 ### rule: check-with-is-http-error
 

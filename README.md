@@ -9,42 +9,42 @@ SkillUnit ties the instructions of an agent skill to the tests of the code they 
 It checks a skill in three layers:
 
 - **Lint** type-checks the examples of the skill against the API, with the project's own TypeScript compiler, and checks them against the skill's own rules. It reports an example that no longer compiles, an example that breaks a rule and a broken link.
-- **Proof** builds the instructions that a test can check from the test itself. The test declares the instruction with `unit()`, its sentence is built from the code where the code has the value, and the skill is built from a source folder and those tests. When the code changes, the built skill changes, and `check` fails until the skill in the repository says the same.
-- **Test** asks a decision model closed questions about the skill. A test fails when the text does not settle the answer: a sentence contradicts a rule, or a rule is too vague to follow.
+- **Proof** builds the instructions that a test can check from the test itself. The test declares the instruction with `unit()`, every value it states has a name in the code and its sentence is built from that name, and the skill is built from a source folder and those tests. When the code changes, the built skill changes, and `check` fails until the skill in the repository says the same.
+- **Test** asks a decision model closed questions about the skill. A test fails when the text does not settle the answer, such as a rule too vague to follow. In our runs on tinyfetch, a sentence of the prose that contradicts a rule pulled the answers to the threshold, and the rule still won.
 
 `skillunit check` runs the three and prints each unit of the skill with what each layer found about it. On [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch), with `--dry-run`, which sends the tests nowhere and needs no key, cut to two of its six files:
 
 ```
 Lint  skill
   ✓ 6 files, all clean
-  12 units · 19 examples type-checked with TypeScript 5.6.3
+  16 units · 19 examples type-checked with TypeScript 5.6.3
 
 Units  proof ran `npx vitest run` in 0.5 s, exit 0 · test dry run: nothing sent
   …
   skill/SKILL.md
-    test   · src/tinyfetch.skill.test.ts:136  which-file-for-retries  ready
+    test   · src/tinyfetch.skill.test.ts:137  which-file-for-retries  ready
     await-every-request  rule
-      proof  ✓ proved by a test, src/tinyfetch.test.ts:57
-      test   · src/tinyfetch.test.ts:57  await-the-call  ready
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:83
+      test   · src/tinyfetch.test.ts:83  await-the-call  ready
 
   skill/features/retries.md
     retry-defaults  fact
-      proof  ✓ proved by a test, src/tinyfetch.test.ts:227
-      test   · src/tinyfetch.test.ts:227  retry-delay-default  ready
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:286
+      test   · src/tinyfetch.test.ts:286  retry-delay-default  ready
     what-is-retried  fact
-      proof  ✓ proved by a test, src/tinyfetch.test.ts:208
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:259
       test   –
     retry-idempotent-only  rule
       proof  – declared, no test, src/tinyfetch.skill.test.ts:59
-      test   · src/tinyfetch.skill.test.ts:59  post-no-retry  ready
-      test   · src/tinyfetch.skill.test.ts:59  patch-no-retry  ready
-      test   · src/tinyfetch.skill.test.ts:59  retry-methods  ready
-      test   · src/tinyfetch.skill.test.ts:59  put-may-retry  ready
-      test   · src/tinyfetch.skill.test.ts:59  get-may-retry  ready
+      test   · src/tinyfetch.skill.test.ts:60  post-no-retry  ready
+      test   · src/tinyfetch.skill.test.ts:60  patch-no-retry  ready
+      test   · src/tinyfetch.skill.test.ts:60  retry-methods  ready
+      test   · src/tinyfetch.skill.test.ts:60  put-may-retry  ready
+      test   · src/tinyfetch.skill.test.ts:60  get-may-retry  ready
   …
 
-  12 units · 6 proof and test · 3 proof only · 3 test only · 0 not covered
-  12 units · 9 proved by a test · 3 declared without one · 3 values in prose
+  16 units · 6 proof and test · 7 proof only · 3 test only · 0 not covered
+  16 units · 13 proved by a test · 3 declared without one · 5 values in prose
   16 tests
 
 OK  lint ok · proof ok · test dry run ok, 16 tests ready
@@ -220,12 +220,14 @@ The tests pass, since they assert what the constant says. The built skill now sa
 ```
   skill/features/timeouts.md
     default-timeout  fact
-      proof  ✓ proved by a test, src/tinyfetch.test.ts:268
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:327
       proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
-               from the test of `default-timeout`, src/tinyfetch.test.ts:268
+               from the test of `default-timeout`, src/tinyfetch.test.ts:327
 ```
 
 The options table, which shows the default through `{{value:default-timeout.ms}}`, fails too. `skillunit proof --write` rewrites both, and the change to the skill goes in the same pull request as the change to the code. The question about the default needs no edit either: its options are built from the same constant, so after the build it offers 5 seconds as the right answer.
+
+**No value typed twice.** That works only when the value has a name. Every value that defines behaviour has a name in the code, the code and the test's assertion use it, and the sentence is built from it, with no number or word such as "doubled" typed in. tinyfetch's skill once said the wait between retries is "doubled", with `2 ** n` in the code and `2 *` in the test: the code went to `3 ** n`, the assertion was edited, and the skill kept "doubled". With `RETRY_TIMES` in all three, changing the constant fails the proof on both lines until `--write` makes them "3x". `unit()` fails a unit with a body whose text has a number none of its `values` is. The [style guide](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md#units-declared-in-code) has the rule.
 
 ### Test
 
@@ -246,30 +248,36 @@ ask: {
 
 The test runner only records them. SkillUnit asks them about the skill folder: a decision model reads the file that holds the unit and gives each answer a probability, and a question passes when the expected answer wins with a high enough probability. [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) describes the fields.
 
-**A sentence contradicts a rule.** In `skill-src/features/retries.md`, the source of the skill, in the prose above the rules:
+**A rule too vague to follow.** `retry-idempotent-only` is declared with no body in `src/tinyfetch.skill.test.ts`, since no test of the library can check what a server does with a repeated request. Weaken its `Do`, then build with `npx skillunit proof --write`:
 
 ```diff
--Which failures it repeats, and how long it waits, are in the rules below.
-+The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.
+-  do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',
++  do: 'think about whether `retry` suits the method before you enable it.',
 ```
 
-The model still picks `no-retry` for a POST and for a PATCH, but the new sentence pulls them down to 37% and 42%, under the threshold, so both questions fail. The question about which methods may get `retry` passes at 56%, close enough to the threshold to be marked borderline:
+The rule no longer names a method. Asked which methods may get `retry`, the model answers `none`; asked about a PUT, it leaves `retry` off. Both questions fail with a wrong answer, on each of four runs on 2026-11-26, at 0.63 to 0.75 for the wrong option. The questions about a POST and a PATCH still pass, since leaving `retry` off is the safe reading of a vague rule:
 
 ```
   skill/features/retries.md
     retry-idempotent-only  rule
-      test   ✗ src/tinyfetch.skill.test.ts:59  post-no-retry  no-retry 0.37
-               scenario:  A payment is sent with `tf.post` to an API that sometimes answers 503.
+      test   ✓ src/tinyfetch.skill.test.ts:60  post-no-retry  no-retry 0.84
+      test   ✓ src/tinyfetch.skill.test.ts:60  patch-no-retry  no-retry 0.91
+      test   ✗ src/tinyfetch.skill.test.ts:60  retry-methods  none 0.75
+               scenario:  The agent adds `retry` to the calls of a client that uses every method tinyfetch has.
+               question:  Which methods may get `retry`?
+               expected:  idempotent
+               got:       none · probability 0.75, threshold 0.50 · wrong answer
+                          none 75% · reads 13% · idempotent 12% · all 0%
+      test   ✗ src/tinyfetch.skill.test.ts:60  put-may-retry  no-retry 0.66
+               scenario:  A settings document is replaced with `tf.put`, and the API sometimes answers 503.
                question:  Should the agent pass `retry` to that call?
-               expected:  no-retry
-               got:       no-retry · probability 0.37, threshold 0.50 · right answer, under the threshold
-                          no-retry 37% · retry 35% · none 28%
-               phrasings: 0.39 fail  0.37 fail (probability of "no-retry" for each; 0 of 2 pass, and most must)
-      test   ✗ src/tinyfetch.skill.test.ts:59  patch-no-retry  no-retry 0.42
-               …
-      test   ~ src/tinyfetch.skill.test.ts:59  retry-methods  idempotent 0.56
-               probability 0.56, threshold 0.50 · borderline: the next run may fail it
+               expected:  retry
+               got:       no-retry · probability 0.66, threshold 0.50 · wrong answer
+                          no-retry 66% · none 32% · retry 2%
+      test   ✓ src/tinyfetch.skill.test.ts:60  get-may-retry  yes P(yes) 0.96
 ```
+
+A sentence of the prose that contradicts the same rule moves the model less. With "retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET" in the prose of `retries.md`, the questions about a POST and a PATCH ended at 0.50 to 0.58 over five runs: borderline, and passing.
 
 SkillUnit checks what a skill says. It does not check whether an agent follows it.
 
@@ -319,13 +327,17 @@ In `src/timeout.ts`, change `DEFAULT_TIMEOUT = 10_000` to `5_000`, and change no
     proof  ✗ skill/features/timeouts.md:15  this line is not what the build gives: the build has `| 'timeout' | number (ms) | '5_000' | …`, the skill has `| 'timeout' | number (ms) | '10_000' | …`. …
              from the source, skill-src/features/timeouts.md:15
     default-timeout  fact
-      proof  ✓ proved by a test, src/tinyfetch.test.ts:268
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:327
       proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.
-               from the test of `default-timeout`, src/tinyfetch.test.ts:268
+               from the test of `default-timeout`, src/tinyfetch.test.ts:327
+    timeout-off  fact
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:370
     never-disable-timeout  rule
-      proof  – declared, no test, src/tinyfetch.skill.test.ts:120
+      proof  – declared, no test, src/tinyfetch.skill.test.ts:121
+    cancel-with-signal  fact
+      proof  ✓ proved by a test, src/tinyfetch.test.ts:388
 
-  12 units · 9 proved by a test · 3 declared without one · 3 values in prose · 1 file out of date
+  16 units · 13 proved by a test · 3 declared without one · 5 values in prose · 1 file out of date
 
 Failed
   skill/features/timeouts.md › proof skill/features/timeouts.md:15
@@ -336,16 +348,16 @@ FAILED  proof 2 errors, 0 warnings
 
 The first finding is the row of the options table whose `Default` comes from the same test. If 5 seconds is the new default, run `npx skillunit proof --write`, and proof passes. With a key, `npx skillunit check` then asks the question about the default with 5 seconds as its right option, and it passes.
 
-### A sentence that contradicts a rule
+### A rule too vague to follow
 
-This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `skill-src/features/retries.md`, replace the sentence that points to the rules with the one from [Test](#test), build the skill with `npx skillunit proof --write`, then run `npx skillunit test`. It fails `post-no-retry`, and in our runs `patch-no-retry` too, near its threshold. The output ends with:
+This one asks the decision model, so it needs a key (see [Quick start](#quick-start)). In `src/tinyfetch.skill.test.ts`, replace the `do` of `retry-idempotent-only` with the one from [Test](#test), build the skill with `npx skillunit proof --write`, then run `npx skillunit test`. It fails `retry-methods` and `put-may-retry`. The output ends with:
 
 ```
 Failed
-  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  post-no-retry
-  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:59  patch-no-retry
+  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:60  retry-methods
+  skill/features/retries.md › retry-idempotent-only › src/tinyfetch.skill.test.ts:60  put-may-retry
 
-FAILED  test 14/16 passed (2 borderline)
+FAILED  test 14/16 passed
 ```
 
 Every experiment is also an [acceptance scenario](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch-e2e/src/scenarios.ts), so CI fails when SkillUnit stops reporting what one of them shows here.
