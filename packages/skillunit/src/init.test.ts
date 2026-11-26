@@ -21,7 +21,8 @@ describe('init', () => {
     const root = project();
     expect(init('skills/my-skill', root)).toEqual([
       'created skillunit.yaml',
-      'next: a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them',
+      'next: in a test, declare each file of the skill with `setup()` and each unit with `unit()`, from `skillunit/vitest`, and set `proof.run` in skillunit.yaml to the command that runs those tests',
+      'then: run `skillunit proof --write` to build ./skills/my-skill, and `skillunit check` to check it',
     ]);
     expect(existsSync(join(root, 'specs'))).toBe(false);
     expect(existsSync(join(root, 'skills', 'my-skill', 'skillunit.yaml'))).toBe(false);
@@ -29,9 +30,10 @@ describe('init', () => {
     expect(config.skill).toBe(join(root, 'skills', 'my-skill'));
     expect(config.configDir).toBe(root);
     // Building the skill from the tests is there to turn on, commented out.
-    expect(config.source).toBeUndefined();
+    expect(config.proof).toBeUndefined();
     const text = readFileSync(join(root, 'skillunit.yaml'), 'utf8');
-    expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts\n');
+    expect(text).toContain('\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts\n');
+    expect(text).not.toContain('source');
     expect(text).not.toContain('specs');
   });
 
@@ -41,13 +43,13 @@ describe('init', () => {
     expect(readFileSync(join(root, 'skillunit.yaml'), 'utf8')).toMatch(/^skill: \. +# folder with SKILL\.md$/m);
   });
 
-  it('with no SKILL.md, says so, and gives the steps that build one before any that reads it', () => {
+  it('with no SKILL.md, says so, and gives the same steps, which build it', () => {
     const root = project();
     const out = init('skills/other', root);
     expect(out).toEqual([
       'created skillunit.yaml',
-      'there is no SKILL.md in ./skills/other: set `skill` in skillunit.yaml to the folder that has it, or build one there from your tests:',
-      'next: set `source` and `proof.run` in skillunit.yaml, write the source with `{{unit:<id>}}` where each unit goes, and declare each unit and its questions in a test with `unit()` and `ask()` from `skillunit/vitest`',
+      'there is no SKILL.md in ./skills/other yet: the steps below build it from your tests',
+      'next: in a test, declare each file of the skill with `setup()` and each unit with `unit()`, from `skillunit/vitest`, and set `proof.run` in skillunit.yaml to the command that runs those tests',
       'then: run `skillunit proof --write` to build ./skills/other, and `skillunit check` to check it',
     ]);
   });

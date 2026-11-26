@@ -26,8 +26,8 @@ const HELP = `SkillUnit checks that an agent skill still says what the code it d
 
 Usage
   skillunit check [options]           proof and test: what CI runs
-  skillunit proof [options]           run the tests that declare units, build the skill from \`source\`
-                                      and those units, and compare it with the skill folder
+  skillunit proof [options]           run the tests that declare units, build the skill from the
+                                      files and units they declare, and compare it with the skill folder
   skillunit test [options]            run the tests that declare units, and ask a decision model the
                                       questions they declare about the skill folder
   skillunit init [skill]              create skillunit.yaml here, for that skill folder
@@ -177,7 +177,6 @@ async function runCommand(command: Command, args: Args) {
   if ((command === 'proof' || command === 'test') && !config.proof) {
     usage(`no \`proof\` in ${config.configFile ?? CONFIG_FILE}: the skill is built from the units and questions the tests declare, with \`setup()\`, \`unit()\` and \`ask()\`, and \`proof.run\` runs those tests`);
   }
-  if (config.source && !existsSync(config.source) && (command === 'proof' || command === 'check')) usage(`no source folder at ${config.source}`);
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
     usage(`no SKILL.md in ${config.skill}. Set \`skill\` in ${CONFIG_FILE} or pass --skill <dir>.`);
   }
@@ -194,7 +193,7 @@ async function runCommand(command: Command, args: Args) {
     // The proof first: it runs the tests that the questions come from.
     if (command === 'proof' || command === 'check') {
       if (config.proof) {
-        proofResult = runProof({ skill: config.skill, ...(config.source ? { source: config.source } : {}), config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
+        proofResult = runProof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
       } else proofResult = { configured: false, ok: true };
     }
     // The units of the skill folder: the file each question is about, and the units the report

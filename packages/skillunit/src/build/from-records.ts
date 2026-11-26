@@ -1,6 +1,6 @@
 /**
- * Builds a skill from the records the tests left, with no source folder. Each `setup()` is a file
- * of the skill; the units and questions after it in its test file belong to it.
+ * Builds a skill from the records the tests left. Each `setup()` is a file of the skill; the units
+ * and questions after it in its test file belong to it.
  *
  * ```md
  * ---                                  (SKILL.md: the frontmatter)
@@ -144,7 +144,7 @@ export function buildFromRecords(input: RecordsInput): Build {
       at('## Rules');
     }
     for (const u of mine) {
-      const base = { id: u.id, file: f.skillFile, source: { file: f.abs, line: f.line }, test: { file: u.abs, line: u.line } };
+      const base = { id: u.id, file: f.skillFile, setup: { file: f.abs, line: f.line }, test: { file: u.abs, line: u.line } };
       if (u.status === 'failed') {
         units.push({ ...base, kind: null, from: 'test', state: 'failed', error: (u as FailedUnit).error });
         add(u.abs, u.line, `the test of \`${u.id}\` (${place(u)}) failed, so it left no unit: ${(u as FailedUnit).error}`, u.id);
@@ -179,7 +179,7 @@ export function buildFromRecords(input: RecordsInput): Build {
   }
 
   units.sort((a, b) => a.file.localeCompare(b.file));
-  return { files: built, units, problems, values: 0 };
+  return { files: built, units, problems };
 }
 
 function ownRegions(regions: Map<string, Region>, id: string): Region[] {

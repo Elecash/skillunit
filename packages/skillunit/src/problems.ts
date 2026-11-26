@@ -20,11 +20,11 @@ export interface Problem {
 }
 
 /**
- * Where a line of a built skill comes from: a test that declares a unit, or a file of `source`.
+ * Where a line of a built skill comes from: a test that declares a unit, or the `setup()` of its file.
  * For a record that is not valid, the test the record names, with `unit` when its id is one.
  * `file` is from the skill folder, with `/`, as `Problem.file` is.
  */
-export type Origin = { kind: 'test'; file: string; line: number; unit?: string } | { kind: 'source'; file: string; line: number };
+export type Origin = { kind: 'test'; file: string; line: number; unit?: string };
 
 /** The settings, or the tools they point to, are wrong. The CLI exits with 2. */
 export class ConfigError extends Error {}

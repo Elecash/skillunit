@@ -244,20 +244,19 @@ describe('reporters', () => {
         state: 'passed',
         file: units.find((u) => u.id === id)!.file,
         line: 1,
-        source: { file: '../../skills-src/demo/SKILL.md', line: 3 },
+        setup: { file: '../../src/skill.skill.test.ts', line: 3 },
         test: { file: from === 'test' ? '../../src/retry.test.ts' : '../../src/skill.skill.test.ts', line: 12 },
       });
       const proof: ProofResult = {
         configured: true,
         ok: true,
         skill,
-        source: '/repo/skills-src/demo',
         write: false,
         run: { command: 'npx vitest run', status: 0, ms: 2300 },
         units: [proofOf('pick-a-client', 'declared'), proofOf('await-every-request', 'declared'), proofOf('retry-idempotent-only', 'test'), proofOf('retry-delay', 'declared')],
         files: [],
         problems: [],
-        summary: { units: 4, proved: 1, declared: 3, failed: 0, missing: 0, values: 0, files: 2, differ: 0, written: 0, extra: 0 },
+        summary: { units: 4, proved: 1, declared: 3, failed: 0, files: 2, differ: 0, written: 0, extra: 0 },
       };
       const report = buildReport('check', { units, proof, test });
       expect(render(report, 'table', { ...options, compact: true })).toMatchSnapshot();
@@ -269,14 +268,12 @@ describe('reporters', () => {
       configured: true,
       ok: false,
       skill,
-      source: '/repo/skills-src/demo',
       write: false,
       run: { command: 'npx vitest run', status: 1, ms: 4200 },
       units: [
-        { id: 'retry-idempotent-only', kind: 'rule', from: 'test', state: 'passed', file: 'features/retries.md', line: 20, source: { file: '../../skills-src/demo/features/retries.md', line: 20 }, test: { file: '../../src/retry.test.ts', line: 12 } },
-        { id: 'retry-delay', kind: null, from: 'test', state: 'failed', file: 'features/retries.md', line: 40, source: { file: '../../skills-src/demo/features/retries.md', line: 30 }, test: { file: '../../src/retry.test.ts', line: 40 }, error: 'expected 500 to be 1000' },
-        { id: 'pick-a-client', kind: 'decision', from: 'declared', state: 'passed', file: 'SKILL.md', line: 12, source: { file: '../../skills-src/demo/SKILL.md', line: 12 }, test: { file: '../../src/skill.skill.test.ts', line: 5 } },
-        { id: 'await-every-request', kind: null, from: 'test', state: 'missing', file: 'SKILL.md', line: 30, source: { file: '../../skills-src/demo/SKILL.md', line: 28 } },
+        { id: 'retry-idempotent-only', kind: 'rule', from: 'test', state: 'passed', file: 'features/retries.md', line: 20, setup: { file: '../../src/retry.test.ts', line: 3 }, test: { file: '../../src/retry.test.ts', line: 12 } },
+        { id: 'retry-delay', kind: null, from: 'test', state: 'failed', file: 'features/retries.md', line: 40, setup: { file: '../../src/retry.test.ts', line: 3 }, test: { file: '../../src/retry.test.ts', line: 40 }, error: 'expected 500 to be 1000' },
+        { id: 'pick-a-client', kind: 'decision', from: 'declared', state: 'passed', file: 'SKILL.md', line: 12, setup: { file: '../../src/skill.skill.test.ts', line: 3 }, test: { file: '../../src/skill.skill.test.ts', line: 5 } },
       ],
       files: [
         { file: 'SKILL.md', state: 'broken' },
@@ -291,11 +288,11 @@ describe('reporters', () => {
           message: 'this line is not what the build gives: the build has `Do: retry GET only.`, the skill has `Do: retry anything.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.',
           origin: { kind: 'test', file: '../../src/retry.test.ts', line: 12, unit: 'retry-idempotent-only' },
         },
-        { file: '../../skills-src/demo/features/retries.md', line: 30, unit: 'retry-delay', severity: 'error', message: 'the test of `retry-delay` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000' },
-        { file: '../../skills-src/demo/SKILL.md', line: 28, unit: 'await-every-request', severity: 'error', message: 'no test left the unit `await-every-request`: its test was skipped or deleted, or did not run' },
+        { file: '../../src/retry.test.ts', line: 40, unit: 'retry-delay', severity: 'error', message: 'the test of `retry-delay` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000' },
+        { file: 'SKILL.md', line: 30, unit: 'await-every-request', severity: 'error', message: 'the skill has the unit `await-every-request`, and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill' },
         { file: '../../skillunit.yaml', line: 3, severity: 'warning', message: '`proof.format` failed on the build of SKILL.md' },
       ],
-      summary: { units: 4, proved: 1, declared: 1, failed: 1, missing: 1, values: 2, files: 2, differ: 1, written: 0, extra: 0 },
+      summary: { units: 3, proved: 1, declared: 1, failed: 1, files: 2, differ: 1, written: 0, extra: 0 },
     };
     const withProof = buildReport('proof', { units, proof });
 
@@ -326,10 +323,10 @@ describe('reporters', () => {
     });
 
     it('every reporter gives the summary of the build', () => {
-      const summary = '4 units · 1 proved by a test, 1 failed, 1 missing · 1 declared without one · 2 values in prose · 1 file out of date';
+      const summary = '3 units · 1 proved by a test, 1 failed · 1 declared without one · 1 file out of date';
       expect(render(withProof, 'table', options)).toContain(`  ${summary}\n`);
       expect(render(withProof, 'github', options)).toContain(`::notice title=SkillUnit proof::${summary}\n`);
-      expect(JSON.parse(render(withProof, 'json', options)).proof.summary).toMatchObject({ units: 4, proved: 1, declared: 1, values: 2 });
+      expect(JSON.parse(render(withProof, 'json', options)).proof.summary).toMatchObject({ units: 3, proved: 1, declared: 1, failed: 1 });
       expect(render(withProof, 'junit', options)).toContain('<property name="from" value="test"/>');
     });
 
@@ -362,7 +359,7 @@ describe('reporters', () => {
       expect(render(report, 'junit', options)).toContain(`<system-out>${line}</system-out>`);
     });
 
-    it('table: says when check ran with no source', () => {
+    it('table: says when check ran with no `proof`', () => {
       const report = buildReport('check', { units, proof: { configured: false, ok: true } });
       const text = render(report, 'table', options);
       expect(text).toContain('Units  proof not configured\n');

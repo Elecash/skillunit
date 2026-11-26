@@ -8,17 +8,13 @@ import { CONFIG_FILE } from './config.js';
 import { ConfigError } from './problems.js';
 
 function config(skill: string): string {
-  const lines = [
+  return `${[
     '# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme',
     `skill: ${skill}`.padEnd(32) + '# folder with SKILL.md',
     '# context: "One sentence about what the skill is for."',
-  ];
-  lines.push(
-    '# To build the skill from the folder people write and the units and questions your tests declare:',
-    '# source: ./skill-src',
-    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts',
-  );
-  return `${lines.join('\n')}\n`;
+    '# To build the skill from the files and units your tests declare:',
+    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts',
+  ].join('\n')}\n`;
 }
 
 /** Writes the files in `cwd` for the skill in `dir`. Returns what to print. */
@@ -32,15 +28,10 @@ export function init(dir: string, cwd = process.cwd()): string[] {
   writeFileSync(configPath, config(skill));
 
   const out = [`created ${CONFIG_FILE}`];
-  if (!existsSync(join(skillDir, 'SKILL.md'))) {
-    // No skill yet: the steps that build one come first.
-    out.push(
-      `there is no SKILL.md in ${skill}: set \`skill\` in ${CONFIG_FILE} to the folder that has it, or build one there from your tests:`,
-      `next: set \`source\` and \`proof.run\` in ${CONFIG_FILE}, write the source with \`{{unit:<id>}}\` where each unit goes, and declare each unit and its questions in a test with \`unit()\` and \`ask()\` from \`skillunit/vitest\``,
-      `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
-    );
-    return out;
-  }
-  out.push('next: a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them');
+  if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill} yet: the steps below build it from your tests`);
+  out.push(
+    `next: in a test, declare each file of the skill with \`setup()\` and each unit with \`unit()\`, from \`skillunit/vitest\`, and set \`proof.run\` in ${CONFIG_FILE} to the command that runs those tests`,
+    `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
+  );
   return out;
 }

@@ -1,6 +1,6 @@
 // Copies the files the npm package ships but the repository keeps at its root: the README,
 // the licence, the docs, so they can be read offline, and the SkillUnit skill, which holds only
-// what an agent reads (its settings and its source are at the repository root). Runs on
+// what an agent reads (its settings are at the repository root, and its tests in src/skill). Runs on
 // `npm pack` and `npm publish`.
 import { cpSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';

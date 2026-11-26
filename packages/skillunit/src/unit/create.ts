@@ -154,7 +154,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
           const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
           const failed = async (error: unknown) => {
-            // An id that is not one cannot be named by a slot; nothing would read the record.
+            // An id that is not one cannot be built into the skill; nothing would read the record.
             if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', error: messageOf(error) }, key);
           };
           if (problem) {

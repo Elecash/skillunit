@@ -17,7 +17,7 @@ const CLOSE = `#${'endregion'}`;
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
 
-/** A project: the settings' folder holds `skill-src/`, `skill/`, `tests/` and `tmp/skill-units/`. */
+/** A project: the settings' folder holds `skill/`, `tests/` and `tmp/skill-units/`. */
 function project(files: Record<string, string | null>): string {
   const root = mkdtempSync(join(tmpdir(), 'skillunit-build-'));
   roots.push(root);
@@ -29,45 +29,21 @@ function project(files: Record<string, string | null>): string {
   return root;
 }
 
-/** A record as `unit()` leaves it, declared at `tests/a.test.ts:<line>`. */
+/** A record as `unit()` leaves it, declared at `tests/a.test.ts:<line>`, in the file `setup('demo')` declares. */
 const record = (id: string, line: number, more: Record<string, unknown>) =>
-  `${JSON.stringify({ skillunit: 2, status: 'passed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, examples: [], ...more }, null, 2)}\n`;
-const failed = (id: string, line: number, error: string) => `${JSON.stringify({ skillunit: 2, status: 'failed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, error })}\n`;
+  `${JSON.stringify({ skillunit: 2, status: 'passed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, examples: [], setup: 'demo', order: line, ...more }, null, 2)}\n`;
+const failed = (id: string, line: number, error: string) => `${JSON.stringify({ skillunit: 2, status: 'failed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, error, setup: 'demo', order: line })}\n`;
+/** The record of a `setup()`, declared at `tests/a.test.ts:<line>`. */
+const setup = (id: string, line: number, more: Record<string, unknown>) =>
+  `${JSON.stringify({ skillunit: 2, status: 'passed', kind: 'file', id, file: 'tests/a.test.ts', line, test: `file ${id}`, ...more })}\n`;
 
-const config = (root: string, more: Partial<ProofConfig> = {}): ProofConfig => ({ units: join(root, 'tmp/skill-units'), sources: ['tests/*.test.ts'], cwd: root, ...more });
+const config = (root: string, more: Partial<ProofConfig> = {}): ProofConfig => ({ units: join(root, 'tmp/skill-units'), cwd: root, ...more });
 const run = (root: string, more: Partial<ProofConfig> = {}, options: Partial<ProofOptions> = {}) =>
-  proof({ skill: join(root, 'skill'), source: join(root, 'skill-src'), config: config(root, more), configFile: join(root, 'skillunit.yaml'), ...options });
+  proof({ skill: join(root, 'skill'), config: config(root, more), configFile: join(root, 'skillunit.yaml'), ...options });
 
 const show = (p: Problem) => `${p.file}:${p.line} ${p.unit ?? '-'} ${p.severity}: ${p.message}${p.origin ? ` [${p.origin.kind} ${p.origin.file}:${p.origin.line}]` : ''}`;
 const errors = (r: ReturnType<typeof proof>) => r.problems.filter((p) => p.severity === 'error').map(show);
 const read = (root: string, path: string) => readFileSync(join(root, path), 'utf8');
-
-const SOURCE = `# Demo
-
-A request waits {{value:default-timeout.seconds}} seconds.
-
-| Option | Default |
-| --- | --- |
-| \`timeout\` | {{ value:default-timeout.ms }} |
-
-${F}ts
-tf.get(url, { timeout: {{value:default-timeout.ms}} });
-${F}
-
-${F}md
-{{unit:not-a-slot-in-a-fence}}
-${F}
-
-## Rules
-
-{{unit:default-timeout}}
-
-{{unit:check-status}}
-
-{{unit:one-client-per-api}}
-
-{{unit:by-hand}}
-`;
 
 const TEST = `test('x', () => {
   // ${OPEN('check-status')}
@@ -80,6 +56,7 @@ const TEST = `test('x', () => {
 `;
 
 const RECORDS = {
+  'tmp/skill-units/demo.0000.json': setup('demo', 1, { skillFile: 'SKILL.md', title: 'Demo', description: 'A small HTTP client.', frontmatter: { name: 'demo', description: 'Make requests with demo.' } }),
   'tmp/skill-units/default-timeout.0001.json': record('default-timeout', 10, {
     kind: 'fact',
     when: 'the user asks how long a request waits by default.',
@@ -102,21 +79,14 @@ const RECORDS = {
   }),
 };
 
-const BUILT = `# Demo
+const BUILT = `---
+name: demo
+description: Make requests with demo.
+---
 
-A request waits 10 seconds.
+# Demo
 
-| Option | Default |
-| --- | --- |
-| \`timeout\` | 10000 |
-
-${F}ts
-tf.get(url, { timeout: 10000 });
-${F}
-
-${F}md
-{{unit:not-a-slot-in-a-fence}}
-${F}
+A small HTTP client.
 
 ## Rules
 
@@ -168,42 +138,25 @@ When: calling one API many times.
 Do: reuse one client.
 `;
 
-const GOOD = { 'skillunit.yaml': 'skill: ./skill\nsource: ./skill-src\nproof:\n  units: ./tmp/skill-units\n', 'skill-src/SKILL.md': SOURCE, 'skill-src/logo.txt': 'logo\n', 'tests/a.test.ts': TEST, ...RECORDS };
+/** The line of `text` in BUILT, from 1. */
+const lineOf = (text: string) => BUILT.split('\n').findIndex((l) => l.startsWith(text)) + 1;
+
+const GOOD = { 'skillunit.yaml': 'skill: ./skill\nproof:\n  units: ./tmp/skill-units\n', 'tests/a.test.ts': TEST, ...RECORDS };
 
 describe('building the skill', () => {
-  it('renders each kind, fills values in prose, tables and fenced blocks, and copies other files', () => {
+  it('renders each kind, and every line comes from the setup() of the file or the test of a unit', () => {
     const root = project(GOOD);
     const r = run(root, {}, { write: true });
     expect(r.problems.map(show)).toEqual([]);
     expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
-    expect(read(root, 'skill/logo.txt')).toBe('logo\n');
-    expect(r.files).toEqual([
-      { file: 'logo.txt', state: 'written' },
-      { file: 'SKILL.md', state: 'written' },
+    expect(r.files).toEqual([{ file: 'SKILL.md', state: 'written' }]);
+    expect(r.summary).toEqual({ units: 4, proved: 3, declared: 1, failed: 0, files: 1, differ: 0, written: 1, extra: 0 });
+    expect(r.units.map((u) => `${u.id} ${u.from} ${u.state} ${u.file}:${u.line} ${u.test.file}:${u.test.line} ${u.setup.file}:${u.setup.line}`)).toEqual([
+      `default-timeout test passed SKILL.md:${lineOf('### fact: default-timeout')} ../tests/a.test.ts:10 ../tests/a.test.ts:1`,
+      `check-status test passed SKILL.md:${lineOf('### rule: check-status')} ../tests/a.test.ts:20 ../tests/a.test.ts:1`,
+      `one-client-per-api test passed SKILL.md:${lineOf('### decision: one-client-per-api')} ../tests/a.test.ts:30 ../tests/a.test.ts:1`,
+      `by-hand declared passed SKILL.md:${lineOf('### rule: by-hand')} ../tests/a.test.ts:40 ../tests/a.test.ts:1`,
     ]);
-    expect(r.summary).toEqual({ units: 4, proved: 3, declared: 1, failed: 0, missing: 0, values: 3, files: 2, differ: 0, written: 2, extra: 0 });
-    expect(r.units.map((u) => `${u.id} ${u.from} ${u.state} ${u.file}:${u.line} ${u.test ? `${u.test.file}:${u.test.line}` : '-'} ${u.source.file}:${u.source.line}`)).toEqual([
-      'default-timeout test passed SKILL.md:19 ../tests/a.test.ts:10 ../skill-src/SKILL.md:19',
-      'check-status test passed SKILL.md:32 ../tests/a.test.ts:20 ../skill-src/SKILL.md:21',
-      'one-client-per-api test passed SKILL.md:44 ../tests/a.test.ts:30 ../skill-src/SKILL.md:23',
-      'by-hand declared passed SKILL.md:60 ../tests/a.test.ts:40 ../skill-src/SKILL.md:25',
-    ]);
-  });
-
-  it('reads the regions from the test file each record names, with no `proof.sources`', () => {
-    const root = project(GOOD);
-    const r = run(root, { sources: [] }, { write: true });
-    expect(r.problems.map(show)).toEqual([]);
-    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
-  });
-
-  it('reads the regions of `proof.sources` too: a file that holds regions and declares no unit', () => {
-    const shared = `// ${OPEN('check-status')}\nif (isHttpError(error)) return null;\n// ${CLOSE}\n`;
-    const root = project({ ...GOOD, 'tests/a.test.ts': TEST.replace(`  // ${OPEN('check-status')}\n  if (isHttpError(error)) return null;\n  // ${CLOSE}\n`, ''), 'examples/shared.ts': shared });
-    expect(read(root, 'tests/a.test.ts')).not.toContain(OPEN('check-status'));
-    const r = run(root, { sources: ['examples/*.ts'] }, { write: true });
-    expect(r.problems.map(show)).toEqual([]);
-    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
   });
 
   it('compares the skill folder with the build: the same, after a write', () => {
@@ -212,16 +165,13 @@ describe('building the skill', () => {
     const r = run(root);
     expect(r.problems.map(show)).toEqual([]);
     expect(r.ok).toBe(true);
-    expect(r.files.map((f) => f.state)).toEqual(['same', 'same']);
+    expect(r.files.map((f) => f.state)).toEqual(['same']);
     expect(r.run).toEqual({ skipped: 'not-set' });
   });
 
-  it('a skill folder that lacks a file the source builds', () => {
+  it('a skill folder that lacks a file a setup() declares', () => {
     const root = project(GOOD);
-    expect(errors(run(root))).toEqual([
-      'logo.txt:1 - error: the skill folder has no `logo.txt`, which `source` builds. Run `skillunit proof --write`',
-      'SKILL.md:1 - error: the skill folder has no `SKILL.md`, which `source` builds. Run `skillunit proof --write` [source ../skill-src/SKILL.md:1]',
-    ]);
+    expect(errors(run(root))).toEqual(['SKILL.md:1 - error: the skill folder has no `SKILL.md`, which a `setup()` declares. Run `skillunit proof --write` [test ../tests/a.test.ts:1]']);
   });
 });
 
@@ -236,14 +186,14 @@ describe('a skill folder edited by hand', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('Value: 10 seconds', 'Value: 30 seconds'));
     expect(errors(run(root))).toEqual([
-      "SKILL.md:23 default-timeout error: this line is not what the build gives: the build has `Value: 10 seconds ('timeout: 10000'), for every method.`, the skill has `Value: 30 seconds ('timeout: 10000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built. [test ../tests/a.test.ts:10]",
+      `SKILL.md:${lineOf('Value:')}` + " default-timeout error: this line is not what the build gives: the build has `Value: 10 seconds ('timeout: 10000'), for every method.`, the skill has `Value: 30 seconds ('timeout: 10000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built. [test ../tests/a.test.ts:10]",
     ]);
   });
 
   it('each block that differs gets a finding of its own, with its origin', () => {
     const root = written();
-    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits 10 seconds.', 'A request waits 30 seconds.').replace('Value: 10 seconds', 'Value: 30 seconds'));
-    expect(errors(run(root)).map((e) => e.replace(/ error: .* \[/, ' ['))).toEqual(['SKILL.md:3 - [source ../skill-src/SKILL.md:3]', 'SKILL.md:23 default-timeout [test ../tests/a.test.ts:10]']);
+    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A small HTTP client.', 'A tiny HTTP client.').replace('Value: 10 seconds', 'Value: 30 seconds'));
+    expect(errors(run(root)).map((e) => e.replace(/ error: .* \[/, ' ['))).toEqual([`SKILL.md:${lineOf('A small')} - [test ../tests/a.test.ts:1]`, `SKILL.md:${lineOf('Value:')} default-timeout [test ../tests/a.test.ts:10]`]);
   });
 
   it('a long line that differs past its first 100 characters: each side is shown around the difference, and the JSON keeps both whole', () => {
@@ -268,149 +218,87 @@ describe('a skill folder edited by hand', () => {
     expect(found[0]!.lines).toEqual({ build: 'Right:', skill: null });
   });
 
+  /** GOOD with no unit: the file is its frontmatter, its title and its description. */
+  const bare = { 'skillunit.yaml': GOOD['skillunit.yaml'], 'tests/a.test.ts': '', 'tmp/skill-units/demo.0000.json': RECORDS['tmp/skill-units/demo.0000.json'] };
+  const BARE = BUILT.slice(0, BUILT.indexOf('\n## Rules'));
+
   it('lines the skill lacks at the end of the file: the line reported is in the file, and so is its origin', () => {
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': '# Demo\n\nA.\n\nLast line.\n' });
+    const root = project(bare);
     run(root, {}, { write: true });
-    writeFileSync(join(root, 'skill/SKILL.md'), '# Demo\n\nA.\n');
+    expect(read(root, 'skill/SKILL.md')).toBe(BARE);
+    writeFileSync(join(root, 'skill/SKILL.md'), BARE.replace('A small HTTP client.\n', ''));
     const [finding] = run(root).problems.filter((p) => p.file === 'SKILL.md');
-    expect(finding!.line).toBeLessThanOrEqual(3);
-    expect(finding!.origin).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 5 });
+    expect(finding!.line).toBeLessThanOrEqual(BARE.split('\n').length - 2);
+    expect(finding!.origin).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 1 });
   });
 
   it('an empty line the skill has at its end: the line reported and its origin are lines of their files', () => {
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': '# Demo\n\nLast line.\n' });
+    const root = project(bare);
     run(root, {}, { write: true });
-    // Four lines, where the build and the source have three.
-    writeFileSync(join(root, 'skill/SKILL.md'), '# Demo\n\nLast line.\n\n');
+    writeFileSync(join(root, 'skill/SKILL.md'), `${BARE}\n`);
     const [finding] = run(root).problems.filter((p) => p.file === 'SKILL.md');
-    expect(finding!.line).toBeLessThanOrEqual(4);
-    expect(finding!.origin).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
+    expect(finding!.line).toBeLessThanOrEqual(BARE.split('\n').length);
+    expect(finding!.origin).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 1 });
   });
 
-  it('a line of prose: the finding names the source', () => {
+  it('a line of the description of a file: the finding names its setup()', () => {
     const root = written();
-    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits', 'Every request waits'));
+    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A small HTTP client.', 'A tiny HTTP client.'));
     expect(errors(run(root))).toEqual([
-      'SKILL.md:3 - error: this line is not what the build gives: the build has `A request waits 10 seconds.`, the skill has `Every request waits 10 seconds.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built. [source ../skill-src/SKILL.md:3]',
+      `SKILL.md:${lineOf('A small')} - error: this line is not what the build gives: the build has \`A small HTTP client.\`, the skill has \`A tiny HTTP client.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built. [test ../tests/a.test.ts:1]`,
     ]);
   });
 
   it('a line added inside a block of a region: the finding names the test', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('if (isHttpError(error)) return null;\n', 'if (isHttpError(error)) return null;\nconsole.log(error);\n'));
-    expect(errors(run(root))[0]).toMatch(/^SKILL\.md:42 check-status error: .* the skill has `console\.log\(error\);`\. Run `skillunit proof --write` to update the skill\. .* \[test \.\.\/tests\/a\.test\.ts:2\]$/);
+    expect(errors(run(root))[0]).toMatch(new RegExp(`^SKILL\\.md:${lineOf('if (isHttpError') + 1} check-status error:`));
+    expect(errors(run(root))[0]).toMatch(/check-status error: .* the skill has `console\.log\(error\);`\. Run `skillunit proof --write` to update the skill\. .* \[test \.\.\/tests\/a\.test\.ts:2\]$/);
   });
 
-  it('a file that is not Markdown', () => {
+  it('a file no setup() declares, Markdown or not, and a Markdown file whose name starts with a dot; other dot-files are left alone', () => {
     const root = written();
     writeFileSync(join(root, 'skill/logo.txt'), 'other\n');
-    expect(errors(run(root))).toEqual(['logo.txt:1 - error: this file is not the one in `source`, which it is copied from: edit skill-src/logo.txt, then run `skillunit proof --write` [source ../skill-src/logo.txt:1]']);
-  });
-
-  it('a Markdown file whose name starts with a dot: reported as any file the source does not build; other dot-files are left alone', () => {
-    const root = written();
     writeFileSync(join(root, 'skill/.notes.md'), 'tinyfetch retries forever.\n');
     writeFileSync(join(root, 'skill/.DS_Store'), 'x');
-    expect(errors(run(root))).toEqual(['.notes.md:1 - error: no file of `source` builds `.notes.md`, and none can: the build leaves out a name that starts with a dot. Remove it from the skill folder']);
+    expect(errors(run(root))).toEqual([
+      '.notes.md:1 - error: no `setup()` declares `.notes.md`: declare it in a test, or remove it from the skill folder',
+      'logo.txt:1 - error: no `setup()` declares `logo.txt`: declare it in a test, or remove it from the skill folder',
+    ]);
   });
 
-  it('a file the source does not build: reported, and left in place by --write', () => {
+  it('a file no setup() declares: reported, and left in place by --write', () => {
     const root = written();
     writeFileSync(join(root, 'skill/extra.md'), '# Extra\n');
-    expect(errors(run(root))).toEqual(['extra.md:1 - error: no file of `source` builds `extra.md`: move it to skill-src/extra.md, or remove it from the skill folder']);
+    expect(errors(run(root))).toEqual(['extra.md:1 - error: no `setup()` declares `extra.md`: declare it in a test, or remove it from the skill folder']);
     const r = run(root, {}, { write: true });
-    expect(errors(r)).toEqual(['extra.md:1 - error: no file of `source` builds `extra.md`: move it to skill-src/extra.md, or remove it from the skill folder. `--write` leaves it there']);
+    expect(errors(r)).toEqual(['extra.md:1 - error: no `setup()` declares `extra.md`: declare it in a test, or remove it from the skill folder. `--write` leaves it there']);
     expect(existsSync(join(root, 'skill/extra.md'))).toBe(true);
     expect(r.summary.extra).toBe(1);
   });
 });
 
-describe('what the build cannot fill', () => {
-  it('a slot with no unit, and why: who ran the tests', () => {
-    const { 'tmp/skill-units/check-status.0002.json': _, ...rest } = GOOD;
-    const root = project(rest);
-    const message = (more: Partial<ProofConfig>, options: Partial<ProofOptions> = {}) => errors(run(root, more, options)).find((e) => e.includes('check-status'));
-    expect(message({})).toBe(
-      '../skill-src/SKILL.md:21 check-status error: no test left the unit `check-status`: `proof.run` is not set, so the units are those already in `tmp/skill-units`: run the tests first, or set `proof.run`',
-    );
-    expect(message({ run: 'true' }, { noRun: true })).toBe(
-      '../skill-src/SKILL.md:21 check-status error: no test left the unit `check-status`: `--no-run` used the units already in `tmp/skill-units`, and none is this one: run the tests first, or leave out `--no-run`',
-    );
-    // The run empties the folder and leaves nothing: every slot is missing, and the run did not fail.
-    const ran = run(root, { run: 'true' });
-    expect(errors(ran)).toContain('../skill-src/SKILL.md:19 default-timeout error: no test left the unit `default-timeout`: its test was skipped or deleted, or did not run');
-    expect(ran.run).toMatchObject({ command: 'true', status: 0 });
-    expect(ran.summary.missing).toBe(4);
-  });
-
-  it('a slot whose test failed: the finding carries the error', () => {
+describe('a unit whose test failed', () => {
+  it('the finding is on its test and carries the error, and its file is not built', () => {
     const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': failed('check-status', 20, 'expected 500 to be 404') });
     const r = run(root);
-    expect(errors(r)).toContain('../skill-src/SKILL.md:21 check-status error: the test of `check-status` (tests/a.test.ts:20) failed, so it left no unit: expected 500 to be 404');
+    expect(errors(r)).toContain('../tests/a.test.ts:20 check-status error: the test of `check-status` (tests/a.test.ts:20) failed, so it left no unit: expected 500 to be 404');
     expect(r.units.find((u) => u.id === 'check-status')).toMatchObject({ state: 'failed', error: 'expected 500 to be 404', test: { file: '../tests/a.test.ts', line: 20 } });
     expect(r.files.find((f) => f.file === 'SKILL.md')!.state).toBe('broken');
   });
-
-  it('a value with no value: no unit, or no such name', () => {
-    const src = `# Demo\n\n{{value:default-timeout.minutes}} and {{value:gone.seconds}} and {{value:bad}}\n\n## Rules\n\n{{unit:default-timeout}}\n`;
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': src, 'tmp/skill-units/check-status.0002.json': null, 'tmp/skill-units/one-client-per-api.0003.json': null });
-    expect(errors(run(root)).filter((e) => e.startsWith('../skill-src'))).toEqual([
-      `../skill-src/SKILL.md:3 default-timeout error: \`{{value:default-timeout.minutes}}\` has no value: the unit \`default-timeout\` (tests/a.test.ts:10) has no value \`minutes\` (its values: seconds, ms)`,
-      '../skill-src/SKILL.md:3 gone error: `{{value:gone.seconds}}` has no value: no test left the unit `gone`; `proof.run` is not set, so the units are those already in `tmp/skill-units`: run the tests first, or set `proof.run`',
-      '../skill-src/SKILL.md:3 - error: `{{value:bad}}` needs a unit id, a dot and the name of a value: `{{value:default-timeout.seconds}}`',
-    ]);
-  });
-
-  it('leaves a placeholder in a sentence about slots as it is', () => {
-    const src = `# Demo\n\nPut \`{{unit:<id>}}\` where a unit goes, and \`{{value:<id>.<name>}}\` for a value: {{value:default-timeout.seconds}}.\n\n## Rules\n\n{{unit:default-timeout}}\n`;
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': src, 'tmp/skill-units/check-status.0002.json': null, 'tmp/skill-units/one-client-per-api.0003.json': null, 'tmp/skill-units/by-hand.0004.json': null, 'tests/a.test.ts': '' });
-    const r = run(root, {}, { write: true });
-    expect(errors(r)).toEqual([]);
-    expect(read(root, 'skill/SKILL.md')).toContain('Put `{{unit:<id>}}` where a unit goes, and `{{value:<id>.<name>}}` for a value: 10.');
-    expect(r.summary.values).toBe(1);
-  });
-
-  it('a slot that is not alone on its line, or names no id', () => {
-    const src = `# Demo\n\n## Rules\n\nSee {{unit:default-timeout}}.\n\n{{unit:Default}}\n`;
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': src });
-    expect(errors(run(root)).filter((e) => e.startsWith('../skill-src'))).toEqual([
-      '../skill-src/SKILL.md:5 - error: `{{unit:default-timeout}}` goes alone on its line, where the unit goes',
-      '../skill-src/SKILL.md:7 - error: `{{unit:Default}}` needs the id of a unit, in kebab-case: `{{unit:default-timeout}}`',
-    ]);
-  });
 });
 
-describe('a unit in two places, or in none', () => {
-  it('a test declares a unit and no file of the source has its slot', () => {
-    const root = project({ ...GOOD, 'skill-src/SKILL.md': SOURCE.replace('{{unit:check-status}}\n', '') });
-    expect(errors(run(root, {}, { write: true }))).toEqual(['../tests/a.test.ts:20 check-status error: this test declares the unit `check-status`, and no file of `source` has `{{unit:check-status}}` where it goes']);
-  });
-
+describe('a unit declared twice, and a region with no owner', () => {
   it('two tests declare the same id', () => {
     const root = project({ ...GOOD, 'tmp/skill-units/check-status.0009.json': record('check-status', 90, { kind: 'rule', when: 'x.', do: 'y.' }) });
     expect(errors(run(root, {}, { write: true }))).toEqual([`../tests/a.test.ts:90 check-status error: the unit \`check-status\` is also declared at tests/a.test.ts:20; two tests cannot declare the same id`]);
-  });
-
-  it('a unit heading in the source: an error on its line, and the file is not built', () => {
-    const root = project({ ...GOOD, 'skill-src/features.md': '# More\n\n## Rules\n\n### rule: written-here\n\nWhen: calling an API.\n\nDo: reuse one client.\n' });
-    const r = run(root, {}, { write: true });
-    expect(errors(r)).toEqual(['../skill-src/features.md:5 written-here error: units are declared with `unit()`; put `{{unit:written-here}}` here']);
-    expect(r.files.find((f) => f.file === 'features.md')).toEqual({ file: 'features.md', state: 'broken' });
-  });
-
-  it('a slot twice', () => {
-    const root = project({ ...GOOD, 'skill-src/features.md': '# More\n\n## Rules\n\n{{unit:check-status}}\n' });
-    const r = run(root, {}, { write: true });
-    expect(errors(r)).toEqual([`../skill-src/features.md:5 check-status error: the slot of \`check-status\` is also at skill-src/SKILL.md:21; a unit goes in one place`]);
-    // Neither file is built: which slot is the right one is not known.
-    expect(r.files.filter((f) => f.state === 'broken').map((f) => f.file)).toEqual(['features.md', 'SKILL.md']);
   });
 
   it('a region of a unit no test declares, and a region that names no path of its decision', () => {
     const test = `${TEST}// ${OPEN('nobody')}\nx;\n// ${CLOSE}\n// ${OPEN('one-client-per-api.cache')}\ny;\n// ${CLOSE}\n`;
     const root = project({ ...GOOD, 'tests/a.test.ts': test });
     expect(errors(run(root, {}, { write: true }))).toEqual([
-      '../tests/a.test.ts:9 - error: the region `skill:nobody` belongs to no unit a test declares; an example comes from the body of the test of its unit',
+      '../tests/a.test.ts:9 - error: the region `skill:nobody` belongs to no unit and no file a test declares; an example comes from the body of the test of its unit',
       '../tests/a.test.ts:12 one-client-per-api error: the region `skill:one-client-per-api.cache` names no path of the decision `one-client-per-api`; the example of a path is in the region `skill:<id>.<path>` (`skill:one-client-per-api.shared`, `skill:one-client-per-api.direct`)',
     ]);
   });
@@ -503,14 +391,14 @@ process.exit(${code});
     const r = run(root, { run: 'node run.mjs' }, { write: true });
     expect(r.problems.map(show)).toEqual([]);
     expect(r.run).toMatchObject({ command: 'node run.mjs', status: 0, ms: expect.any(Number) });
-    expect(readdirSync(join(root, 'tmp/skill-units')).sort()).toEqual(['by-hand.0004.json', 'check-status.0002.json', 'default-timeout.0001.json', 'keep.txt', 'one-client-per-api.0003.json']);
+    expect(readdirSync(join(root, 'tmp/skill-units')).sort()).toEqual(['by-hand.0004.json', 'check-status.0002.json', 'default-timeout.0001.json', 'demo.0000.json', 'keep.txt', 'one-client-per-api.0003.json']);
     expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
   });
 
   it('a run that exits with 1 and left every unit: one error, on `proof.run`, with the end of its output', () => {
     const root = project({ ...GOOD, 'run.mjs': script(1) });
     const r = run(root, { run: 'node run.mjs' }, { write: true });
-    expect(errors(r)).toEqual(['../skillunit.yaml:3 - error: `proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did. The end of its output:\nran the tests']);
+    expect(errors(r)).toEqual(['../skillunit.yaml:2 - error: `proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did. The end of its output:\nran the tests']);
     expect(r.ok).toBe(false);
     // The build goes on: every unit is there, from its test.
     expect(r.units.filter((u) => u.from === 'test').map((u) => u.state)).toEqual(['passed', 'passed', 'passed']);
@@ -521,9 +409,9 @@ process.exit(${code});
     const failing = `${script(1).replace("process.exit(1);", '')}writeFileSync('tmp/skill-units/check-status.0002.json', ${JSON.stringify(failed('check-status', 20, 'expected 500 to be 404'))});\nprocess.exit(1);\n`;
     const root = project({ ...GOOD, 'run.mjs': failing });
     const r = run(root, { run: 'node run.mjs' }, { write: true });
-    expect(errors(r).map((e) => e.replace(/: .*/s, ''))).toEqual(['../skill-src/SKILL.md:21 check-status error', '../skillunit.yaml:3 - error']);
-    expect(errors(r)[0]).toContain('expected 500 to be 404');
-    expect(errors(r)[1]).toContain('`proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did');
+    expect(errors(r).map((e) => e.replace(/: .*/s, ''))).toEqual(['../skillunit.yaml:2 - error', '../tests/a.test.ts:20 check-status error']);
+    expect(errors(r)[1]).toContain('expected 500 to be 404');
+    expect(errors(r)[0]).toContain('`proof.run` (`node run.mjs`) exited with 1: a test failed, or the run did');
   });
 
   it('a run that exits with 0 adds nothing', () => {
@@ -532,13 +420,12 @@ process.exit(${code});
   });
 
   it('a command that left no unit and failed: one error, with the end of its output', () => {
-    const root = project({ ...GOOD, 'skillunit.yaml': 'skill: ./skill\nsource: ./skill-src\nproof:\n  run: "no-such-command-here --run"\n' });
+    const root = project({ ...GOOD, 'skillunit.yaml': 'skill: ./skill\nproof:\n  run: "no-such-command-here --run"\n' });
     const r = run(root, { run: 'no-such-command-here --run' });
-    const findings = r.problems.filter((p) => p.file === '../skillunit.yaml');
-    expect(findings).toHaveLength(1);
-    expect(findings[0]!.line).toBe(4);
-    expect(findings[0]!.message).toMatch(/^`proof\.run` \(`no-such-command-here --run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-command-here.*not found/s);
-    expect(errors(r)).toContain('../skill-src/SKILL.md:19 default-timeout error: no test left the unit `default-timeout`: the tests did not run; see `proof.run`');
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]!.file).toBe('../skillunit.yaml');
+    expect(r.problems[0]!.line).toBe(3);
+    expect(r.problems[0]!.message).toMatch(/^`proof\.run` \(`no-such-command-here --run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-command-here.*not found/s);
   });
 
   it('a run that does not finish says so', () => {
@@ -568,6 +455,12 @@ if (bad) { console.error(bad + ': cannot format'); process.exit(2); }
 for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\\n', '# Demo\\n\\n<!-- built -->\\n').replace('\\n\\nRight:', '\\nRight:'));
 `;
 
+  /** Two more files of the skill: `features/other.md`, whose description is `other`, and `third.md`. */
+  const more = (other: string) => ({
+    'tmp/skill-units/other.json': setup('other', 2, { skillFile: 'features/other.md', title: 'Demo', when: 'Other things', description: other }),
+    'tmp/skill-units/third.json': setup('third', 3, { skillFile: 'third.md', title: 'Demo', when: 'Third things', description: 'Third.' }),
+  });
+
   it('runs on each built Markdown file, and the skill is compared as it leaves them', () => {
     const root = project({ ...GOOD, 'fmt.mjs': FMT });
     const r = run(root, { format: 'node fmt.mjs {file}' }, { write: true });
@@ -576,11 +469,11 @@ for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\
     expect(text).toContain('<!-- built -->');
     expect(run(root, { format: 'node fmt.mjs {file}' }).ok).toBe(true);
     // No copy left next to the file.
-    expect(readdirSync(join(root, 'skill')).sort()).toEqual(['SKILL.md', 'logo.txt']);
+    expect(readdirSync(join(root, 'skill')).sort()).toEqual(['SKILL.md']);
   });
 
   it('runs once, with every built Markdown file in place of {file}', () => {
-    const root = project({ ...GOOD, 'fmt.mjs': FMT, 'skill-src/features/other.md': '# Demo\n\nOther.\n', 'skill-src/third.md': '# Demo\n\nThird.\n' });
+    const root = project({ ...GOOD, 'fmt.mjs': FMT, ...more('Other.') });
     const r = run(root, { format: 'node fmt.mjs {file}' }, { write: true });
     expect(r.problems.map(show)).toEqual([]);
     expect(read(root, 'runs.txt')).toBe('3\n');
@@ -588,7 +481,7 @@ for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\
   });
 
   it('when the one run fails, runs once per file, so the error names the file it failed on and the others are formatted', () => {
-    const root = project({ ...GOOD, 'fmt.mjs': FMT, 'skill-src/features/other.md': '# Demo\n\nBAD.\n', 'skill-src/third.md': '# Demo\n\nThird.\n' });
+    const root = project({ ...GOOD, 'fmt.mjs': FMT, ...more('BAD.') });
     const r = run(root, { format: 'node fmt.mjs {file}' }, { write: true });
     expect(errors(r)).toEqual([expect.stringMatching(/^\.\.\/skillunit\.yaml:\d+ - error: `proof\.format` failed on the build of features\/other\.md:\n.*features\/other\.md: cannot format$/)]);
     expect(read(root, 'runs.txt')).toBe('3\n1\n1\n1\n');
@@ -599,23 +492,24 @@ for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\
     const root = project({ ...GOOD, 'fmt.mjs': FMT });
     run(root, { format: 'node fmt.mjs {file}' }, { write: true });
     writeFileSync(join(root, 'skill/SKILL.md'), read(root, 'skill/SKILL.md').replace('Do: test the error', 'Do: check the error'));
-    expect(errors(run(root, { format: 'node fmt.mjs {file}' }))[0]).toMatch(/^SKILL\.md:38 check-status error: .* \[test \.\.\/tests\/a\.test\.ts:20\]$/);
+    // The formatter adds two lines after the title, and takes one out before `Right:`.
+    expect(errors(run(root, { format: 'node fmt.mjs {file}' }))[0]).toMatch(new RegExp(`^SKILL\\.md:${lineOf('Do: test the error') + 2} check-status error: .* \\[test \\.\\./tests/a\\.test\\.ts:20\\]$`));
   });
 
   it('a formatter that fails is reported, and the build is compared unformatted', () => {
     const root = project({ ...GOOD });
     const r = run(root, { format: 'exit 2 # {file}' });
-    expect(errors(r)[0]).toBe('../skillunit.yaml:3 - error: `proof.format` failed on the build of SKILL.md:\nexit 2');
+    expect(errors(r)[0]).toBe('../skillunit.yaml:2 - error: `proof.format` failed on the build of SKILL.md:\nexit 2');
   });
 });
 
 describe('where a line comes from', () => {
   it('runProof gives the same lookup with the result', () => {
     const root = project(GOOD);
-    const { result, origin } = runProof({ skill: join(root, 'skill'), source: join(root, 'skill-src'), config: config(root), write: true });
+    const { result, origin } = runProof({ skill: join(root, 'skill'), config: config(root), write: true });
     expect(result.ok).toBe(true);
-    expect(origin('SKILL.md', 3)).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
-    expect(origin('SKILL.md', 64)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 40, unit: 'by-hand' });
+    expect(origin('SKILL.md', lineOf('A small'))).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 1 });
+    expect(origin('SKILL.md', lineOf('Do: reuse'))).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 40, unit: 'by-hand' });
   });
 });
 
@@ -625,32 +519,28 @@ describe('the settings', () => {
     return { root, config: () => loadConfig(join(root, 'skillunit.yaml')) };
   };
 
-  it('a source gives a proof layer with its defaults: units in ./tmp/skill-units', () => {
-    const { root, config } = load('skill: ./skill\nsource: ./skill-src\n');
-    expect(config().source).toBe(join(root, 'skill-src'));
-    expect(config().proof).toEqual({ units: join(root, 'tmp/skill-units'), sources: [], cwd: root });
+  it('`proof` gives a proof layer with its defaults: records in ./tmp/skill-units', () => {
+    const { root, config } = load('skill: ./skill\nproof: {}\n');
+    expect(config().proof).toEqual({ units: join(root, 'tmp/skill-units'), cwd: root });
   });
 
   it('reads every key', () => {
-    const { root, config } = load("skill: ./skill\nsource: ./src\nproof:\n  run: npx vitest run\n  units: out\n  sources: ['a/*.ts', b.ts]\n  format: npx prettier --write {file}\n");
-    expect(config().proof).toEqual({ run: 'npx vitest run', units: join(root, 'out'), sources: ['a/*.ts', 'b.ts'], format: 'npx prettier --write {file}', cwd: root });
+    const { root, config } = load('skill: ./skill\nproof:\n  run: npx vitest run\n  units: out\n  format: npx prettier --write {file}\n');
+    expect(config().proof).toEqual({ run: 'npx vitest run', units: join(root, 'out'), format: 'npx prettier --write {file}', cwd: root });
   });
 
-  it('no source, no proof layer', () => {
+  it('no proof, no proof layer', () => {
     expect(load('skill: ./skill\n').config().proof).toBeUndefined();
   });
 
-  it('rejects a wrong key', () => {
+  it('rejects a wrong key, `source` and `proof.sources` among them', () => {
     const fails = (yaml: string) => () => load(yaml).config();
-    // With `proof` and no `source`, the skill is built from the records alone.
-    expect(load('proof:\n  run: x\n').config().proof).toMatchObject({ run: 'x' });
-    expect(load('proof:\n  run: x\n').config().source).toBeUndefined();
-    expect(fails('skill: ./skill\nsource: ./src\nproof:\n  runs: x\n')).toThrow(/unknown key `proof.runs` \(allowed: run, units, sources, format\)/);
-    expect(fails('skill: ./skill\nsource: ./src\nproof:\n  run: ""\n')).toThrow(/`proof.run` must be a command/);
-    expect(fails('skill: ./skill\nsource: ./src\nproof:\n  units: ""\n')).toThrow(/`proof.units` must be a folder/);
-    expect(fails('skill: ./skill\nsource: ./src\nproof:\n  format: prettier --write\n')).toThrow(/`proof.format` must be a command with `\{file\}`/);
-    expect(fails('skill: ./skill\nsource: ./skill\n')).toThrow(/`source` and `skill` are two folders, neither inside the other/);
-    expect(fails('skill: ./skill\nsource: ./skill/src\n')).toThrow(/neither inside the other/);
-    expect(fails('source: 3\n')).toThrow(/`source` must be a path/);
+    expect(fails('skill: ./skill\nsource: ./src\nproof: {}\n')).toThrow(/unknown key `source` \(allowed: skill, context, model, thresholds, proof\)/);
+    expect(fails('skill: ./skill\nproof:\n  sources: [a.ts]\n')).toThrow(/unknown key `proof.sources` \(allowed: run, units, format\)/);
+    expect(fails('skill: ./skill\nproof:\n  runs: x\n')).toThrow(/unknown key `proof.runs`/);
+    expect(fails('skill: ./skill\nproof:\n  run: ""\n')).toThrow(/`proof.run` must be a command/);
+    expect(fails('skill: ./skill\nproof:\n  units: ""\n')).toThrow(/`proof.units` must be a folder/);
+    expect(fails('skill: ./skill\nproof:\n  format: prettier --write\n')).toThrow(/`proof.format` must be a command with `\{file\}`/);
+    expect(fails('skill: ./skill\nproof: 3\n')).toThrow(/`proof` must be a mapping/);
   });
 });

@@ -58,8 +58,8 @@ export const scenarios: Scenario[] = [
       app.edit('src/retry.ts', 'retry = DEFAULT_RETRY, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = DEFAULT_RETRY): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
       app.commit('Drop retryDelay');
     },
-    // Nothing reports it: the example that passes `retryDelay` is in the source, and nothing
-    // type-checks the source.
+    // SkillUnit reports nothing: Vitest runs the region that passes `retryDelay` without checking
+    // its types. The type-check of the project fails on it.
     expect: {},
   },
   {

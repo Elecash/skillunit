@@ -258,7 +258,7 @@ describe('a spec with a mistake', () => {
     expect(both.records).toEqual([expect.objectContaining({ id: 'default-timeout', status: 'failed', error: both.message })]);
   });
 
-  it('an id that is not kebab-case fails, and leaves no record, since no slot can name it', async () => {
+  it('an id that is not kebab-case fails, and leaves no record, since the build could not use it', async () => {
     for (const id of ['defaultTimeout', 'default timeout', 'default.timeout', '']) {
       const r = await fails(id, { when: 'x.', do: 'y.' });
       expect(r.message).toMatch(/the id must be kebab-case/);
@@ -287,7 +287,7 @@ describe('a spec with a mistake', () => {
     expect(await message({ when: 'x.', value: 'y.', values: { 'a.b': 1 } })).toBe('unit `a-unit`: the value name `a.b` must be letters, digits and hyphens, such as `max-retries`');
     expect(await message({ when: 'x.', value: 'y.', values: { n: Infinity } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got null');
     expect(await message({ when: 'x.', value: 'y.', values: { n: { a: 1 } } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got {"a":1}');
-    expect(await message({ when: 'x.', value: 'y.', values: { n: 'ten\nseconds' } })).toBe('unit `a-unit`: the value `n` has a line break; a value is one line, since `{{value:a-unit.n}}` puts it inside a line');
+    expect(await message({ when: 'x.', value: 'y.', values: { n: 'ten\nseconds' } })).toBe('unit `a-unit`: the value `n` has a line break; a value is one line, since a sentence holds it');
   });
 });
 

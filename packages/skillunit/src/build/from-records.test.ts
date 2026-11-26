@@ -41,7 +41,7 @@ const RECORDS = {
 };
 const GOOD = { 'tests/index.test.ts': INDEX_TEST, 'tests/retries.test.ts': RETRIES_TEST, 'tests/clients.test.ts': '', ...RECORDS };
 
-const config = (root: string): ProofConfig => ({ units: join(root, 'tmp/skill-units'), sources: [], cwd: root });
+const config = (root: string): ProofConfig => ({ units: join(root, 'tmp/skill-units'), cwd: root });
 const run = (root: string, write = false) => runProof({ skill: join(root, 'skill'), config: config(root), write });
 const show = (p: Problem) => `${p.file}:${p.line} ${p.unit ?? '-'}: ${p.message}`;
 
@@ -50,7 +50,6 @@ describe('a skill built from the records alone', () => {
     const root = project(GOOD);
     const { result } = run(root, true);
     expect(result.problems.map(show)).toEqual([]);
-    expect(result.source).toBeNull();
     expect(readFileSync(join(root, 'skill/SKILL.md'), 'utf8')).toBe(
       [
         '---',
@@ -88,7 +87,7 @@ describe('a skill built from the records alone', () => {
     expect(retries).toContain(`Right:\n\n${F}ts\nawait tf.get(url, { retry: 3 });\n${F}\n`);
     // A file with no unit has no rules.
     expect(readFileSync(join(root, 'skill/features/clients.md'), 'utf8')).toBe('# tinyfetch — clients\n\nA client holds a base URL.\n');
-    expect(result.units.map((u) => `${u.id} ${u.from} ${u.file} ${u.source.file}:${u.source.line}`)).toEqual([
+    expect(result.units.map((u) => `${u.id} ${u.from} ${u.file} ${u.setup.file}:${u.setup.line}`)).toEqual([
       'retry-defaults test features/retries.md ../tests/retries.test.ts:4',
       'retry-idempotent-only declared features/retries.md ../tests/retries.test.ts:4',
       'await-every-request test SKILL.md ../tests/index.test.ts:5',

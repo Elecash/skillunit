@@ -29,7 +29,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   if (report.proof?.configured) {
     const { proof } = report;
     const cases: Case[] = proof.units.map((u) => {
-      const from = u.test ? `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}` : `${shown(join(proof.skill, u.source.file), options)}:${u.source.line}`;
+      const from = `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}`;
       const c: Case = { name: u.id, classname: `proof.${shown(join(proof.skill, u.file), options)}`, properties: { from: u.from, state: u.state, origin: from } };
       const mine = proof.problems.filter((p) => p.unit === u.id);
       const errors = mine.filter((p) => p.severity === 'error');
@@ -38,7 +38,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       if (warnings.length) c.out = warnings.map((p) => `warning: ${line(proof.skill, p)}`).join('\n');
       return c;
     });
-    // Findings about no unit: a file of the skill or the source, a record, the settings.
+    // Findings about no unit: a file of the skill, a record, the settings.
     for (const p of proof.problems.filter((p) => !p.unit)) {
       const c: Case = { name: `${shown(join(proof.skill, p.file), options)}:${p.line}`, classname: 'proof' };
       if (p.severity === 'error') c.failure = line(proof.skill, p);

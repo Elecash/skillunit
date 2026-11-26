@@ -36,16 +36,12 @@ describe('exit 2 with a JSON reporter', () => {
 });
 
 describe('a report through a pipe', () => {
-  // A report far above the 64 KB a pipe holds: 3,000 files of the skill folder that no file of
-  // the source builds.
+  // A report far above the 64 KB a pipe holds: 3,000 files of the skill folder that no `setup()`
+  // declares, since no test declares any.
   const root = mkdtempSync(join(tmpdir(), 'skillunit-pipe-'));
-  const index = '---\nname: big\ndescription: A skill with a long report.\n---\n\n# Big\n';
-  for (const dir of ['skill', 'source']) {
-    mkdirSync(join(root, dir));
-    writeFileSync(join(root, dir, 'SKILL.md'), index);
-  }
+  mkdirSync(join(root, 'skill'));
   for (let i = 0; i < 3000; i++) writeFileSync(join(root, 'skill', `extra-file-number-${i}.md`), '# Extra\n');
-  writeFileSync(join(root, 'skillunit.yaml'), 'skill: ./skill\nsource: ./source\n');
+  writeFileSync(join(root, 'skillunit.yaml'), 'skill: ./skill\nproof: {}\n');
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   // spawnSync reads stdout through a pipe, as `| jq` and a CI log do.
@@ -57,7 +53,7 @@ describe('a report through a pipe', () => {
     expect(result.status).toBe(1);
     expect(result.stdout.length).toBeGreaterThan(256 * 1024);
     const report = JSON.parse(result.stdout);
-    expect(report.proof.problems.filter((p: { message: string }) => p.message.startsWith('no file of `source` builds'))).toHaveLength(3000);
+    expect(report.proof.problems.filter((p: { message: string }) => p.message.startsWith('no `setup()` declares'))).toHaveLength(3000);
   });
 
   it.each(['table', 'github'])('ends with the status line with the %s reporter', (reporter) => {
@@ -74,13 +70,11 @@ describe('a report through a pipe', () => {
 describe('the decision model provider', () => {
   // Outside any git repository, so no .env above it supplies a key.
   const project = mkdtempSync(join(tmpdir(), 'skillunit-provider-'));
-  // A skill built from a source, whose `proof.run` declares nothing: the questions are none.
+  // A skill whose `proof.run` declares nothing: the questions are none.
   const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
-  for (const dir of ['skill', 'skill-src']) {
-    mkdirSync(join(project, dir));
-    writeFileSync(join(project, dir, 'SKILL.md'), skill);
-  }
-  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  mkdirSync(join(project, 'skill'));
+  writeFileSync(join(project, 'skill', 'SKILL.md'), skill);
+  const settings = 'skill: ./skill\nproof: { run: "true" }\n';
   writeFileSync(join(project, 'skillunit.yaml'), settings);
   writeFileSync(join(project, 'mine.mjs'), "export default { id: 'mine', limits: { perQuestionTokens: 1000, perRequestTokens: 2000 }, decide: async () => { throw new Error('not sent'); } };\n");
   writeFileSync(join(project, 'module.yaml'), `${settings}model: ./mine.mjs\n`);
@@ -147,11 +141,9 @@ describe('the table reporter by unit', () => {
 describe('the thresholds of a yes/no question', () => {
   const project = mkdtempSync(join(tmpdir(), 'skillunit-thresholds-'));
   const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
-  for (const dir of ['skill', 'skill-src']) {
-    mkdirSync(join(project, dir));
-    writeFileSync(join(project, dir, 'SKILL.md'), skill);
-  }
-  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  mkdirSync(join(project, 'skill'));
+  writeFileSync(join(project, 'skill', 'SKILL.md'), skill);
+  const settings = 'skill: ./skill\nproof: { run: "true" }\n';
   writeFileSync(join(project, 'skillunit.yaml'), settings);
   writeFileSync(join(project, 'low-yes.yaml'), `${settings}thresholds: { yes: 0.3 }\n`);
   afterAll(() => rmSync(project, { recursive: true, force: true }));

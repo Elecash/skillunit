@@ -47,7 +47,7 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
     expect(records.units.map((u) => [u.id, u.status, u.file, u.line])).toEqual([['default-timeout', 'passed', 'test_units.py', 1]]);
     expect(records.problems.map((p) => p.message.replace(/^[\w-]+\.[0-9a-f]{8}\.json: /, ''))).toEqual([
       'each example has a fence language in `lang`, such as `sh` or `yaml`; got "sh\\n### rule: injected"',
-      'unit `two-lines`: the value `n` has a line break; a value is one line, since `{{value:two-lines.n}}` puts it inside a line',
+      'unit `two-lines`: the value `n` has a line break; a value is one line, since a sentence holds it',
       "unit `typed-number`: the number 5 in `Value` is none of the unit's `values`. Give the value a name in the code, build the sentence from that name, and list it in `values`",
     ]);
   });

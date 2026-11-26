@@ -30,7 +30,7 @@ describe('model', () => {
 
 describe('keys', () => {
   it('rejects a key it does not know, and names the ones it does', () => {
-    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, source, context, model, thresholds, proof\)/);
+    expect(() => load('skills: ./skill\n')).toThrow(/unknown key `skills` \(allowed: skill, context, model, thresholds, proof\)/);
     expect(() => load('examples:\n  ts: { tsconfig: ./tsconfig.json }\n')).toThrow(/unknown key `examples`/);
   });
 });

@@ -96,13 +96,12 @@ export function buildChange(proof: ProofResult, options: ReportOptions): string 
 }
 
 /**
- * Where the line of a finding comes from, when the skill is built: the test of a unit, or a file
- * of the source. Null for a skill that is not built.
+ * Where the line of a finding comes from, when the skill is built: the test of a unit, or the
+ * `setup()` of its file. Null for a skill that is not built.
  */
 export function originOf(skill: string, p: Problem, options: ReportOptions): string | null {
   if (!p.origin) return null;
   const place = `${skillFile(skill, p.origin.file, options)}:${p.origin.line}`;
-  if (p.origin.kind === 'source') return `the source, ${place}`;
   return p.origin.unit ? `the test of \`${p.origin.unit}\`, ${place}` : `the test, ${place}`;
 }
 
@@ -112,17 +111,15 @@ export function withOrigin(skill: string, p: Problem, options: ReportOptions): s
   return origin ? `${p.message}\nfrom ${origin}` : p.message;
 }
 
-/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one · 2 values in prose`, and what is wrong. */
+/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one`, and what is wrong. */
 export function proofSummary(proof: ProofResult): string {
   const s = proof.summary;
   return [
     plural(s.units, 'unit'),
-    `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
+    `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}`,
     `${s.declared} declared without one`,
-    // A skill built from the records alone has no prose to put values in.
-    proof.source === null ? '' : `${plural(s.values, 'value')} in prose`,
     s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
-    s.extra ? `${plural(s.extra, 'file')} ${proof.source === null ? 'no `setup()` declares' : 'the source does not build'}` : '',
+    s.extra ? `${plural(s.extra, 'file')} no \`setup()\` declares` : '',
   ]
     .filter(Boolean)
     .join(' · ');

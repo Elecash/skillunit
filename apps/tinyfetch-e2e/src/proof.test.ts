@@ -59,9 +59,8 @@ describe('the proof of tinyfetch', () => {
     expect(finding.lines.skill).toBe(finding.lines.build.replace('2x', '3x'));
   });
 
-  it('settings with no `proof.sources`: the build keeps every region example, and writes nothing', () => {
-    const app = App.copy('no-sources');
-    expect(app.read('skillunit.yaml')).not.toMatch(/sources/);
+  it('the build takes every region example from the test files the records name, and writes nothing', () => {
+    const app = App.copy('regions');
     const write = app.run('proof', '--write');
     expect(write.code).toBe(0);
     expect(write.report.proof.files.filter((f: any) => f.state !== 'same')).toEqual([]);

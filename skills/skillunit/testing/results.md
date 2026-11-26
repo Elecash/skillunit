@@ -1,16 +1,6 @@
 # SkillUnit — running the checks and reading a report
 
-How to run the layers, read what they report, and act on a failure.
-
-The default report of `check`, `proof` and `test` lists each file of the skill, each unit in it, and under the unit what each layer found: a `proof` line saying where the unit is declared (`proved by a test` or `declared, no test`, with the file and line) and one for each proof finding, and a `test` line for each of its questions. A line starts with `✓` when it passed, `✗` when it failed, `~` for a warning or a borderline pass, and `–` when that layer has nothing on the unit. A unit that no test proves and that has no question reads `not covered`. The details of a failure are under its line, and `Failed`, at the end, names each failure as `file › unit › line`; `--compact` gives one row per unit. A question that failed shows the scenario, the expected answer, the answer the reader gave and the probability of each option. Exit codes: 0 when every check passed, 1 when one failed, 2 when the command itself was wrong (an unknown option, a missing file, no API key). `--reporter` also takes `json`, `junit` and `github` (annotations on the pull request).
-
-| What the failure shows | What it means |
-| --- | --- |
-| `none` is high | the reader did not find the rule in the text |
-| a wrong option is high | the text points to that answer |
-| the expected answer, under the threshold | the text is ambiguous |
-
-A verdict is borderline when the number that decided it is within `thresholds.margin` (0.13 by default) of its threshold. Answers move a little between runs, so a borderline question is the one most likely to change verdict next time. A borderline pass still passes.
+How to run the layers, read what a failed question shows, and act on it.
 
 ## Rules
 
@@ -20,24 +10,29 @@ When: the agent has written or changed questions.
 
 Do: run `npx skillunit test --dry-run` and fix what it reports before the real run.
 
-Right:
+### fact: pass-thresholds
 
-```sh
-npx skillunit test --dry-run
-```
+When: the agent reads whether a question passed, or the user asks what it takes to pass.
+
+Value: with the default `thresholds`, a question with options passes when the expected option alone is at the top, with a probability of at least 0.5; a yes/no question passes on a P(yes) of at least 0.7 when it expects `yes`, and of at most 0.3 when it expects `no`; a verdict closer than 0.13 to its threshold is borderline, and a borderline pass still passes.
+
+### decision: read-a-failed-question
+
+When: a question failed, and the agent reads what the reader answered.
+
+Decide: what the failure says about the skill.
+
+- **missing** — `none` is the answer at the top: the reader did not find the rule in the text.
+
+- **elsewhere** — a wrong option is at the top: the text points to that answer.
+
+- **ambiguous** — the expected answer is at the top, under the threshold: the text is ambiguous.
 
 ### rule: prove-on-a-copy
 
 When: the agent wants to show that a question depends on its rule.
 
 Do: copy the skill folder, delete the rule's sentence in the copy, and run `npx skillunit test --skill <copy>`; the question must fail.
-
-Right:
-
-```sh
-cp -R skills/my-skill /tmp/my-skill-copy
-npx skillunit test --skill /tmp/my-skill-copy
-```
 
 ### rule: still-green-without-the-rule
 

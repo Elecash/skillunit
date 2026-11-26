@@ -1,52 +1,51 @@
 ---
 name: skillunit
-description: Write an agent skill in units and check that it still says what the code it describes does, with SkillUnit. Use when asked to write or restructure a skill, to add or fix SkillUnit tests and the questions they declare for the decision model, or to check that a skill still says what it should after the code changed.
+description: Write an agent skill from the tests of the code it describes, and check that it still says what the code does, with SkillUnit. Use when asked to write or restructure a skill, to add or fix the tests that declare its files, units and questions, or to check that a skill still says what it should after the code changed.
 ---
 
 # SkillUnit
 
-SkillUnit checks that an agent skill still says what the code it describes does. A skill is small Markdown files whose instructions are units: a `### rule:`, `### decision:` or `### fact:` heading followed by labelled paragraphs. In a skill built from a source, each unit is declared in the project's tests with `unit()`, and the source holds the prose and where each unit goes. Two layers check it:
+SkillUnit builds an agent skill from the tests of the code it describes, and asks a decision model closed questions about what the skill says.
 
-| Layer | Command | What it finds | Needs the API key |
-| --- | --- | --- | --- |
-| proof | `npx skillunit proof` | a unit whose test failed or is gone, a line of the built skill that is not what the code and its tests give | no |
-| test | `npx skillunit test` | text that does not settle a decision: closed questions to a decision model, declared with the units | yes |
-
-`npx skillunit check` runs both; it is what CI runs. Proof runs the project's tests through `proof.run` and builds the skill from `source` and the units the tests declare. With `--dry-run`, the test layer checks that every question can be asked and fits, and sends nothing.
-
-The settings live in `skillunit.yaml`, next to the skill or at the root of the project. The decision model's key belongs to its provider: `TYPESAFE_API_KEY` for `typesafe`, the default, and `OPENAI_API_KEY` for `openai` (`model: { provider: openai }`). SkillUnit reads it from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository.
+```ts
+import { ask, setup, unit } from 'skillunit/vitest';
+```
 
 ## Where to look
 
 | Task | File |
 | --- | --- |
-| Split a skill into files, write its index, decide what goes in prose and what in a unit | [writing/files.md](writing/files.md) |
-| Write a unit: kinds and labels | [writing/units.md](writing/units.md) |
-| Write code examples | [writing/examples.md](writing/examples.md) |
 | Decide which questions a skill needs, and where each one goes | [testing/plan.md](testing/plan.md) |
+| Build the skill with `proof --write`, and act on what proof reports | [testing/proof.md](testing/proof.md) |
+| Run the checks, read a report, act on a failed question | [testing/results.md](testing/results.md) |
 | Write a question: scenario, question, options, the keys of `ask` | [testing/tests.md](testing/tests.md) |
-| Run the checks, read a report, act on a failure | [testing/results.md](testing/results.md) |
-| Declare a unit in a test of the code, with `unit()`, and build the skill from its source | [testing/proof.md](testing/proof.md) |
+| Show code in a unit, with a region of its test | [writing/examples.md](writing/examples.md) |
+| Split a skill into files, and declare each one with `setup()` | [writing/files.md](writing/files.md) |
+| Write a unit in the test that checks it: its kind, its text and its values | [writing/units.md](writing/units.md) |
 
 ## Rules
 
 ### rule: init-first
 
-When: a project has a skill but no `skillunit.yaml`.
+When: a project has a skill, or code that needs one, and no `skillunit.yaml`.
 
-Do: run `npx skillunit init <skill folder>` from the project root, then set `context` in the new `skillunit.yaml` to one sentence about what the skill is for.
+Do: run `npx skillunit init <skill folder>` from the project root and set `context` to one sentence about what the skill is for; then declare each file of the skill with `setup()` and each unit with `unit()` in the tests, set `proof.run` to the command that runs those tests, and run `npx skillunit proof --write`.
 
 Right:
 
-```sh
-npx skillunit init skills/my-skill
+```yaml
+# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme
+skill: ./skills/my-skill        # folder with SKILL.md
+# context: "One sentence about what the skill is for."
+# To build the skill from the files and units your tests declare:
+# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts
 ```
 
 ### rule: key-outside-the-repo
 
 When: the test layer needs the decision model's API key.
 
-Do: put the key of the provider in `skillunit.yaml`, `TYPESAFE_API_KEY` or `OPENAI_API_KEY`, in the environment (a secret in CI), or in a `.env` file that git ignores, next to `skillunit.yaml` or at the root of the repository.
+Do: put the key of the provider `skillunit.yaml` names, `TYPESAFE_API_KEY` or `OPENAI_API_KEY`, in the environment (a secret in CI), or in a `.env` file that git ignores, next to `skillunit.yaml` or at the root of the repository; never in `skillunit.yaml` itself.
 
 Right:
 

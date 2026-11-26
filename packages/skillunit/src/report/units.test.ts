@@ -19,7 +19,7 @@ const units: ReportUnit[] = [
 ];
 
 /** `test`: proved by a test; `declared`: declared with no body; or what its test left. */
-const unitProof = (id: string, how: 'test' | 'declared' | 'failed' | 'missing' = 'declared'): UnitProof => {
+const unitProof = (id: string, how: 'test' | 'declared' | 'failed' = 'declared'): UnitProof => {
   const u = units.find((x) => x.id === id)!;
   const state = how === 'test' || how === 'declared' ? 'passed' : how;
   return {
@@ -29,8 +29,8 @@ const unitProof = (id: string, how: 'test' | 'declared' | 'failed' | 'missing' =
     state,
     file: u.file,
     line: u.line,
-    source: { file: `../skill-src/${u.file}`, line: u.line },
-    ...(state === 'missing' ? {} : { test: { file: '../src/a.skill.test.ts', line: 3 } }),
+    setup: { file: '../src/a.skill.test.ts', line: 1 },
+    test: { file: '../src/a.skill.test.ts', line: 3 },
   };
 };
 
@@ -38,13 +38,12 @@ const proof = (overrides: Partial<ProofResult> = {}): ProofResult => ({
   configured: true,
   ok: true,
   skill,
-  source: '/repo/skill-src',
   write: false,
   run: { command: 'npx vitest run', status: 0, ms: 1000 },
   units: [unitProof('await-every-request', 'test'), unitProof('retry-defaults', 'test'), unitProof('what-is-retried', 'test'), unitProof('retry-idempotent-only'), unitProof('never-disable-timeout')],
   files: [],
   problems: [],
-  summary: { units: 5, proved: 3, declared: 2, failed: 0, missing: 0, values: 0, files: 4, differ: 0, written: 0, extra: 0 },
+  summary: { units: 5, proved: 3, declared: 2, failed: 0, files: 4, differ: 0, written: 0, extra: 0 },
   ...overrides,
 });
 
@@ -187,13 +186,13 @@ describe('the report by unit', () => {
     expect(lines(tree.elsewhere)).toEqual(['question fail which-file', 'question fail -']);
   });
 
-  it('puts a finding about a unit under it, even when it is in the source or a test file', () => {
+  it('puts a finding about a unit under it, even when it is in a test file', () => {
     const problems: Problem[] = [
-      { file: '../skill-src/features/retries.md', line: 5, unit: 'retry-defaults', severity: 'error', message: 'the test of `retry-defaults` failed: expected 300' },
-      { file: '../src/a.test.ts', line: 9, unit: 'what-is-retried', severity: 'error', message: 'no file of `source` has its slot' },
+      { file: '../src/a.skill.test.ts', line: 5, unit: 'retry-defaults', severity: 'error', message: 'the test of `retry-defaults` failed: expected 300' },
+      { file: '../src/a.test.ts', line: 9, unit: 'what-is-retried', severity: 'error', message: 'the unit `what-is-retried` is also declared at src/b.test.ts:4' },
     ];
     const tree = unitTree(report('proof', { proof: proof({ ok: false, units: [unitProof('retry-defaults', 'failed'), unitProof('what-is-retried', 'test')], problems }) }));
-    expect(lines(unit(tree, 'retry-defaults').lines)).toEqual(['proof fail ../skill-src/features/retries.md:5']);
+    expect(lines(unit(tree, 'retry-defaults').lines)).toEqual(['proof fail ../src/a.skill.test.ts:5']);
     expect(unit(tree, 'retry-defaults').mark).toBe('fail');
     expect(lines(unit(tree, 'what-is-retried').lines)).toEqual(['origin pass test', 'proof fail ../src/a.test.ts:9']);
     expect(tree.elsewhere).toEqual([]);
@@ -225,7 +224,7 @@ describe('the report by unit', () => {
     expect(lines(unit(check, 'retry-defaults').lines)).toEqual(['origin pass test']);
   });
 
-  it('with no `source`, has no proof lines', () => {
+  it('with no `proof`, has no proof lines', () => {
     const tree = unitTree(report('check', { proof: { configured: false, ok: true }, test: test(requests()) }));
     expect(tree.layers).toEqual({ proof: false, test: true });
     expect(tree.files.flatMap((f) => f.units).flatMap((u) => u.lines).some((l) => l.kind === 'origin' || (l.kind === 'missing' && l.layer === 'proof'))).toBe(false);

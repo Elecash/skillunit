@@ -43,7 +43,7 @@ export function fenceLang(file: string): string {
   return LANG_OF[ext] ?? (ext || 'text');
 }
 
-/** One label paragraph: wrapped lines and runs of spaces read as one space, as the parser reads them. */
+/** One label paragraph: wrapped lines and runs of spaces become one space. */
 const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 interface Block {

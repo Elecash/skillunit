@@ -71,9 +71,9 @@ export interface UnitTree {
   /** `--changed`: only the units and files with a line are kept. */
   partial: boolean;
   files: FileNode[];
-  /** What has no place in the skill: findings about the settings, the source or a test file, and requests that could not run. */
+  /** What has no place in the skill: findings about the settings or a test file, and requests that could not run. */
   elsewhere: Line[];
-  /** Units by coverage, when both layers ran over the whole skill (`check` with a `source`, without `--changed`). */
+  /** Units by coverage, when both layers ran over the whole skill (`check` with `proof`, without `--changed`). */
   coverage: Record<Coverage, number> | null;
 }
 
@@ -108,7 +108,7 @@ export function unitTree(report: CheckReport): UnitTree {
   /** The unit a finding names, in the finding's file when two units share the id. */
   const unitOf = (id: string | undefined, file?: string) => (id === undefined ? undefined : (all.find((u) => u.id === id && u.file === file) ?? byId.get(id)));
   const elsewhere: Line[] = [];
-  /** A finding about a file that is not Markdown of the skill: the settings, a record, a test file, a file of the source. */
+  /** A finding about a file that is not Markdown of the skill: the settings, a record, a test file. */
   const outside = (p: Problem) => p.file.startsWith('../') || !p.file.endsWith('.md');
   const severity = (p: Problem): Mark => (p.severity === 'error' ? 'fail' : 'warn');
 
@@ -123,7 +123,7 @@ export function unitTree(report: CheckReport): UnitTree {
     }
     for (const p of proof.problems) {
       const line: Line = { kind: 'proof', mark: severity(p), problem: p };
-      // A finding about a unit goes under it, even when it is in the source or a test file.
+      // A finding about a unit goes under it, even when it is in a test file.
       const node = unitOf(p.unit, p.file);
       if (node) node.lines.push(line);
       else if (outside(p)) elsewhere.push(line);

@@ -29,7 +29,7 @@ export interface ReportUnit {
   file: string;
   /** Line of the unit's heading. */
   line: number;
-  /** When the skill is built (`source`, and the proof ran): proved by a test, or declared with no body. */
+  /** When the skill is built (`proof`, and the proof ran): proved by a test, or declared with no body. */
   from?: 'test' | 'declared';
   /** Where it is declared, from the skill folder. */
   test?: { file: string; line: number };

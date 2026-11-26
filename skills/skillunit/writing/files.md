@@ -1,65 +1,46 @@
-# SkillUnit — files and the index
+# SkillUnit — the files of a skill
 
-How a skill is split into files, how an agent finds the right one, and what goes in prose and what in a unit.
-
-A skill is a tree an agent walks by task. `SKILL.md` says what the library is, holds the units every task meets, and has a "Where to look" table from task to file. Each other file covers one thing (a widget, a feature, a host) and is named after it, such as `widgets/calendar.md` or `features/i18n.md`. To translate a calendar, an agent reads `widgets/calendar.md`, then `features/i18n.md`.
-
-Small files keep each request to the decision model small, let an agent load only what its task needs, and let `test --changed` ask only the questions about the files that changed.
-
-## Layout of a file
-
-````md
-# tinyfetch — retries
-
-One to three lines: what this file covers.
-
-```ts
-import { tf } from "tinyfetch";
-```
-
-## Options
-
-Explanations, option tables, signatures and examples.
+How a skill is split into files, and how its tests declare each one.
 
 ## Rules
 
-Every unit of the file, and nothing else.
-````
+### rule: declare-each-file-with-setup
 
-The reference sections describe how things work. The units decide what the agent does. A unit refers to a reference section by its name ("the table in 'Options'"), and prose refers to a unit by its id (`retry-idempotent-only`).
+When: the agent adds a file to a skill, or starts the tests of one.
 
-## Rules
+Do: declare the file with one `setup()` at the top of its test file, before its units: `file` is its path in the skill folder, `title`, `when` and `description` are one line each, and `SKILL.md` takes `frontmatter` in place of `when`.
 
-### rule: one-task-per-file
-
-When: a skill grows, or a file covers more than one task.
-
-Do: give each task its own file, named after the thing or feature it covers, and split a file when an agent doing one task needs only part of it.
-
-Even when: the two tasks share a few rules; the shared rule lives in the more specific file, and the other links to it.
-
-### rule: index-every-file
-
-When: the agent adds a file to a skill.
-
-Do: add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.
+Even when: the file has no unit yet; the build writes only the files a `setup()` declares.
 
 Right:
 
-```md
-| Retry a request that failed | [features/retries.md](features/retries.md) |
+```ts
+setup('retries', {
+  file: 'features/retries.md',
+  title: 'tinyfetch — retries',
+  when: 'Retry a request that failed',
+  description: 'Which failed requests tinyfetch repeats, and how long it waits between attempts.',
+});
 ```
 
-### rule: rules-section-last
+### fact: what-setup-writes
 
-When: the agent writes the units of a file.
+When: the agent fills in the keys of a `setup()`.
 
-Do: put every unit under one `## Rules` heading, the last `##` section of the file, with nothing else in it.
+Value: `title` is the heading of the file, `description` the line under it, and the region `skill:<setup id>` of its test file the code under that line; `when` is the row of the file in the "Where to look" table of `SKILL.md`, which lists every other file; `frontmatter` is the `name` and `description` an agent reads to pick the skill.
 
-### rule: instructions-only-in-units
+### rule: one-test-file-per-skill-file
 
-When: a sentence in a reference section tells the agent what to do, or gives an exception to a rule.
+When: the agent decides where the `setup()` and the units of a file of the skill go.
 
-Do: write the instruction as a unit, and the exception inside its unit, under `Even when`; the prose only describes.
+Do: put them in one test file of their own, named after the file of the skill, such as `retries.skill.test.ts` for `features/retries.md`.
 
-Even when: the exception is one short clause; the reader follows the most specific rule it finds, so an exception stated before the rule loses to it.
+Even when: the test that checks a unit is in another file; move that test into this file with its unit, and the fixtures it needs into a module both files import.
+
+### rule: behaviour-in-a-unit
+
+When: the agent writes the `description` of a file, or wants to say what the code does outside a unit.
+
+Do: keep the `description` to what the file covers; write each sentence about what the code does, and each instruction, as a unit with a test, and an exception to a rule under its `evenWhen`.
+
+Even when: the sentence fits on the line; no test checks the text of a `setup()`, so a sentence there stops being true without failing anything.

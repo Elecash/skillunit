@@ -1,40 +1,86 @@
-// The units of skills-src/skillunit/writing/examples.md that no test proves, and the questions about that
-// file. `skillunit proof` puts each unit where the source has `{{unit:<id>}}`. See docs/proof.md.
-import { unit } from '../vitest.js';
+// The file `writing/examples.md` of the skill: its `setup()`, then its units in the order the file shows them.
+import { setup, unit } from 'skillunit/vitest';
+import { describe } from 'vitest';
 
-unit('complete-examples', {
-  when: 'the agent writes an example.',
-  do: 'make it compile on its own: declare every name it uses in the block.',
-  ask: {
-    id: 'undefined-name',
-    scenario: 'An example calls `api.get("users")`, and nothing in the file declares `api`.',
-    question: 'What should the agent do?',
-    options: {
-      declare: 'Declare `api` in the example, so the example compiles',
-      'no-check': 'Mark the block `no-check`',
-      leave: 'Leave it; readers can guess what `api` is',
-    },
-    expect: 'declare',
-  },
+setup('writing-examples', {
+  file: 'writing/examples.md',
+  title: 'SkillUnit — code in a unit',
+  when: 'Show code in a unit, with a region of its test',
+  description: 'How the code an agent copies from a skill comes from the tests.',
 });
 
-unit('signatures-in-tables', {
-  when: 'the agent shows a signature or the shape of an object rather than code to copy.',
-  do: 'put it in a table or in inline code.',
-  examples: [
-    { lang: 'md', text: '| Call | Resolves to |\n| --- | --- |\n| `tf.get(path, options)` | the parsed body |' },
-  ],
-  ask: {
-    id: 'signature-block',
-    scenario: 'The agent wants to show the signature `get(path, options)` of a method.',
-    question: 'How should it show it?',
-    options: {
-      table: 'In a table or in inline code',
-      'ts-block': 'In a fenced `ts` block on its own',
+describe('writing/examples.md', () => {
+  unit('region-or-example', {
+    when: 'a unit should show an example.',
+    decide: 'where the example comes from.',
+    paths: [
+      {
+        path: 'region',
+        when: 'the example is code: put it between a `// #region skill:<id>` line and a `// #endregion` line in the test file of the unit. A path of a decision takes the region `skill:<id>.<path>`, and another example of a rule or a fact `skill:<id>.<name>`.',
+      },
+      { path: 'example', when: 'the example is something the test produced, such as an output or a settings file: pass it to `u.example(lang, text)` in the body.' },
+    ],
+    evenWhen: 'the unit has no body; put its region in a function the test file exports and never calls, so the type-check of the project covers it and nothing runs it.',
+    ask: {
+      id: 'example-is-a-value',
+      scenario: `A unit's example is the JSON configuration that a test builds and checks in its body.`,
+      question: 'How should the test hand that example to the skill?',
+      options: {
+        example: "Pass it to `u.example('json', text)` in the body",
+        region: 'Put the JSON between `#region` and `#endregion` comments in the test',
+        paste: 'Paste the JSON into the skill by hand after the test passes',
+      },
+      expect: 'example',
     },
-    expect: 'table',
-  },
-});
+  });
 
-// Declared with no body: no test of SkillUnit checks it.
-unit('language-on-every-example', { when: 'the agent writes a fenced block under `Right` or a path of `Decide`.', do: 'name its language after the opening fence, such as `ts`, `sh` or `yaml`.' });
+  unit('complete-examples', {
+    when: 'the agent writes the code of a region.',
+    do: 'make it compile on its own: declare in the region every name it uses, or import it in the region `skill:<setup id>` at the top of the test file.',
+    ask: {
+      id: 'undefined-name',
+      scenario: 'The code of a region calls `api.get("users")`, and `api` is declared by the test, above the region.',
+      question: 'What should the agent do?',
+      options: {
+        declare: 'Declare `api` in the region, or import it in the region at the top of the test file',
+        leave: 'Leave it: the test declares `api`, so the region compiles',
+        comment: 'Add a comment in the region that says what `api` is',
+      },
+      expect: 'declare',
+    },
+  });
+
+  unit('region-holds-library-code', {
+    when: 'the agent decides what goes inside a region.',
+    do: 'put in it only code a user of the library would write; keep the helpers, fixtures and assertions of the test outside it.',
+    evenWhen: 'a helper of the test makes the region shorter; the agent copies the region, helper and all, and the helper does not exist in its project.',
+    ask: {
+      id: 'helper-in-region',
+      scenario: 'The test of a unit starts a fake server with `serve()`, a helper of the test file, then calls the library. The agent marks the region.',
+      question: 'What should the region hold?',
+      options: {
+        library: 'The call to the library alone',
+        both: 'The call to `serve()` and the call to the library, so the example runs as it is',
+        all: 'The whole body of the test',
+      },
+      expect: 'library',
+    },
+  });
+
+  unit('type-check-the-tests', {
+    when: 'a project declares units in its tests.',
+    do: 'make the type-check of the project, such as `tsc --noEmit`, cover the test files that declare units; Vitest runs a test file without checking its types.',
+    evenWhen: 'the tests pass; a region in a function nothing calls passes them with a call the library no longer has.',
+    ask: {
+      id: 'typecheck-tests',
+      scenario: 'A project runs `tsc --noEmit -p tsconfig.build.json` in CI, and that config leaves out `*.test.ts`. Its tests declare units with regions.',
+      question: 'What should the agent change?',
+      options: {
+        cover: 'Make a type-check cover the test files too',
+        nothing: 'Nothing; Vitest compiles the tests when it runs them',
+        move: 'Move the regions out of the test files',
+      },
+      expect: 'cover',
+    },
+  });
+});

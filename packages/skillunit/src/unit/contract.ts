@@ -89,7 +89,7 @@ export interface UnitSpec {
   unknown?: string;
   /** A rule or a decision: the case where it still applies. */
   evenWhen?: string;
-  /** Named values the prose of the skill may use, as `{{value:<id>.<name>}}`. */
+  /** Named values the text of the unit states: each number in it is one of them. */
   values?: Record<string, UnitScalar>;
   /** Questions for the decision model about this unit: one, or a list. */
   ask?: UnitQuestion | UnitQuestion[];
@@ -226,10 +226,10 @@ export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 /** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
 export const NONE = 'none';
 
-const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask', 'examples'] as const;
+export const SPEC_KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask', 'examples'] as const;
 /** A fence language: what `u.example` and `examples` take. */
 export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
-const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
+export const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
 /** The file a question about prose reads when it names none. */
 export const DEFAULT_SKILL_FILE = 'SKILL.md';
 
@@ -250,8 +250,8 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
   }
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) fail('the spec must be an object, such as `{ when: …, do: … }`');
   const s = spec as Record<string, unknown>;
-  const extra = Object.keys(s).find((k) => !(KEYS as readonly string[]).includes(k));
-  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${KEYS.join(', ')})`);
+  const extra = Object.keys(s).find((k) => !(SPEC_KEYS as readonly string[]).includes(k));
+  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${SPEC_KEYS.join(', ')})`);
 
   for (const key of ['when', 'do', 'value', 'decide', 'unknown', 'evenWhen'] as const) {
     const v = s[key];
@@ -291,7 +291,7 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
       if (!['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'number' && !Number.isFinite(v))) {
         fail(`the value \`${name}\` must be text, a finite number or a boolean; got ${JSON.stringify(v) ?? String(v)}`);
       }
-      if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since \`{{value:${id as string}.${name}}}\` puts it inside a line`);
+      if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since a sentence holds it`);
     }
   }
   if (s.examples !== undefined) {
@@ -311,7 +311,7 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
 /** The file of a skill that holds its frontmatter and its index. */
 export const SKILL_INDEX = 'SKILL.md';
 
-const SETUP_KEYS = ['file', 'title', 'when', 'description', 'frontmatter'] as const;
+export const SETUP_KEYS = ['file', 'title', 'when', 'description', 'frontmatter'] as const;
 
 /**
  * The spec of `setup(id, spec)`, after checking it: one line for each text, and no number in any,

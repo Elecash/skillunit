@@ -10,11 +10,9 @@
  *     yes: 0.7                   # lowest P(yes) that passes an expected "yes": 0.5 or more
  *     no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
  *     margin: 0.13               # a verdict this close to its threshold is marked borderline
- *   source: ./skill-src          # the skill as people write it; `skill` is built from it
- *   proof:                       # how `skillunit proof` builds `skill` from `source` and the tests
+ *   proof:                       # how `skillunit proof` builds `skill` from what the tests declare
  *     run: "npx vitest run"      # the project's tests, run through the shell
- *     units: ./tmp/skill-units   # where the tests leave their units (the default)
- *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
+ *     units: ./tmp/skill-units   # where the tests leave their records (the default)
  *     format: "npx prettier --write {file}"   # run once on the built Markdown files
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -45,26 +43,19 @@ export interface Config {
   configDir?: string;
   /** Absolute path of the config file, when there is one. */
   configFile?: string;
-  /** Absolute path of the folder people write, which `skill` is built from. Without it there is no proof layer. */
-  source?: string;
-  /** The proof layer: set, with its defaults, whenever `source` or `proof` is. Without `source`, the skill is built from the records alone. */
+  /** The proof layer: set, with its defaults, whenever `proof` is. Without it there is no proof layer. */
   proof?: ProofConfig;
 }
 
-/** How the proof layer builds `skill` from `source` and what the tests left. Globs start from `cwd`. */
+/** How the proof layer builds `skill` from what the tests left. Commands start from `cwd`. */
 export interface ProofConfig {
   /** The project's tests, run through the shell from `cwd`. Without it, the units already in `units` are used. */
   run?: string;
   /** Absolute folder where the tests of `skillunit/vitest` and `skillunit/unit` leave their units. */
   units: string;
-  /**
-   * Globs of files that hold `#region skill:<id>` examples and declare no unit. The test files the
-   * records name are always read.
-   */
-  sources: string[];
   /** A command with `{file}`, run once with every built Markdown file in place of `{file}`. */
   format?: string;
-  /** Folder of the config file: globs and commands start there. */
+  /** Folder of the config file: commands start there. */
   cwd: string;
 }
 
@@ -94,7 +85,7 @@ export function thresholdsProblem(th: Partial<Thresholds>, name: (key: 'yes' | '
   return undefined;
 }
 
-const KEYS = new Set(['skill', 'source', 'context', 'model', 'thresholds', 'proof']);
+const KEYS = new Set(['skill', 'context', 'model', 'thresholds', 'proof']);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -141,20 +132,11 @@ export function loadConfig(path?: string): Config {
     const problem = thresholdsProblem(config.thresholds, (key) => `thresholds.${key}`);
     if (problem) throw fail(problem);
   }
-  if (raw.source !== undefined) {
-    if (typeof raw.source !== 'string' || !raw.source.trim()) throw fail('`source` must be a path: the folder the skill is built from');
-    config.source = resolve(root, raw.source);
-    const inside = (a: string, b: string) => a === b || a.startsWith(`${b}/`) || a.startsWith(`${b}\\`);
-    if (inside(config.source, config.skill) || inside(config.skill, config.source)) {
-      throw fail('`source` and `skill` are two folders, neither inside the other: `skill` is built from `source`');
-    }
-  }
-  // With `proof` and no `source`, the skill is built from the records the tests leave alone.
-  if (config.source !== undefined || raw.proof !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
+  if (raw.proof !== undefined) config.proof = readProof(raw.proof, root, fail);
   return config;
 }
 
-const PROOF_KEYS = ['run', 'units', 'sources', 'format'];
+const PROOF_KEYS = ['run', 'units', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
@@ -162,14 +144,7 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
   for (const key of Object.keys(raw)) {
     if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
   }
-  const globs = (key: string): string[] => {
-    const v = raw[key];
-    if (v === undefined || v === null) return [];
-    const list = Array.isArray(v) ? v : [v];
-    if (!list.length || list.some((s) => typeof s !== 'string' || !s.trim())) throw fail(`\`proof.${key}\` must be a glob or a list of globs`);
-    return list as string[];
-  };
-  const out: ProofConfig = { units: resolve(root, DEFAULT_PROOF_UNITS), sources: globs('sources'), cwd: root };
+  const out: ProofConfig = { units: resolve(root, DEFAULT_PROOF_UNITS), cwd: root };
   if (raw.run !== undefined) {
     if (typeof raw.run !== 'string' || !raw.run.trim()) throw fail('`proof.run` must be a command, such as `npx vitest run`');
     out.run = raw.run;
