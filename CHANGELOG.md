@@ -1,3 +1,21 @@
+## 0.5.0 (2026-11-26)
+
+### 🚀 Features
+
+- ⚠️  remove skill template ([#12](https://github.com/Elecash/skillunit/pull/12))
+
+### 🩹 Fixes
+
+- verdicts, thresholds, records and paths obey their laws ([#11](https://github.com/Elecash/skillunit/pull/11))
+
+### ⚠️  Breaking Changes
+
+- remove skill template  ([#12](https://github.com/Elecash/skillunit/pull/12))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.4.0 (2026-11-25)
 
 ### 🚀 Features
