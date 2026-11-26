@@ -6,7 +6,7 @@
 import { realpathSync } from 'node:fs';
 import { posix, relative, sep } from 'node:path';
 import { defaultBase, Git } from '../git.js';
-import { ConfigError } from '../lint/types.js';
+import { ConfigError } from '../problems.js';
 import type { Selection } from './runner.js';
 
 export interface ChangedSince {

@@ -11,9 +11,6 @@ import { format } from 'prettier';
 import type { App } from './app.js';
 
 export interface Expected {
-  /** Lint errors. */
-  lint?: string[];
-  lintWarnings?: string[];
   /** Proof errors, by unit id, or by file for one about no unit (a line of prose, the settings). */
   proof?: string[];
   proofWarnings?: string[];
@@ -38,8 +35,6 @@ export interface Scenario {
   expect: Expected;
 }
 
-const RETRY_SETUP = 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```\n\n';
-const TIMEOUT_SETUP = 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```\n\n';
 
 /** Prettier over Markdown files of the source. */
 async function prettier(app: App, files: string[], proseWrap: 'preserve' | 'always' | 'never') {
@@ -73,7 +68,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/retry.ts', 'retry = DEFAULT_RETRY, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = DEFAULT_RETRY): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
       app.commit('Drop retryDelay');
     },
-    expect: { lint: ['types skill/features/retries.md - TS2353'] },
+    // Nothing reports it: the example that passes `retryDelay` is in the source, and nothing
+    // type-checks the source.
+    expect: {},
   },
   {
     name: 'renamed function',
@@ -86,19 +83,9 @@ export const scenarios: Scenario[] = [
     },
     // The units whose bodies call `tf.create`, or every method of `tf`, fail too, so the run does;
     // `default-timeout` also has a value in a table.
-    expect: { lint: ['types skill/features/clients.md - TS2305'], proof: ['await-every-request', 'client-options', 'default-timeout', 'default-timeout', 'method-results', '../skillunit.yaml'] },
+    expect: { proof: ['await-every-request', 'client-options', 'default-timeout', 'default-timeout', 'method-results', '../skillunit.yaml'] },
   },
-  {
-    name: 'stale example',
-    change: 'fix a rule (tinyfetch sets content-type, so a Check now forbids setting it), leave an old example that sets it',
-    apply(app) {
-      // The rule comes from a test, so its `Check` is in the test's spec.
-      app.edit(TEST, "check: 'forbid `/JSON\\\\.stringify/` in ts',", "check: 'forbid `/JSON\\\\.stringify|[\"\\']content-type[\"\\']\\\\s*:/` in ts',");
-      app.build();
-      app.commit('body-as-object: do not set content-type');
-    },
-    expect: { lint: ['check skill/features/clients.md -'] },
-  },
+
   {
     name: 'broken example next to a stale one',
     change: 'add an example that does not parse, and remove the `query` option another example uses',
@@ -110,56 +97,24 @@ export const scenarios: Scenario[] = [
       app.commit('Drop query, add an example');
     },
     expect: {
-      lint: ['types skill/features/requests.md - TS1005', 'types skill/features/requests.md query-in-options TS2353'],
       // The tests that declare `query-in-options` and `client-options` fail without the option, and
-      // so does the run.
+      // so does the run. The example that does not parse is in the source, which nothing checks.
       proof: ['client-options', 'query-in-options', '../skillunit.yaml'],
     },
   },
-  {
-    name: 'example without its import',
-    change: "delete the `Setup` of a file that needs more than the `Setup` of `SKILL.md`",
-    apply(app) {
-      app.edit('skill-src/features/timeouts.md', TIMEOUT_SETUP, '');
-      app.build();
-      app.commit('Drop the timeouts Setup');
-    },
-    // `tf` still comes from `SKILL.md`; `TimeoutError` does not, so `instanceof` no longer
-    // narrows `error` either.
-    expect: { lint: ['types skill/features/timeouts.md - TS18046', 'types skill/features/timeouts.md - TS2304'] },
-  },
-  {
-    name: 'Setup moved to SKILL.md',
-    change: "move a file's `Setup` to `SKILL.md`, which then covers that file",
-    apply(app) {
-      app.edit('skill-src/features/timeouts.md', TIMEOUT_SETUP, '');
-      app.edit('skill-src/SKILL.md', 'Setup:\n\n```ts\nimport { tf } from "tinyfetch";\n```', 'Setup:\n\n```ts\nimport { tf, TimeoutError } from "tinyfetch";\n```');
-      app.build();
-      app.commit('One Setup for the skill');
-    },
-    expect: {},
-  },
-  {
-    name: 'Setup the same as SKILL.md',
-    change: "delete a file's `Setup` that only repeats the one of `SKILL.md`",
-    apply(app) {
-      app.edit('skill-src/features/retries.md', RETRY_SETUP, '');
-      app.build();
-      app.commit('Drop the retries Setup');
-    },
-    expect: {},
-  },
+
+
+
   {
     name: 'wrong package',
-    change: 'change the package name in a `Setup`',
+    change: 'change the package name in the import block of a file of the source',
     apply(app) {
       app.edit('skill-src/features/timeouts.md', 'import { tf, TimeoutError } from "tinyfetch";', 'import { tf, TimeoutError } from "tiny-fetch";');
       app.build();
       app.commit('Typo in the package name');
     },
-    // With the import broken, `instanceof TimeoutError` no longer narrows `error`, so reading
-    // `error.timeout` fails too.
-    expect: { lint: ['types skill/features/timeouts.md - TS2307', 'types skill/features/timeouts.md - TS18046'] },
+    // Nothing reports it: the import is a block of the source, and nothing type-checks the source.
+    expect: {},
   },
   {
     name: 'contradicting prose',
@@ -262,7 +217,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
       app.commit('Rename retryDelay to backoff');
     },
-    expect: { lint: ['types skill/features/retries.md - TS2353'] },
+    // Nothing reports it: the tests run without a type-check, and the example that passes
+    // `retryDelay` is in the source, which nothing type-checks.
+    expect: {},
   },
   {
     name: 'README 2: Right example that breaks its rule',
@@ -273,7 +230,8 @@ export const scenarios: Scenario[] = [
       app.build();
       app.commit('Retry a POST in the Right example');
     },
-    expect: { lint: ['check skill/features/retries.md retry-idempotent-only'] },
+    // Nothing reports it: a unit has no `Check`, and the example is a region of a test.
+    expect: {},
   },
   // The agents' case: a default changed, and no test edited, since the test builds the sentence
   // from the same constant. The tests pass; the skill still says 10 seconds.

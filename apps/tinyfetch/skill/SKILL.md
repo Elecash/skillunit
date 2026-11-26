@@ -7,8 +7,6 @@ description: Make HTTP requests to JSON APIs with tinyfetch. Use when code calls
 
 tinyfetch is a small HTTP client for JSON APIs, built on `fetch`.
 
-Setup:
-
 ```ts
 import { tf } from "tinyfetch";
 ```

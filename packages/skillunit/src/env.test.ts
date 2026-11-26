@@ -33,7 +33,6 @@ describe('.env files', () => {
       when: "the test layer needs the decision model's API key.",
       // The variables come from the providers that ship, so a new one shows up in the skill.
       do: `put the key of the provider in \`skillunit.yaml\`, ${or(KEYS.map((v) => `\`${v}\``))}, in the environment (a secret in CI), or in a \`.env\` file that git ignores, next to \`skillunit.yaml\` or at the root of the repository.`,
-      check: `forbid \`/(${KEYS.map((v) => v.replace(/_API_KEY$/, '')).join('|')})_API_KEY:\\s*\\S/\` in yaml`,
       ask: [
         {
           id: 'key-in-config',

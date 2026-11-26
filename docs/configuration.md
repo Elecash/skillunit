@@ -16,11 +16,6 @@ thresholds:
   yes: 0.7                   # lowest P(yes) that passes an expected "yes": 0.5 or more
   no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
   margin: 0.13               # how close to a threshold a verdict is marked borderline
-examples:
-  ts: { tsconfig: ./tsconfig.json }                 # ts, tsx, js and jsx, with the project's tsc
-  sh: { command: "sh -n {file}" }                   # any other language: a command with {file}
-lint:
-  off: [length]              # lint rules not to report
 proof:
   run: "npx vitest run skill.test"           # the tests that declare units, run through the shell
   units: ./tmp/skill-units                   # where the tests leave their units (the default)
@@ -47,30 +42,6 @@ proof:
   at most.
   `openai` gives the same numbers for the same request every run, so there a borderline verdict
   is one that a small change to the wording or to the order of the options may flip.
-- `examples`: how lint checks the skill's code examples. `ts` names a tsconfig: every `ts`, `tsx`,
-  `js` and `jsx` example is type-checked with the project's own `tsc` (TypeScript 5 or later,
-  found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
-  name to its source, usually with a `paths` entry. Any other language takes a `command` with
-  `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
-  The file is a copy of the example in a temporary folder, after its `Setup`, so a command that
-  only parses it checks the syntax and nothing else: `python3 -m py_compile {file}` passes an
-  import of a name the library no longer has. `PYTHONPATH=src python3 {file}`, with `src` the
-  folder that holds the package, imports the library and runs the example, so that import
-  fails.
-  A key and a fence name a language the same way, and the usual pairs are one language: `py` and
-  `python`, `js` and `javascript`, `ts` and `typescript`, `sh`, `bash` and `shell`, `yml` and
-  `yaml`. Lint warns about a language set here that no block of the skill is in.
-  An example that uses names it does not declare fails with "Cannot find name": declare them
-  once in a `Setup:` block, which lint puts in front of every example of that language in the
-  file. A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
-  above it that has one, so a `Setup` in the root `SKILL.md` covers the skills nested in it too.
-  This works in a skill that is not written in units too. A block marked `no-check` after its language is not
-  checked. The [style guide](style-guide.md#setup) has the details.
-- `lint.off`: lint rules whose findings are not reported, by the name each finding carries in
-  the JSON report: `parse`, `structure`, `setup`, `check`, `types`, `command`,
-  `index`, `length` and `fence`. `length` is the warning about a file above about 300 lines,
-  the first to turn off on a skill someone else wrote; `fence` is the warning about a word after
-  a fence's language that SkillUnit does not know. The summary says which rules are off.
 - `proof`: how `skillunit proof` builds the skill, with `source`. `run` is the command that runs
   the tests that declare units, from the folder of this file; `proof`, `check` and `test` run it,
   and without it the units already in `units` are used. Point it at those files only, such as
@@ -149,7 +120,7 @@ fails with "the model refused to answer". The other questions of the request are
 `model` can be the path of a module (starting with `./` or `/`) whose default export, or export
 named `model`, is a `DecisionModel`, or a function that returns one:
 
-```ts no-check
+```ts
 interface DecisionModel {
   readonly id: string;
   readonly limits: {

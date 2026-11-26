@@ -35,3 +35,37 @@ unit('instructions-only-in-units', {
     expect: 'inside',
   },
 });
+
+// The units below are declared with no body: no test of SkillUnit checks them.
+unit('index-every-file', {
+  when: 'the agent adds a file to a skill.',
+  do: 'add a row for it to the "Where to look" table of `SKILL.md`, from the task to the file, with a relative link.',
+  examples: [{ lang: 'md', text: '| Retry a request that failed | [features/retries.md](features/retries.md) |' }],
+  ask: {
+    id: 'new-file-index',
+    scenario: 'The agent adds `features/i18n.md` to a skill.',
+    question: 'Where must a link to it go?',
+    options: {
+      index: 'In the "Where to look" table of `SKILL.md`, as a row from the task to the file',
+      sibling: 'In the file that covers the closest feature',
+      nowhere: 'Nowhere; agents search the folder',
+    },
+    expect: 'index',
+  },
+});
+
+unit('rules-section-last', {
+  when: 'the agent writes the units of a file.',
+  do: 'put every unit under one `## Rules` heading, the last `##` section of the file, with nothing else in it.',
+  ask: {
+    id: 'unit-placement',
+    scenario: 'A file has the sections "Options", "Errors" and "Rules". The agent writes a new rule about errors.',
+    question: 'Where does the unit go?',
+    options: {
+      rules: 'Under `## Rules`, with the other units',
+      errors: 'Under "Errors", next to the text it is about',
+      new: 'In a new `## Error rules` section after "Errors"',
+    },
+    expect: 'rules',
+  },
+});

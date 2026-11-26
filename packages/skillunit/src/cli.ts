@@ -9,15 +9,14 @@ import { CONFIG_FILE, loadConfig, thresholdsProblem, type Config, type ProofConf
 import { loadEnv } from './env.js';
 import { Git } from './git.js';
 import { init } from './init.js';
-import { ConfigError, lintSkill } from './lint/index.js';
-import type { LintResult } from './lint/types.js';
 import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
-import { runFailure, runProof, runTests, traceSkill, type OriginLookup, type ProofResult, type ProofSkipped, type TestRun } from './proof/index.js';
+import { ConfigError } from './problems.js';
+import { runFailure, runProof, runTests, type ProofResult, type ProofSkipped, type TestRun } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
 import { collectQuestions, type QuestionProblem } from './test/questions.js';
 import { runAll, type Report } from './test/runner.js';
-import { parseSkill } from './units/index.js';
+import { listUnits } from './units/index.js';
 
 const pad = (s: string) => s.padEnd(20);
 const ENVIRONMENT = PROVIDER_NAMES.flatMap((name) => PROVIDERS[name].env.map((v) => `  ${pad(v)}key of the ${name} provider, needed by test and check except with --dry-run`)).join('\n');
@@ -26,8 +25,7 @@ const MODELS = PROVIDER_NAMES.map((name) => `${PROVIDERS[name].defaultModel} for
 const HELP = `SkillUnit checks that an agent skill still says what the code it describes does
 
 Usage
-  skillunit check [options]           lint, proof and test: what CI runs
-  skillunit lint [skill] [options]    the skill's format, examples, Check rules and links
+  skillunit check [options]           proof and test: what CI runs
   skillunit proof [options]           run the tests that declare units, build the skill from \`source\`
                                       and those units, and compare it with the skill folder
   skillunit test [options]            run the tests that declare units, and ask a decision model the
@@ -59,7 +57,7 @@ Options for proof
   --write             write the build to the skill folder instead of comparing
 
 Exit codes
-  0  every check passed (lint warnings and borderline verdicts allowed)
+  0  every check passed (borderline verdicts allowed)
   1  a check failed
   2  the command itself was wrong: unknown option, missing file, no API key, bad settings
 
@@ -87,7 +85,6 @@ interface Args {
 
 /** Options each command takes, besides --config, --skill, --reporter and --json. */
 const OPTIONS: Record<Command, string[]> = {
-  lint: [],
   proof: ['--compact', '--write', '--no-run'],
   test: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
   check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
@@ -149,8 +146,6 @@ function parseArgs(command: Command, argv: string[]): Args {
   if (args.base !== undefined && !args.changed) usage('--base only works with --changed');
   if ((command === 'test' || command === 'check') && positional.length) usage(`${command} takes no paths; use --skill and the settings`);
   else if (command === 'proof' && positional.length) usage('proof takes no paths; it builds `skill` from `source`, as the settings say');
-  else if (positional.length > 1) usage(`${command} takes one skill folder`);
-  else if (positional[0]) args.skill = positional[0];
   return args;
 }
 
@@ -197,26 +192,17 @@ async function runCommand(command: Command, args: Args) {
   }
 
   try {
-    let lintResult: LintResult | undefined;
     let proofResult: ProofResult | ProofSkipped | undefined;
     let testResult: Report | undefined;
-    // The proof first: it runs the tests, and it says where each line of the skill comes from.
-    let origin: OriginLookup | undefined;
+    // The proof first: it runs the tests that the questions come from.
     if (command === 'proof' || command === 'check') {
       if (config.source && config.proof) {
-        const run = runProof({ skill: config.skill, source: config.source, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun });
-        proofResult = run.result;
-        origin = run.origin;
+        proofResult = runProof({ skill: config.skill, source: config.source, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
       } else proofResult = { configured: false, ok: true };
-    } else if (config.source && config.proof && existsSync(config.source)) {
-      origin = traceSkill({ skill: config.skill, source: config.source, config: config.proof });
     }
-    // Parsed once: lint reads it, and the report lists its units so the layers can be joined on them.
-    const skill = parseSkill(config.skill);
-    if (command === 'lint' || command === 'check') {
-      lintResult = lintSkill(skill, { ...(config.examples ? { examples: config.examples } : {}), ...(config.lint ? { off: config.lint.off } : {}) });
-      if (origin) for (const p of lintResult.problems) p.origin ??= origin(p.file, p.line);
-    }
+    // The units of the skill folder: the file each question is about, and the units the report
+    // lists so the layers can be joined on them.
+    const skillUnits = existsSync(config.skill) ? listUnits(config.skill) : [];
     if (testing) {
       const model = await loadModel(config.model);
       const changed = args.changed ? changedSkillFiles(config.skill, args.base) : undefined;
@@ -226,16 +212,15 @@ async function runCommand(command: Command, args: Args) {
       const own = command === 'test' ? runTests(cfg, args.noRun) : undefined;
       const records = readRecords(cfg.units, cfg.cwd);
       const problems = own ? recordProblems(cfg, own, records) : [];
-      const collected = collectQuestions(records.units, records.questions, config.skill, skill.units);
+      const collected = collectQuestions(records.units, records.questions, config.skill, skillUnits);
       testResult = await runAll(config, model, collected, { dryRun: args.dryRun, problems, ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
       if (changed) testResult.changed = { ref: changed.ref, commit: changed.commit };
     }
     const report = buildReport(command, {
-      units: skill.units.map((u) => {
+      units: skillUnits.map((u) => {
         const built = proofResult?.configured ? proofResult.units.find((p) => p.id === u.id && p.file === u.file) : undefined;
         return { id: u.id, kind: u.kind, file: u.file, line: u.line, ...(built ? { from: built.from, ...(built.test ? { test: built.test } : {}) } : {}) };
       }),
-      ...(lintResult ? { lint: lintResult } : {}),
       ...(proofResult ? { proof: proofResult } : {}),
       ...(testResult ? { test: testResult } : {}),
     });

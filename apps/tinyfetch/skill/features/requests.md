@@ -2,8 +2,6 @@
 
 Send a request and read its response: the methods, query parameters and JSON bodies.
 
-Setup:
-
 ```ts
 import { tf } from "tinyfetch";
 ```
@@ -56,8 +54,6 @@ await tf.get("https://api.example.com/users", {
 });
 ```
 
-Check: forbid `/\.(get|head|post|put|patch|delete)(<[^>]*>)?\(\s*["'][^"']*\?/` in ts
-
 ### rule: body-as-object
 
 When: a request sends data.
@@ -69,5 +65,3 @@ Right:
 ```ts
 await tf.post("https://api.example.com/users", { name: "Ada" });
 ```
-
-Check: forbid `/JSON\.stringify/` in ts

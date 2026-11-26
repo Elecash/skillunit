@@ -89,8 +89,6 @@ export interface UnitSpec {
   unknown?: string;
   /** A rule or a decision: the case where it still applies. */
   evenWhen?: string;
-  /** Any kind: ``forbid `/regex/` in <languages>``. */
-  check?: string;
   /** Named values the prose of the skill may use, as `{{value:<id>.<name>}}`. */
   values?: Record<string, UnitScalar>;
   /** Questions for the decision model about this unit: one, or a list. */
@@ -164,7 +162,6 @@ export interface PassedUnit extends RecordBase {
   paths?: UnitPath[];
   unknown?: string;
   evenWhen?: string;
-  check?: string;
   values?: Record<string, UnitScalar>;
   ask?: AskedQuestion[];
   /** The blocks of `u.example`, in the order of the calls. */
@@ -190,7 +187,7 @@ export interface PassedQuestion extends RecordBase {
 
 export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion;
 
-/** A unit id: kebab-case, as lint wants it. */
+/** A unit id: kebab-case. */
 export const UNIT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** The name of a path of a decision, or of a value. */
 export const UNIT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i;
@@ -200,7 +197,7 @@ export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 /** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
 export const NONE = 'none';
 
-const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values', 'ask', 'examples'] as const;
+const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask', 'examples'] as const;
 /** A fence language: what `u.example` and `examples` take. */
 export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
 const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
@@ -227,7 +224,7 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
   const extra = Object.keys(s).find((k) => !(KEYS as readonly string[]).includes(k));
   if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${KEYS.join(', ')})`);
 
-  for (const key of ['when', 'do', 'value', 'decide', 'unknown', 'evenWhen', 'check'] as const) {
+  for (const key of ['when', 'do', 'value', 'decide', 'unknown', 'evenWhen'] as const) {
     const v = s[key];
     if (v === undefined) continue;
     if (typeof v !== 'string' || !v.trim()) fail(`\`${key}\` must be text that is not empty`);

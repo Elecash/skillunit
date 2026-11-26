@@ -2,8 +2,6 @@
 
 Every request has a timeout, and any request can be cancelled with an `AbortSignal`.
 
-Setup:
-
 ```ts
 import { tf, TimeoutError } from "tinyfetch";
 ```

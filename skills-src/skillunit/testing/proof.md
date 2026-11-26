@@ -10,7 +10,7 @@ A unit that a test can check is declared in that test with `unit()` from `skillu
 | `do` | rule | `Do:` |
 | `value`, or `u.value(text)` in the body | fact | `Value:` |
 | `decide`, `paths: [{ path, when }]` | decision | `Decide:` and its paths |
-| `unknown`, `evenWhen`, `check` | fact; rule or decision; any kind | `Unknown:`, `Even when:`, `Check:` |
+| `unknown`, `evenWhen` | fact; rule or decision | `Unknown:`, `Even when:` |
 | `values: { name: value }` | any kind | `{{value:<id>.<name>}}` in the source |
 | `examples: [{ lang, text }]`, or `u.example(lang, text)` in the body | rule or fact | a block under `Right:` or the `Value:` |
 | `ask` | any kind | questions for the decision model about the file that holds the unit |

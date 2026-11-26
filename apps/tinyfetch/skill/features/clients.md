@@ -2,8 +2,6 @@
 
 Make many requests to one API through a client that holds its base URL and headers.
 
-Setup:
-
 ```ts
 import { create } from "tinyfetch";
 ```

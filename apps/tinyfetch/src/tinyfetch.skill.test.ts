@@ -60,7 +60,6 @@ unit('one-client-per-api', {
 unit('retry-idempotent-only', {
   when: 'a request may be retried.',
   do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',
-  check: 'forbid `/\\.(post|patch)\\([^)]*retry/` in ts',
   ask: [
     {
       id: 'post-no-retry',
@@ -121,7 +120,6 @@ unit('retry-idempotent-only', {
 unit('never-disable-timeout', {
   when: 'a request may take long, such as an upload or a report.',
   do: `raise \`timeout\` to a number of milliseconds that fits the request, and never set it to \`${NO_TIMEOUT}\`.`,
-  check: `forbid \`/timeout:\\s*${NO_TIMEOUT}\\b/\` in ts`,
   ask: {
     id: 'long-upload',
     scenario: 'An upload with `tf.post` can take up to two minutes.',

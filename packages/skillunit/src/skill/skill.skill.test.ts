@@ -25,10 +25,9 @@ unit('which-command', {
   when: 'the agent has changed a skill, its questions or the code it describes, and wants to know if the skill still holds.',
   decide: 'which layer to run.',
   paths: [
-    { path: 'lint', when: 'the skill\'s files changed: `npx skillunit lint`.' },
     { path: 'proof', when: 'the code changed, or its tests did: `npx skillunit proof`, which runs the tests and names each unit the change moved.' },
     { path: 'test', when: 'what a unit says changed, or its questions did: `npx skillunit test`, or `npx skillunit test --changed` for only the questions about the files those changes touch.' },
-    { path: 'check', when: 'before handing the work over: `npx skillunit check`, every layer in one run.' },
+    { path: 'check', when: 'before handing the work over: `npx skillunit check`, both layers in one run.' },
   ],
   evenWhen: 'only one file changed; `check` is what CI runs, so it is the last command before handing over.',
   ask: [
@@ -39,7 +38,7 @@ unit('which-command', {
       options: {
         proof: '`npx skillunit proof`, which runs the tests',
         test: '`npx skillunit test`',
-        'lint-only': '`npx skillunit lint`, and nothing else',
+        nothing: 'Nothing: the skill did not change, so it still holds',
       },
       expect: 'proof',
     },

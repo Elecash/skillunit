@@ -2,8 +2,6 @@
 
 tinyfetch can repeat a request that failed. Which failures it repeats, and how long it waits, are in the rules below.
 
-Setup:
-
 ```ts
 import { tf } from "tinyfetch";
 ```
@@ -44,5 +42,3 @@ Right:
 ```ts
 await tf.get("https://api.example.com/users", { retry: 3 });
 ```
-
-Check: forbid `/\.(post|patch)\([^)]*retry/` in ts

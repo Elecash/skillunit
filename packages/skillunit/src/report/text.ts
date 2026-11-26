@@ -1,6 +1,6 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
 import { isAbsolute, join, relative } from 'node:path';
-import type { LintSummary, Problem } from '../lint/types.js';
+import type { Problem } from '../problems.js';
 import type { ProofResult } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
@@ -41,7 +41,7 @@ export function shown(path: string, options: ReportOptions): string {
 }
 
 /**
- * Where a lint or proof problem is, for people: `skills/x/SKILL.md:12` from the folder the command
+ * Where a proof problem is, for people: `skills/x/SKILL.md:12` from the folder the command
  * ran in, or from the skill folder, which the layer's header names, when the skill is outside it.
  */
 export function where(skill: string, p: Problem, options: ReportOptions): string {
@@ -134,7 +134,7 @@ export function proofSummary(proof: ProofResult): string {
 export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
   const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
   if (!u?.test) return null;
-  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  const skill = (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
   const place = `${skillFile(skill, u.test.file, options)}:${u.test.line}`;
   return u.from === 'declared' ? `the unit \`${u.id}\` is declared, with no test, at ${place}` : `the unit \`${u.id}\` comes from its test, ${place}`;
 }
@@ -142,12 +142,7 @@ export function unitOrigin(report: CheckReport, unit: string | undefined, option
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
-  const { lint, proof, test } = report;
-  if (lint) {
-    const errors = lint.problems.filter((p) => p.severity === 'error').length;
-    const warnings = lint.problems.length - errors;
-    parts.push(`lint ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}`);
-  }
+  const { proof, test } = report;
   if (proof) {
     if (!proof.configured) parts.push('proof not configured');
     else {
@@ -182,19 +177,4 @@ export function brief(message: string, max = 400): string {
     .split('\n')
     .map((line) => (line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`))
     .join('\n');
-}
-
-/** Where a skill declares the names its examples use. */
-export const SETUP_DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md#setup';
-
-/**
- * The names no example or `Setup` declares, the five most frequent with their counts, and where
- * to declare them: two lines, or none when every name is declared.
- */
-export function undeclaredNames(summary: LintSummary): [string, string] | null {
-  const names = summary.undeclared;
-  if (!names.length) return null;
-  const top = names.slice(0, 5).map((n) => `${n.name} ${n.count}`).join(' · ');
-  const more = names.length > 5 ? `, and ${names.length - 5} more` : '';
-  return [`Names nothing declares: ${top}${more}`, `A \`Setup:\` block in \`SKILL.md\` declares them once for every file of the skill: ${SETUP_DOCS}`];
 }

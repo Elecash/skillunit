@@ -2,8 +2,6 @@
 
 Send a request and read its response: the methods, query parameters and JSON bodies.
 
-Setup:
-
 ```ts
 import { tf } from "tinyfetch";
 ```

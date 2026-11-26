@@ -1,6 +1,6 @@
 # CI
 
-`skillunit check` runs lint, proof and test, and exits 1 when one fails. In GitHub Actions:
+`skillunit check` runs proof and test, and exits 1 when one fails. In GitHub Actions:
 
 ```yaml
 # .github/workflows/skill.yml
@@ -37,7 +37,7 @@ jobs:
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
 - Set the key of the provider in `skillunit.yaml` as a repository secret: `TYPESAFE_API_KEY` for
   `typesafe`, `OPENAI_API_KEY` for `openai`. Only that one is needed.
-- The dry run needs no key. It runs lint and proof in full, and checks that every question can
+- The dry run needs no key. It runs the proof in full, and checks that every question can
   be asked and fits, so a renamed heading, a question whose `expect` names no option, or a unit
   missing from the skill fails it before the model is asked.
 
@@ -76,6 +76,6 @@ sent again within 30 minutes then pays 10% for that part, and the first request 
 for writing it. Most requests carry less text than that, so caching changes a run's cost by a
 few percent at most.
 
-Lint and proof make no request. `--changed` sends only the questions about the files of the
+The proof makes no request. `--changed` sends only the questions about the files of the
 skill that differ from the merge base with the target branch, so a pull request that leaves the
 skill alone sends none.

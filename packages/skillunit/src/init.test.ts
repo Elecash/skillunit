@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 import { init } from './init.js';
-import { ConfigError } from './lint/types.js';
+import { ConfigError } from './problems.js';
 
 const roots: string[] = [];
 function project(): string {
@@ -21,27 +21,18 @@ describe('init', () => {
     const root = project();
     expect(init('skills/my-skill', root)).toEqual([
       'created skillunit.yaml',
-      'next: run `skillunit lint`',
-      'a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them',
+      'next: a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them',
     ]);
     expect(existsSync(join(root, 'specs'))).toBe(false);
     expect(existsSync(join(root, 'skills', 'my-skill', 'skillunit.yaml'))).toBe(false);
     const config = loadConfig(join(root, 'skillunit.yaml'));
     expect(config.skill).toBe(join(root, 'skills', 'my-skill'));
     expect(config.configDir).toBe(root);
-    expect(config.examples?.ts).toBeUndefined();
     // Building the skill from the tests is there to turn on, commented out.
     expect(config.source).toBeUndefined();
     const text = readFileSync(join(root, 'skillunit.yaml'), 'utf8');
     expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts\n');
     expect(text).not.toContain('specs');
-  });
-
-  it('turns on the type-check when the project has a tsconfig.json', () => {
-    const root = project();
-    writeFileSync(join(root, 'tsconfig.json'), '{}');
-    init('skills/my-skill', root);
-    expect(loadConfig(join(root, 'skillunit.yaml')).examples?.ts?.tsconfig).toBe(join(root, 'tsconfig.json'));
   });
 
   it('with no folder, the skill is the current folder', () => {
@@ -59,7 +50,6 @@ describe('init', () => {
       'next: set `source` and `proof.run` in skillunit.yaml, write the source with `{{unit:<id>}}` where each unit goes, and declare each unit and its questions in a test with `unit()` and `ask()` from `skillunit/vitest`',
       'then: run `skillunit proof --write` to build ./skills/other, and `skillunit check` to check it',
     ]);
-    expect(out.join('\n')).not.toContain('skillunit lint');
   });
 
   it('refuses to overwrite skillunit.yaml', () => {

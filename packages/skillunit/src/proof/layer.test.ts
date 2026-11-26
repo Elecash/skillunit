@@ -4,9 +4,11 @@ import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { ProofConfig } from '../config.js';
 import { loadConfig } from '../config.js';
-import { F } from '../lint/testing.js';
-import type { Problem } from '../lint/types.js';
-import { proof, runProof, traceSkill, type ProofOptions } from './layer.js';
+import type { Problem } from '../problems.js';
+
+/** A Markdown code fence, written so this file holds none of its own. */
+const F = '`'.repeat(3);
+import { proof, runProof, type ProofOptions } from './layer.js';
 
 // Region markers built from parts: this file holds no region of its own.
 const OPEN = (id: string) => `#${'region'} skill:${id}`;
@@ -87,7 +89,7 @@ const RECORDS = {
     examples: [{ lang: 'text', text: 'GET   10 s\nPOST  10 s\n' }],
   }),
   'tmp/skill-units/by-hand.0004.json': record('by-hand', 40, { kind: 'rule', body: false, when: 'calling one API many times.', do: 'reuse one client.' }),
-  'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts' }),
+  'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.' }),
   'tmp/skill-units/one-client-per-api.0003.json': record('one-client-per-api', 30, {
     kind: 'decision',
     when: 'the code makes several requests to the same API.',
@@ -143,8 +145,6 @@ ${F}ts
 if (isHttpError(error)) return null;
 ${F}
 
-Check: forbid \`/\\.status\\b/\` in ts
-
 ### decision: one-client-per-api
 
 When: the code makes several requests to the same API.
@@ -185,8 +185,8 @@ describe('building the skill', () => {
     expect(r.units.map((u) => `${u.id} ${u.from} ${u.state} ${u.file}:${u.line} ${u.test ? `${u.test.file}:${u.test.line}` : '-'} ${u.source.file}:${u.source.line}`)).toEqual([
       'default-timeout test passed SKILL.md:19 ../tests/a.test.ts:10 ../skill-src/SKILL.md:19',
       'check-status test passed SKILL.md:32 ../tests/a.test.ts:20 ../skill-src/SKILL.md:21',
-      'one-client-per-api test passed SKILL.md:46 ../tests/a.test.ts:30 ../skill-src/SKILL.md:23',
-      'by-hand declared passed SKILL.md:62 ../tests/a.test.ts:40 ../skill-src/SKILL.md:25',
+      'one-client-per-api test passed SKILL.md:44 ../tests/a.test.ts:30 ../skill-src/SKILL.md:23',
+      'by-hand declared passed SKILL.md:60 ../tests/a.test.ts:40 ../skill-src/SKILL.md:25',
     ]);
   });
 
@@ -262,12 +262,10 @@ describe('a skill folder edited by hand', () => {
 
   it('lines the skill lacks at the end of a unit: blamed on that unit, not the next one', () => {
     const root = written();
-    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('Check: forbid `/\\.status\\b/` in ts\n\n', ''));
+    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('Right:\n\n```ts\nif (isHttpError(error)) return null;\n```\n\n', ''));
     const found = run(root).problems;
-    expect(found.map(show)).toEqual([
-      expect.stringMatching(/^SKILL\.md:\d+ check-status error: .* the build has `Check: forbid '\/\\\.status\\b\/' in ts`, the skill has nothing here\. .* \[test \.\.\/tests\/a\.test\.ts:20\]$/),
-    ]);
-    expect(found[0]!.lines).toEqual({ build: 'Check: forbid `/\\.status\\b/` in ts', skill: null });
+    expect(found.map(show)).toEqual([expect.stringMatching(/^SKILL\.md:\d+ check-status error: .* the build has `Right:`, the skill has nothing here\. .* \[test \.\.\/tests\/a\.test\.ts:20\]$/)]);
+    expect(found[0]!.lines).toEqual({ build: 'Right:', skill: null });
   });
 
   it('lines the skill lacks at the end of the file: the line reported is in the file, and so is its origin', () => {
@@ -427,7 +425,7 @@ describe('a unit in two places, or in none', () => {
 });
 
 describe('questions in a record', () => {
-  const rule = (ask: unknown) => record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts', ask });
+  const rule = (ask: unknown) => record('check-status', 20, { kind: 'rule', when: 'a request failed.', do: 'test the error with `isHttpError` first.', ask });
   const question = { scenario: 'A request failed.', question: 'What does the agent test first?', options: { helper: 'isHttpError', status: 'the status' }, expect: 'helper' };
 
   it('leave the built skill as it is', () => {
@@ -438,7 +436,7 @@ describe('questions in a record', () => {
   });
 
   it('a unit with no body builds as any unit, with its example from a region of its file', () => {
-    const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', body: false, when: 'a request failed.', do: 'test the error with `isHttpError` first.', check: 'forbid `/\\.status\\b/` in ts' }) });
+    const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': record('check-status', 20, { kind: 'rule', body: false, when: 'a request failed.', do: 'test the error with `isHttpError` first.' }) });
     const r = run(root, {}, { write: true });
     expect(errors(r)).toEqual([]);
     expect(r.units.find((u) => u.id === 'check-status')).toMatchObject({ from: 'declared', state: 'passed' });
@@ -611,24 +609,13 @@ for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\
   });
 });
 
-describe('where a line comes from, for lint and the model tests', () => {
-  it('traces the skill folder as it is, from the units already left, without running anything', () => {
-    const root = project({ ...GOOD, 'skillunit.yaml': 'skill: ./skill\nsource: ./skill-src\nproof:\n  run: "exit 9"\n' });
-    run(root, {}, { write: true });
-    const origin = traceSkill({ skill: join(root, 'skill'), source: join(root, 'skill-src'), config: config(root, { run: 'exit 9' }) });
-    expect(origin('SKILL.md', 3)).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
-    expect(origin('SKILL.md', 23)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 10, unit: 'default-timeout' });
-    expect(origin('SKILL.md', 41)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 2, unit: 'check-status' });
-    expect(origin('logo.txt', 1)).toBeUndefined();
-    expect(origin('nothing.md', 1)).toBeUndefined();
-  });
-
+describe('where a line comes from', () => {
   it('runProof gives the same lookup with the result', () => {
     const root = project(GOOD);
     const { result, origin } = runProof({ skill: join(root, 'skill'), source: join(root, 'skill-src'), config: config(root), write: true });
     expect(result.ok).toBe(true);
     expect(origin('SKILL.md', 3)).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
-    expect(origin('SKILL.md', 66)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 40, unit: 'by-hand' });
+    expect(origin('SKILL.md', 64)).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 40, unit: 'by-hand' });
   });
 });
 

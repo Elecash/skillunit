@@ -12,51 +12,64 @@ const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], {
 
 describe('exit 2 with a JSON reporter', () => {
   it('prints the error as JSON on stdout as well as on stderr', () => {
-    for (const args of [['lint', '--reporter', 'json', '--bogus'], ['check', '--json', '--config', 'missing.yaml']]) {
+    for (const args of [['proof', '--reporter', 'json', '--bogus'], ['check', '--json', '--config', 'missing.yaml']]) {
       const result = run(...args);
       expect(result.status).toBe(2);
       expect(result.stderr).toMatch(/^skillunit: /);
       const out = JSON.parse(result.stdout);
-      expect(out).toMatchObject({ schema: 6, command: args[0], ok: false, error: { exit: 2 } });
+      expect(out).toMatchObject({ schema: 7, command: args[0], ok: false, error: { exit: 2 } });
       expect(result.stderr).toContain(out.error.message);
     }
   });
 
   it('prints nothing on stdout with the table reporter', () => {
-    const result = run('lint', '--bogus');
+    const result = run('proof', '--bogus');
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
+  });
+
+  it('has no lint command', () => {
+    const result = run('lint');
+    expect(result.status).toBe(2);
+    expect(result.stderr).toBe('skillunit: unknown command "lint". Run `skillunit --help`.\n');
   });
 });
 
 describe('a report through a pipe', () => {
-  // A skill whose report is far above the 64 KB a pipe holds: 3,000 links that do not resolve.
-  const skill = mkdtempSync(join(tmpdir(), 'skillunit-pipe-'));
-  const links = Array.from({ length: 3000 }, (_, i) => `- [file ${i}](references/missing-file-number-${i}.md)`);
-  writeFileSync(join(skill, 'SKILL.md'), `---\nname: big\ndescription: A skill with a long report.\n---\n\n# Big\n\n${links.join('\n')}\n`);
-  afterAll(() => rmSync(skill, { recursive: true, force: true }));
+  // A report far above the 64 KB a pipe holds: 3,000 files of the skill folder that no file of
+  // the source builds.
+  const root = mkdtempSync(join(tmpdir(), 'skillunit-pipe-'));
+  const index = '---\nname: big\ndescription: A skill with a long report.\n---\n\n# Big\n';
+  for (const dir of ['skill', 'source']) {
+    mkdirSync(join(root, dir));
+    writeFileSync(join(root, dir, 'SKILL.md'), index);
+  }
+  for (let i = 0; i < 3000; i++) writeFileSync(join(root, 'skill', `extra-file-number-${i}.md`), '# Extra\n');
+  writeFileSync(join(root, 'skillunit.yaml'), 'skill: ./skill\nsource: ./source\n');
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   // spawnSync reads stdout through a pipe, as `| jq` and a CI log do.
-  const lint = (...args: string[]) =>
-    spawnSync(process.execPath, [CLI, 'lint', skill, ...args], { cwd: skill, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, NO_COLOR: '1' } });
+  const proof = (...args: string[]) =>
+    spawnSync(process.execPath, [CLI, 'proof', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, NO_COLOR: '1' } });
 
   it('arrives whole with the JSON reporter', () => {
-    const result = lint('--reporter', 'json');
+    const result = proof('--reporter', 'json');
     expect(result.status).toBe(1);
     expect(result.stdout.length).toBeGreaterThan(256 * 1024);
     const report = JSON.parse(result.stdout);
-    expect(report.lint.problems.filter((p: { message: string }) => p.message.includes('does not resolve'))).toHaveLength(3000);
+    expect(report.proof.problems.filter((p: { message: string }) => p.message.startsWith('no file of `source` builds'))).toHaveLength(3000);
   });
 
   it.each(['table', 'github'])('ends with the status line with the %s reporter', (reporter) => {
-    const result = lint('--reporter', reporter);
+    const result = proof('--reporter', reporter);
     expect(result.status).toBe(1);
     expect(result.stdout.length).toBeGreaterThan(64 * 1024);
     // Nx sets FORCE_COLOR, which wins over NO_COLOR.
     const last = result.stdout.replace(/\x1b\[[0-9;]*m/g, '').trimEnd().split('\n').at(-1);
-    expect(last).toMatch(/^FAILED {2}lint 3,?000 errors/);
+    expect(last).toMatch(/^FAILED {2}proof 3,?000 errors/);
   });
 });
+
 
 describe('the decision model provider', () => {
   // Outside any git repository, so no .env above it supplies a key.
@@ -93,7 +106,7 @@ describe('the decision model provider', () => {
     const unknown = inProject('test', '--provider', 'mistral');
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toBe('skillunit: --provider takes typesafe, openai; any other provider goes in a model module\n');
-    expect(inProject('lint', '--provider', 'typesafe').stderr).toContain('lint does not take --provider');
+    expect(inProject('proof', '--provider', 'typesafe').stderr).toContain('proof does not take --provider');
   });
 
   it('--provider replaces a model module of the settings, and --model alone does not', () => {

@@ -3,7 +3,7 @@
  * --changed` uses git to find the skill files that changed.
  */
 import { spawnSync } from 'node:child_process';
-import { ConfigError } from './lint/types.js';
+import { ConfigError } from './problems.js';
 
 export class Git {
   constructor(private readonly cwd: string) {}

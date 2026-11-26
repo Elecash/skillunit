@@ -2,8 +2,6 @@
 
 tinyfetch can repeat a request that failed. Which failures it repeats, and how long it waits, are in the rules below.
 
-Setup:
-
 ```ts
 import { tf } from "tinyfetch";
 ```

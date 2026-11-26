@@ -2,8 +2,6 @@
 
 A request that fails throws. What it throws depends on how it failed, and the rules below say how to tell.
 
-Setup:
-
 ```ts
 import { isHttpError, tf } from "tinyfetch";
 ```

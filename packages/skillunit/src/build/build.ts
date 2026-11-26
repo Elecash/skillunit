@@ -12,7 +12,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import type { Region } from '../proof/regions.js';
 import type { FailedUnit, PassedUnit, UnitKind } from '../unit/contract.js';
-import { parseFile } from '../units/index.js';
+import { unitHeadings } from '../units/index.js';
 import type { ReadUnit } from './records.js';
 import { renderUnit } from './render.js';
 
@@ -211,7 +211,7 @@ export function buildSkill(input: BuildInput): Build {
       origins.push({ kind: 'source', file: abs, line: Math.min(line, last) });
     });
 
-    for (const u of parseFile(prose.join('\n'), rel).units) fail(u.line, `units are declared with \`unit()\`; put \`{{unit:${u.id}}}\` here`, u.id);
+    for (const u of unitHeadings(prose.join('\n'), rel)) fail(u.line, `units are declared with \`unit()\`; put \`{{unit:${u.id}}}\` here`, u.id);
     built.push({ file: rel, text: out.join(eol), origins, broken });
   }
 

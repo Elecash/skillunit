@@ -106,7 +106,7 @@ export class App {
   }
 
   /** Runs `skillunit <command> --reporter json` on the copy. With `--changed`, `--base` is the base commit. */
-  run(command: 'check' | 'lint' | 'proof' | 'test', ...args: string[]): Run {
+  run(command: 'check' | 'proof' | 'test', ...args: string[]): Run {
     const base = args.includes('--changed') ? ['--base', this.base] : [];
     const key = apiKey();
     const result = spawnSync(process.execPath, [CLI, command, '--reporter', 'json', ...base, ...args], {

@@ -2,8 +2,6 @@
 skill: ./skill          # built from skill-src and the tests; what agents read
 source: ./skill-src     # the skill as people write it
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
-examples:
-  ts: { tsconfig: ./tsconfig.json }
 # `skillunit proof` runs the tests, puts each unit a test declares where skill-src has
 # `{{unit:<id>}}`, fills `{{value:<id>.<name>}}`, and formats the result with Prettier.
 proof:

@@ -18,10 +18,10 @@ import { alignLines, differences } from '../build/align.js';
 import { buildSkill, listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
 import { readRecords, type Records } from '../build/records.js';
 import type { ProofConfig } from '../config.js';
-import { output, quote } from '../lint/commands.js';
-import type { Origin, Problem } from '../lint/types.js';
+import type { Origin, Problem } from '../problems.js';
 import type { UnitKind } from '../unit/contract.js';
 import { collectRegions, type Regions } from './regions.js';
+import { output, quote } from './shell.js';
 
 export interface ProofOptions {
   /** Folder of the built skill. */
@@ -157,7 +157,7 @@ export function proof(options: ProofOptions): ProofResult {
   return runProof(options).result;
 }
 
-/** The proof, and where each line of the skill folder comes from, for lint and the model tests. */
+/** The proof, and where each line of the skill folder comes from. */
 export function runProof(options: ProofOptions): { result: ProofResult; origin: OriginLookup } {
   const skillDir = resolve(options.skill);
   const sourceDir = resolve(options.source);
@@ -165,7 +165,7 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const fromSkill = (abs: string) => relative(skillDir, abs).split('\\').join('/') || '.';
   const fromProject = (abs: string) => relative(cfg.cwd, abs).split('\\').join('/') || '.';
   const problems: Problem[] = [];
-  const add = (file: string, line: number, message: string, more: Partial<Problem> = {}) => problems.push({ file, line, severity: 'error', rule: 'proof', message, ...more });
+  const add = (file: string, line: number, message: string, more: Partial<Problem> = {}) => problems.push({ file, line, severity: 'error', message, ...more });
   const settings = settingsPlace(options.configFile, skillDir);
   const units = fromProject(cfg.units);
 
@@ -328,19 +328,6 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     },
   };
   return { result, origin };
-}
-
-/**
- * Where each line of the skill folder comes from, without running the tests or the formatter:
- * the source filled with the units already in `proof.units`. For `skillunit lint` and
- * `skillunit test`, which read the skill folder as it is.
- */
-export function traceSkill(options: Pick<ProofOptions, 'skill' | 'source' | 'config'>): OriginLookup {
-  const skillDir = resolve(options.skill);
-  const cfg = options.config;
-  const records = readRecords(cfg.units, cfg.cwd);
-  const build = buildSkill({ source: resolve(options.source), records: records.units, regions: readRegions(cfg, records).regions, missingReason: '' });
-  return lookup(build, skillDir, (abs) => relative(skillDir, abs).split('\\').join('/'));
 }
 
 /**

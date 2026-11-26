@@ -232,14 +232,13 @@ function sentence(kind: UnitKind, spec: UnitSpec): string {
 }
 
 /** The keys of the spec, in the contract's order, without the ones it leaves out. */
-function copySpec(spec: UnitSpec, questions: AskedQuestion[] | undefined): Pick<PassedUnit, 'when' | 'do' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'check' | 'values' | 'ask'> {
+function copySpec(spec: UnitSpec, questions: AskedQuestion[] | undefined): Pick<PassedUnit, 'when' | 'do' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'values' | 'ask'> {
   const out: ReturnType<typeof copySpec> = { when: spec.when };
   if (spec.do !== undefined) out.do = spec.do;
   if (spec.decide !== undefined) out.decide = spec.decide;
   if (spec.paths !== undefined) out.paths = spec.paths.map((p) => ({ path: p.path, when: p.when }));
   if (spec.unknown !== undefined) out.unknown = spec.unknown;
   if (spec.evenWhen !== undefined) out.evenWhen = spec.evenWhen;
-  if (spec.check !== undefined) out.check = spec.check;
   if (spec.values !== undefined) out.values = { ...spec.values };
   if (questions) out.ask = questions;
   return out;

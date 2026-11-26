@@ -17,7 +17,7 @@ jobs:
       - run: npm ci
       # Typecheck, build and test every project; `check` runs the tests again through `proof.run`.
       - run: npx nx run-many -t typecheck build test
-      # Needs no API key: lint, proof, and the questions can be asked, their headings exist and requests fit.
+      # Needs no API key: proof, and the questions can be asked, their headings exist and requests fit.
       - run: node packages/skillunit/dist/cli.js check --dry-run --reporter github
       - working-directory: apps/tinyfetch
         run: node ../../packages/skillunit/dist/cli.js check --dry-run --reporter github

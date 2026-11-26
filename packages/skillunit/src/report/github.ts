@@ -4,8 +4,8 @@
  * borderline verdicts do not.
  */
 import { join } from 'node:path';
-import type { Problem } from '../lint/types.js';
-import { buildChange, gotLine, proofSummary, shown, statusLine, undeclaredNames, unitOrigin, withOrigin } from './text.js';
+import type { Problem } from '../problems.js';
+import { buildChange, gotLine, proofSummary, shown, statusLine, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
 export function github(report: CheckReport, options: ReportOptions): string {
@@ -18,7 +18,6 @@ export function github(report: CheckReport, options: ReportOptions): string {
   const problem = (layer: string, skill: string, p: Problem) =>
     annotate(p.severity, shown(join(skill, p.file), at), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, withOrigin(skill, p, options));
 
-  if (report.lint) for (const p of report.lint.problems) problem('lint', report.lint.skill, p);
   if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     // A question is annotated where it is declared: the line of its `unit()` or `ask()`.
@@ -48,8 +47,6 @@ export function github(report: CheckReport, options: ReportOptions): string {
   const change = proof?.configured ? buildChange(proof, options) : null;
   if (proof?.configured) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
   if (change) out.push(`::notice title=SkillUnit proof::${data(change)}`);
-  const names = report.lint ? undeclaredNames(report.lint.summary) : null;
-  if (names) out.push(`::notice title=SkillUnit lint::${data(`${names[0]}. ${names[1]}`)}`);
   out.push(statusLine(report), '');
   return out.join('\n');
 }

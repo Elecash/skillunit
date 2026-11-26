@@ -39,7 +39,7 @@ const noop: UnitBody<unknown> = () => {};
 describe('each kind, from the keys of the spec', () => {
   it('a rule from `do`, a fact from `value`, a decision from `decide` and `paths`', async () => {
     const r = runner();
-    r.unit('check-status', { when: 'a request failed.', do: 'test the error with `isHttpError` first.', evenWhen: 'the status is known.', check: 'forbid `/\\.status\\b/` in ts' }, noop);
+    r.unit('check-status', { when: 'a request failed.', do: 'test the error with `isHttpError` first.', evenWhen: 'the status is known.' }, noop);
     r.unit('default-timeout', { when: 'the user asks how long a request waits.', value: '10 seconds.', unknown: 'say there is no connect timeout.', values: { seconds: 10, exact: true, unit: 's' } }, noop);
     r.unit('cache-or-not', { when: 'a response repeats.', decide: 'pick one path.', paths: [{ path: 'cache', when: 'the response is the same.' }, { path: 'none', when: 'it changes.' }] }, noop);
     expect(r.tests.map((t) => t.name)).toEqual([
@@ -60,7 +60,6 @@ describe('each kind, from the keys of the spec', () => {
       when: 'a request failed.',
       do: 'test the error with `isHttpError` first.',
       evenWhen: 'the status is known.',
-      check: 'forbid `/\\.status\\b/` in ts',
       examples: [],
     });
     expect(fact).toMatchObject({ kind: 'fact', value: '10 seconds.', unknown: 'say there is no connect timeout.', values: { seconds: 10, exact: true, unit: 's' } });
@@ -271,7 +270,9 @@ describe('a spec with a mistake', () => {
     const message = async (spec: unknown) => (await fails('a-unit', spec)).message;
     expect(await message(null)).toBe('unit `a-unit`: the spec must be an object, such as `{ when: …, do: … }`');
     expect(await message({ do: 'y.' })).toBe('unit `a-unit`: `when` is missing: every unit says when it applies');
-    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, check, values, ask, examples)');
+    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask, examples)');
+    // `check` is not a key of a unit.
+    expect(await message({ when: 'x.', do: 'y.', check: 'forbid `/x/` in ts' } as never)).toBe('unit `a-unit`: unknown key `check` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask, examples)');
     expect(await message({ when: '', do: 'y.' })).toBe('unit `a-unit`: `when` must be text that is not empty');
     expect(await message({ when: 'x.', do: 'one.\n\ntwo.' })).toBe('unit `a-unit`: `do` has a blank line; a label is one paragraph');
     expect(await message({ when: 'x.', do: 'y.', paths: [] })).toMatch(/`do` and `decide` are two kinds/);
@@ -372,7 +373,7 @@ describe('questions for the decision model', () => {
 describe('a unit with no body', () => {
   it('passes, and its record says it has no body', async () => {
     const r = runner();
-    r.unit('never-disable-timeout', { when: 'a request may take long.', do: 'raise `timeout`, never set it to `0`.', check: 'forbid `/timeout:\\s*0\\b/` in ts' });
+    r.unit('never-disable-timeout', { when: 'a request may take long.', do: 'raise `timeout`, never set it to `0`.' });
     r.unit('connect-timeout', { when: 'the user asks for a connect timeout.', value: 'there is none.' });
     expect(r.tests.map((t) => t.name)).toEqual(['rule never-disable-timeout: raise `timeout`, never set it to `0`.', 'fact connect-timeout: there is none.']);
     expect(await r.run()).toEqual(['ok', 'ok']);

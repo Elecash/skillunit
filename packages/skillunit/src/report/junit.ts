@@ -1,10 +1,10 @@
 /**
- * JUnit XML, for CI systems that show test results from it. One suite per layer: lint has one
- * case per file, proof one per unit (and one per finding about no unit), and test one suite per
- * spec with one case per test. Borderline verdicts carry a `borderline` property.
+ * JUnit XML, for CI systems that show test results from it. One suite per layer: proof has one
+ * case per unit (and one per finding about no unit), and test one suite per request with one
+ * case per test. Borderline verdicts carry a `borderline` property.
  */
 import { join } from 'node:path';
-import type { Problem } from '../lint/types.js';
+import type { Problem } from '../problems.js';
 import { buildChange, gotLine, shown, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -25,23 +25,6 @@ interface Suite {
 export function junit(report: CheckReport, options: ReportOptions): string {
   const suites: Suite[] = [];
   const line = (skill: string, p: Problem) => `${shown(join(skill, p.file), options)}:${p.line}  ${p.unit ?? '-'}  ${withOrigin(skill, p, options)}`;
-
-  if (report.lint) {
-    const { lint } = report;
-    const files = [...new Set([...lint.files, ...lint.problems.map((p) => p.file)])];
-    suites.push({
-      name: 'lint',
-      cases: files.map((file) => {
-        const mine = lint.problems.filter((p) => p.file === file);
-        const errors = mine.filter((p) => p.severity === 'error');
-        const warnings = mine.filter((p) => p.severity === 'warning');
-        const c: Case = { name: shown(join(lint.skill, file), options), classname: 'lint' };
-        if (errors.length) c.failure = errors.map((p) => line(lint.skill, p)).join('\n');
-        if (warnings.length) c.out = warnings.map((p) => `warning: ${line(lint.skill, p)}`).join('\n');
-        return c;
-      }),
-    });
-  }
 
   if (report.proof?.configured) {
     const { proof } = report;

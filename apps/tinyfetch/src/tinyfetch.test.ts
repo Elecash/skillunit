@@ -150,7 +150,6 @@ describe('tinyfetch', () => {
     {
       when: 'a request needs query parameters.',
       do: 'pass them in the `query` option, which encodes each value.',
-      check: 'forbid `/\\.(get|head|post|put|patch|delete)(<[^>]*>)?\\(\\s*["\'][^"\']*\\?/` in ts',
       ask: {
         id: 'query-parameters',
         scenario: 'The code lists users page by page and must send the page number and a search term typed by the user.',
@@ -178,7 +177,6 @@ describe('tinyfetch', () => {
     {
       when: 'a request sends data.',
       do: 'pass the object itself as the body; tinyfetch serializes it and sets `content-type`.',
-      check: 'forbid `/JSON\\.stringify/` in ts',
       ask: {
         id: 'send-an-object',
         scenario: 'The code creates a user from a form and has the user as a plain object.',
