@@ -72,7 +72,9 @@ describe('exportNames', () => {
   });
 
   it('says to install typescript when it is not there', () => {
-    const dir = project({ 'index.ts': '' });
-    expect(() => loadTypeScript([join(dir, 'index.ts')])).toThrow('exportNames needs the package `typescript`, which is not installed: install it in the project, with `npm install --save-dev typescript`');
+    const missing = () => {
+      throw Object.assign(new Error("Cannot find module 'typescript'"), { code: 'MODULE_NOT_FOUND' });
+    };
+    expect(() => loadTypeScript(['/project/src/index.ts', '/skillunit/dist/typescript.js'], missing)).toThrow('exportNames needs the package `typescript`, which is not installed: install it in the project, with `npm install --save-dev typescript`');
   });
 });

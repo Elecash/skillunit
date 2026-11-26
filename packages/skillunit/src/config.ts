@@ -142,13 +142,13 @@ export function loadConfig(path?: string): Config {
 }
 
 /** The keys of `proof` in `skillunit.yaml`. */
-export const PROOF_KEYS: readonly string[] = ['run', 'units', 'format'];
+export const PROOF_KEYS = ['run', 'units', 'format'] as const;
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
   const raw = value as Record<string, unknown>;
   for (const key of Object.keys(raw)) {
-    if (!PROOF_KEYS.includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
+    if (!(PROOF_KEYS as readonly string[]).includes(key)) throw fail(`unknown key \`proof.${key}\` (allowed: ${PROOF_KEYS.join(', ')})`);
   }
   const out: ProofConfig = { units: resolve(root, DEFAULT_PROOF_UNITS), cwd: root };
   if (raw.run !== undefined) {

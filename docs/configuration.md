@@ -8,7 +8,6 @@ to the file. Without a file, the skill is the current folder.
 
 ```yaml
 skill: ./skill               # folder with SKILL.md (default: the folder of this file)
-source: ./skill-src          # the folder people write; skill is built from it (no proof without it)
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
 model: { provider: typesafe, name: jev-latest }   # or provider: openai, or a module: ./my-model.mjs
 thresholds:
@@ -16,18 +15,14 @@ thresholds:
   yes: 0.7                   # lowest P(yes) that passes an expected "yes": 0.5 or more
   no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
   margin: 0.13               # how close to a threshold a verdict is marked borderline
-proof:
-  run: "npx vitest run skill.test"           # the tests that declare units, run through the shell
+proof:                       # the skill is built from the tests (no proof and no questions without it)
+  run: "npx vitest run skill.test"           # the tests that declare the skill, run through the shell
   units: ./tmp/skill-units                   # where the tests leave their units (the default)
   format: "npx --no-install prettier --write {file}"   # run once on the built Markdown files
 ```
 
-- `skill`: the folder with `SKILL.md`. `--skill` overrides it. With `source`, it is built.
-- `source`: the folder people write, with `{{unit:<id>}}` where a unit goes and
-  `{{value:<id>.<name>}}` where a value of one does. `skillunit proof --write` builds `skill` from
-  it and the units the tests declare. The two folders cannot sit one inside the other. Without
-  `source` there is no proof layer and no [questions](questions.md) for the decision model.
-  [Proof](proof.md#the-source-and-its-slots) has the details.
+- `skill`: the folder with `SKILL.md`. `--skill` overrides it. With `proof`, it is built from the
+  files and units the tests declare.
 - `context`: one sentence about what the skill is for. It is sent with every question and helps
   the reader with the vocabulary of the domain.
 - `model`: the decision model, as `{ provider: typesafe | openai, name: <model> }` or the path of
@@ -42,18 +37,17 @@ proof:
   at most.
   `openai` gives the same numbers for the same request every run, so there a borderline verdict
   is one that a small change to the wording or to the order of the options may flip.
-- `proof`: how `skillunit proof` builds the skill, with `source`. `run` is the command that runs
-  the tests that declare units, from the folder of this file; `proof`, `check` and `test` run it,
-  and without it the units already in `units` are used. Point it at those files only, such as
-  `npx vitest run skill.test` for files named `*.skill.test.ts`: on SkillUnit's own skill that is
-  4.0 s where the whole suite takes 70.9 s, and CI still runs the whole suite. `units` is the
-  folder where the tests leave their units (default `./tmp/skill-units`), and `proof` empties it
+- `proof`: how `skillunit proof` builds the skill from the tests. Without it there is no proof
+  layer and no [questions](questions.md) for the decision model. `run` is the command that runs
+  the tests that declare the skill, from the folder of this file; `proof`, `check` and `test` run
+  it, and without it the records already in `units` are used. Point it at those files only, such
+  as `npx vitest run skill.test` for files named `*.skill.test.ts`: on SkillUnit's own skill that
+  was 4.0 s where the whole suite took 70.9 s, and CI still runs the whole suite. `units` is the
+  folder where the tests leave their records (default `./tmp/skill-units`), and `proof` empties it
   of its records before `run`. The regions of examples are read from the test file each record
-  names. `sources` are globs of other files that hold regions and declare no unit, such as a
-  file of examples a test imports. `format` is a command with `{file}`, run once with every built Markdown file in place
-  of `{file}`, so it must take several files, as `prettier --write` does; when that run fails, it
-  runs once per file, so the error names its file. Globs start
-  from the folder of this file and leave out `node_modules`.
+  names. `format` is a command with `{file}`, run once with every built Markdown file in place of
+  `{file}`, so it must take several files, as `prettier --write` does; when that run fails, it
+  runs once per file, so the error names its file. `proof` takes no other key.
   [Proof](proof.md#which-tests-proofrun-runs) has the details.
 
 Any other key is an error.
@@ -64,11 +58,10 @@ SkillUnit's own repository keeps its settings at the root, next to `package-lock
 skill folder holds only what an agent reads, which is what someone who installs the skill gets:
 
 ```
-skillunit.yaml       skill: ./skills/skillunit, source: ./skills-src/skillunit, proof: { run: … }
-skills-src/skillunit/  the skill as people write it: prose, tables, and a slot for each unit
-skills/skillunit/    SKILL.md and the files it links to, built from the source and the tests
-packages/skillunit/  the code the units describe; its `*.skill.test.ts` files declare the units
-                     and the questions
+skillunit.yaml       skill: ./skills/skillunit, proof: { run: … }
+skills/skillunit/    SKILL.md and the files it links to, built from the tests
+packages/skillunit/  the code the units describe; its `*.skill.test.ts` files declare the files,
+                     the units and the questions
 ```
 
 From the root, every command runs with no `--config`.
@@ -102,10 +95,8 @@ questions about one file, with the same `section` and `with`, as one request.
 A choice question is judged on the probability of the option the model ranks first, whatever else
 the model reports about its answer.
 
-`openai` uses the same default thresholds as `typesafe`. With them, on 2026-11-26, on each of
-three runs, `typesafe` passed all 59 questions of SkillUnit's own skill and all 16 of
-tinyfetch's. `openai` passed the 16 of tinyfetch and 55 of the 59, and failed the same four
-every time.
+`openai` uses the same default thresholds as `typesafe`. With them, on 2026-11-26, both passed
+all 13 questions of SkillUnit's own skill and all 9 of tinyfetch's, on every run.
 
 **Pick one model and write your questions for it.** Decision models can answer the same question
 differently: OpenAI's, for one, is more decisive than Jev. A question that fails where it should

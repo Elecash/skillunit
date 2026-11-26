@@ -1,7 +1,7 @@
 {
   "name": "skillunit",
   "version": "0.0.0",
-  "description": "Checks that an agent skill still says what the code it describes does: lint for its examples and format, proof from the project's own tests, and closed-question tests with a decision model.",
+  "description": "Checks that an agent skill still says what the code it describes does: it builds the skill from the project's own tests, and asks a decision model closed questions about it.",
   "license": "MIT",
   "author": "Raúl Jiménez",
   "homepage": "https://github.com/Elecash/skillunit#readme",
@@ -19,7 +19,6 @@
     "skills",
     "skill",
     "testing",
-    "lint",
     "llm",
     "typesafe",
     "ci"

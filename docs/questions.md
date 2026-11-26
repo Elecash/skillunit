@@ -5,6 +5,26 @@ declared in code, next to what it is about: in the `ask` of a unit, or with `ask
 prose of a file. The test runner only records it; SkillUnit asks it after the build, about the
 skill folder as it is committed.
 
+## When to ask
+
+A question is for a rule or a decision where an agent would plausibly choose wrong, and its wrong
+options are the answers an agent gives without the rule. A unit with a test gets a question only
+when its sentence leaves the reader something to work out: two values to combine, an exception to
+apply. A fact that states one value from the code gets none: its test already proves the value,
+and a question about it passes without its unit or fails on a wording.
+
+A unit with no body, advice that no test can state, is where most questions go. The question is
+then the only thing that shows the advice reaches the reader, and the
+[copy check](#checking-that-a-question-is-real) shows whether it is needed at all.
+
+Write the scenario so that it pulls toward the wrong answer: the user asks for what the rule
+forbids, or the shortcut is in plain sight. A plain scenario lets common sense pass the question.
+And do not ask the reader to add numbers up, or to conclude from a list that what it leaves out
+does not exist: what the skill must say is absent, a fact says in `unknown`.
+
+The [style guide](style-guide.md#when-a-unit-gets-a-question) has the same rules among the others
+for the tests of a skill.
+
 ## A question in its unit
 
 Here is a unit of a deploy checklist skill and two of its questions:
@@ -102,7 +122,8 @@ unit(
 ```
 
 When `DEFAULT_TIMEOUT` changes, `skillunit proof --write` rewrites the sentence, and the next run
-asks the question with the new value in its options. A label such as `right` stays true; a label
+asks the question with the new value in its options. A name the options give comes from the code
+the same way, such as `key<RequestOptions>('retry')` or `HttpError.name`. A label such as `right` stays true; a label
 such as `s10` would contradict its own option the day the default changes.
 
 ## A question about prose
@@ -190,9 +211,8 @@ Each decision model has a limit on the state plus the longest question; TypeSafe
 tokens, and OpenAI's is 922,000 for the whole request. SkillUnit estimates the size before
 sending and refuses a request that would not fit, naming its largest files. `--dry-run` prints
 in `TOKENS` the estimate of the whole request, every question counted with the instructions,
-which is what a run bills. Measured on TypeSafe on 2026-11-25 against the input tokens it billed,
-that estimate was 2% low on tinyfetch's skill (8,463 against 8,617; from 24% low to 6% high per
-request) and 14% high on SkillUnit's own (35,179 against 30,739; from 7% to 20% high).
+which is what a run bills. It is an estimate, from the length of the text: the billed count can
+be some percent higher or lower.
 
 Keep questions without `with` as well. The two answer different questions:
 
@@ -241,8 +261,12 @@ the tests locally, pick the default.
 nothing, the reader may answer from common sense, so a rule that common sense agrees with ("never
 put the API key in the config") passes with the rule deleted. Asked as a choice ("where should
 the key go?"), the same question answers `none` when the rule is gone. A yes/no question that
-stays should ask about one action of the agent ("should the agent create a client?"), not about
-the text ("does the skill ask for a client?"): the [style guide](style-guide.md#tests) shows both.
+stays asks about one action of the agent, not about the text:
+
+| Instead of | Ask |
+| --- | --- |
+| Does the skill ask for a client here? | Should the agent create a client with `create` for this request? |
+| Is `retry` mentioned for PUT? | May the agent pass `retry` to that call? |
 
 **Ask where the rule does not apply.** If the rule is "ask which API before writing code", also
 ask about a request that already names the API. Otherwise you only check that the agent asks,
@@ -256,9 +280,7 @@ question, where `retry` is allowed, fell to `none` and failed.
 **Make each option say everything the skill says on the point.** The options should differ only
 in what the question checks. When the skill says to quote a command in backticks *and* ask for it
 "exactly as written", an expected option that mentions only the second half leaves the reader
-unsure, and it gives the rest to `none`: SkillUnit's own question about that rule failed under its
-threshold (0.44 and 0.43) with the incomplete option, and passed at 0.86 or more once both
-options carried the backticks.
+unsure, and it gives the rest to `none`.
 
 **Ask what the skill leaves out.** `expect: 'none'` checks that the reader does not stretch the
 skill to cover a case it never mentions, like database migrations in a deploy checklist.
@@ -267,8 +289,7 @@ skill to cover a case it never mentions, like database migrations in a deploy ch
 something else" and "the skill says nothing". If the skill does give an answer and none of your
 options says it, add an option that does and expect it. A question that expects `none` because
 the options do not match the skill passes just the same when the rule is deleted: the reader
-answers `none` because the skill is now silent. SkillUnit's own skill had such a question; it
-passed at 0.80 with its rule and at 0.55 without it.
+answers `none` because the skill is now silent.
 
 **Ask for exact values when they matter.** The reader compares meaning, and `npm run preview`
 and `npm run deploy:preview` mean the same thing. Ask for the command "exactly as written" and
@@ -300,24 +321,27 @@ phrasing.
 ## Checking that a question is real
 
 A green question proves the reader gave the right answer. To prove it gave it *because of the
-skill*, copy the skill folder, delete the sentence or the unit the question is about in the copy,
-and ask the questions about the copy with `--skill`:
+unit*, ask it again without the unit: copy the skill folder, delete the text of the unit in the
+copy and keep its heading, and ask the questions about the copy with `--skill`:
 
 ```sh
 cp -R skills/my-skill /tmp/my-skill-copy
-# delete the unit's sentence in /tmp/my-skill-copy
+# delete the text of the unit in /tmp/my-skill-copy, and keep its heading
 npx skillunit test --skill /tmp/my-skill-copy --no-run
 ```
 
 `--no-run` uses the records the last run of the tests left, so the questions are the same ones.
-The question should fail. Delete the unit's sentences and keep its heading: with the heading gone
-too, the question is not asked at all, and the report says the skill folder has no such unit.
+With the heading gone too, the question is not asked at all, and the report says the skill folder
+has no such unit.
 
-In November 2026, every unit of SkillUnit's own skill was deleted in turn from a copy, and its
-questions asked about it. 29 of the 44 questions about a unit failed without it. Most of the 15
-that still passed did so because the file's reference text already describes what the unit
-instructs: the rule is written twice, once as how the tool works and once as an instruction. A
-few, such as "make every example compile", are common sense.
+Do it for every unit that has questions, on the model CI asks. The question needs its unit when
+it passes with it and fails without it. A verdict within the margin of its threshold can flip from
+one run to the next, so a borderline failure without the unit does not count.
+
+A question that passes without its unit goes, or the unit changes; never a threshold. When the
+unit's text changes so that the question passes, the change should be something the agent reads
+and did not before. When the question was the only reason for a unit with no body, the unit goes
+with it: the rest of the skill, or common sense, already gives that advice.
 
 If a question stays green, look for the cause in this order:
 

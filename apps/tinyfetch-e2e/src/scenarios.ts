@@ -170,9 +170,10 @@ export const scenarios: Scenario[] = [
     expect: { proof: ['what-is-retried', '../skillunit.yaml'] },
   },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
-  // stops reporting what the README shows. The vague rule is the scenario `ambiguous rule` above.
+  // stops reporting what the README shows; with them, one the README no longer has. The vague
+  // rule is the scenario `ambiguous rule` above.
   {
-    name: 'README 1: renamed option',
+    name: 'README: renamed option',
     change: 'in `src/types.ts`, rename the option `retryDelay` to `backoff`',
     apply(app) {
       app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
@@ -183,7 +184,7 @@ export const scenarios: Scenario[] = [
     expect: {},
   },
   {
-    name: 'README 2: Right example that breaks its rule',
+    name: 'an example that breaks a rule',
     change: 'turn the example of `retry-delay` into a retried POST, against `retry-idempotent-only`',
     apply(app) {
       // The example is the region of the unit, where it is declared.
@@ -198,7 +199,7 @@ export const scenarios: Scenario[] = [
   // The agents' case: a default changed, and no test edited, since the test builds the sentence
   // from the same constant. The tests pass; the skill still says 10 seconds.
   {
-    name: 'README 4: default changed',
+    name: 'README: default changed',
     change: 'in `src/timeout.ts`, change `DEFAULT_TIMEOUT` from `10_000` to `5_000`',
     apply(app) {
       app.edit('src/timeout.ts', 'export const DEFAULT_TIMEOUT = 10_000;', 'export const DEFAULT_TIMEOUT = 5_000;');
@@ -210,7 +211,7 @@ export const scenarios: Scenario[] = [
   // With a key, the question about the default is asked too: its options are built from the
   // same constant, so it passes with no edit.
   {
-    name: 'README 4: default changed, skill rebuilt',
+    name: 'README: default changed, skill rebuilt',
     change: 'the same change, then `skillunit proof --write`',
     model: 'optional',
     apply(app) {

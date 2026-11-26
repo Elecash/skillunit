@@ -48,11 +48,14 @@ function compilerOptions(ts: typeof TS, file: string): TS.CompilerOptions {
   return { ...(parsed?.options ?? fallback), noEmit: true, skipLibCheck: true };
 }
 
+/** Loads `typescript` as a file at `place` would import it. */
+const requireFrom = (place: string) => createRequire(join(dirname(place), 'noop.js'))('typescript') as typeof TS;
+
 /** `typescript`, resolved from the first of `from` that has it: the project's, then SkillUnit's. */
-export function loadTypeScript(from: string[]): typeof TS {
+export function loadTypeScript(from: string[], load: (place: string) => typeof TS = requireFrom): typeof TS {
   for (const place of from) {
     try {
-      return createRequire(join(dirname(place), 'noop.js'))('typescript') as typeof TS;
+      return load(place);
     } catch (e) {
       if ((e as { code?: string }).code !== 'MODULE_NOT_FOUND') throw e;
     }

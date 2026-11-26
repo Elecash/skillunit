@@ -23,10 +23,7 @@ setup('setup', {
 
 type Setting = (typeof SETTINGS_KEYS)[number];
 const setting = key<Record<Setting, unknown>>;
-const proofKey = (name: 'run' | 'units' | 'format') => {
-  expect(PROOF_KEYS).toContain(name);
-  return `${setting('proof')}.${name}`;
-};
+const proofKey = (name: (typeof PROOF_KEYS)[number]) => `${setting('proof')}.${name}`;
 const modelKey = key<Extract<ModelConfig, { provider: ProviderName }>>;
 const checkOption = (flag: (typeof OPTIONS)['check'][number]) => option('check', flag);
 const HALF = 0.5;
@@ -95,9 +92,16 @@ describe('setup.md', () => {
     'proof-settings',
     {
       when: `the settings set \`${setting('proof')}\`.`,
-      value: `\`${proofKey('run')}\` is the command that runs the tests, through the shell, from the folder of \`${CONFIG_FILE}\`. \`${proofKey('units')}\` is where the tests leave their records, \`${DEFAULT_PROOF_UNITS}\` by default. \`${proofKey('format')}\` is a command with \`${FORMAT_FILE}\`, run once with every built Markdown file in its place.`,
     },
-    async () => {
+    async (u) => {
+      // Typed against the keys: a key added to \`PROOF_KEYS\` fails the type-check until it is here.
+      const does: Record<(typeof PROOF_KEYS)[number], string> = {
+        run: `the command that runs the tests, through the shell, from the folder of \`${CONFIG_FILE}\``,
+        units: `where the tests leave their records, \`${DEFAULT_PROOF_UNITS}\` by default`,
+        format: `a command with \`${FORMAT_FILE}\`, run once with every built Markdown file in its place`,
+      };
+      expect(Object.keys(does)).toEqual([...PROOF_KEYS]);
+      u.value(`\`${setting('proof')}\` takes ${and(code(PROOF_KEYS))}, and no other key. ${Object.entries(does).map(([k, what]) => `\`${proofKey(k as keyof typeof does)}\` is ${what}.`).join(' ')}`);
       const format = join('fmt.mjs');
       const p = await project(
         (r) => {
@@ -116,6 +120,8 @@ describe('setup.md', () => {
       expect(p.read('skill/retries.md').endsWith('formatted\n')).toBe(true);
       runTests({ ...cfg, run: 'node -p "process.cwd()" > cwd.txt' }, false);
       expect(p.read('cwd.txt').trim()).toBe(realpathSync(p.root));
+      p.write(CONFIG_FILE, 'skill: ./skill\nproof: { cache: true }\n');
+      expect(() => loadConfig(join(p.root, CONFIG_FILE))).toThrow('unknown key `proof.cache`');
     },
   );
 

@@ -25,7 +25,7 @@ jobs:
 
 - The default shallow clone is enough. Only `check --changed` reads git history: with it, add
   `with: { fetch-depth: 0 }` to the checkout step.
-- With `source` and `proof.run` in `skillunit.yaml`, `check` runs the tests that declare units
+- With `proof.run` in `skillunit.yaml`, `check` runs the tests that declare the skill
   itself and goes on when they fail, so a failing test is reported on the unit it declares, then
   fails: a run that did not exit with 0 is an error, with the end of its output. Point
   `proof.run` at those tests only, such as `npx vitest run skill.test`, and let the project's own
@@ -56,25 +56,23 @@ or the question does.
 ## What a run costs
 
 The questions about one file of the skill go in one request to the decision model, whatever
-their number, and the request carries the text under test once. Measured on 2026-11-26, the same
-on each of three runs:
+their number, and the request carries the text under test once. Measured on 2026-11-26:
 
 | Skill | Requests | Questions | `typesafe`: input / output tokens | `openai`: input / output tokens |
 | --- | --- | --- | --- | --- |
-| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 / 830 | about 8,100 / 0 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 59 | about 31,300 / 2,900 | about 31,600 / 0 |
+| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 5 | 9 | about 6,400 / 470 | about 5,500 / 0 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 5 | 13 | about 11,700 / 630 | about 11,100 / 0 |
 
 Output tokens are free on both. At the prices of November 2026:
 
 | Provider | Price per million input tokens | A run of tinyfetch | A run of SkillUnit's own skill |
 | --- | --- | --- | --- |
-| `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0004 | about $0.0013 |
-| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0008 | about $0.0032 |
+| `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0003 | about $0.0005 |
+| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0006 | about $0.0011 |
 
 OpenAI caches the start of a request that holds 1,024 tokens or more of skill text. A request
 sent again within 30 minutes then pays 10% for that part, and the first request pays 25% more
-for writing it. Most requests carry less text than that, so caching changes a run's cost by a
-few percent at most.
+for writing it. The figures above leave caching out.
 
 The proof makes no request. `--changed` sends only the questions about the files of the
 skill that differ from the merge base with the target branch, so a pull request that leaves the

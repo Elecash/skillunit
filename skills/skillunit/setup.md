@@ -27,7 +27,7 @@ proof:
 
 When: the settings set `proof`.
 
-Value: `proof.run` is the command that runs the tests, through the shell, from the folder of `skillunit.yaml`. `proof.units` is where the tests leave their records, `./tmp/skill-units` by default. `proof.format` is a command with `{file}`, run once with every built Markdown file in its place.
+Value: `proof` takes `run`, `units` and `format`, and no other key. `proof.run` is the command that runs the tests, through the shell, from the folder of `skillunit.yaml`. `proof.units` is where the tests leave their records, `./tmp/skill-units` by default. `proof.format` is a command with `{file}`, run once with every built Markdown file in its place.
 
 ### fact: proof-run-must-pass
 
