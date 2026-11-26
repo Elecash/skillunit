@@ -119,9 +119,10 @@ export function proofSummary(proof: ProofResult): string {
     plural(s.units, 'unit'),
     `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
     `${s.declared} declared without one`,
-    `${plural(s.values, 'value')} in prose`,
+    // A skill built from the records alone has no prose to put values in.
+    proof.source === null ? '' : `${plural(s.values, 'value')} in prose`,
     s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
-    s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
+    s.extra ? `${plural(s.extra, 'file')} ${proof.source === null ? 'no `setup()` declares' : 'the source does not build'}` : '',
   ]
     .filter(Boolean)
     .join(' · ');

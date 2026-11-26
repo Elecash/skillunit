@@ -17,7 +17,7 @@ import type { ReadUnit } from './records.js';
 import { renderUnit } from './render.js';
 
 /** Where a built line comes from. Paths are absolute. */
-export type LineOrigin = { kind: 'test'; file: string; line: number; unit: string } | { kind: 'source'; file: string; line: number };
+export type LineOrigin = { kind: 'test'; file: string; line: number; unit?: string } | { kind: 'source'; file: string; line: number };
 
 export interface BuiltFile {
   /** Path in the skill folder, with `/`. */
@@ -45,7 +45,7 @@ export interface BuiltUnit {
   kind: UnitKind | null;
   /** `test`: a test proves it; `declared`: it was declared with no body, so no test does. */
   from: 'test' | 'declared';
-  /** The slot: absolute source file and line. */
+  /** The slot: absolute source file and line. Built from records: the `setup()` of its file. */
   source: { file: string; line: number };
   /** What its declaration left. `missing` when nothing left the unit. */
   state: 'passed' | 'failed' | 'missing';

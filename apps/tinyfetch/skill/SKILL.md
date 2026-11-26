@@ -11,20 +11,15 @@ tinyfetch is a small HTTP client for JSON APIs, built on `fetch`.
 import { tf } from "tinyfetch";
 ```
 
-```ts
-const users = await tf.get<{ id: number }[]>("https://api.example.com/users");
-console.log(users.length);
-```
-
 ## Where to look
 
 | Task                                                               | File                                         |
 | ------------------------------------------------------------------ | -------------------------------------------- |
-| Send a request, read the response, pass query parameters or a body | [features/requests.md](features/requests.md) |
 | Make many requests to one API                                      | [features/clients.md](features/clients.md)   |
+| Handle a request that failed                                       | [features/errors.md](features/errors.md)     |
+| Send a request, read the response, pass query parameters or a body | [features/requests.md](features/requests.md) |
 | Retry a request that failed                                        | [features/retries.md](features/retries.md)   |
 | Time out or cancel a request                                       | [features/timeouts.md](features/timeouts.md) |
-| Handle a request that failed                                       | [features/errors.md](features/errors.md)     |
 
 ## Rules
 
@@ -39,4 +34,9 @@ Right:
 ```ts
 const user = await tf.get<{ name: string }>("https://api.example.com/users/1");
 console.log(user.name);
+```
+
+```ts
+const users = await tf.get<{ id: number }[]>("https://api.example.com/users");
+console.log(users.length);
 ```

@@ -1,20 +1,9 @@
 # tinyfetch — retries
 
-tinyfetch can repeat a request that failed. Which failures it repeats, and how long it waits, are in the rules below.
+Which failed requests tinyfetch repeats, and how long it waits between attempts.
 
 ```ts
 import { tf } from "tinyfetch";
-```
-
-## Options
-
-| Option       | Type        | Default | Meaning                                                                |
-| ------------ | ----------- | ------- | ---------------------------------------------------------------------- |
-| `retry`      | number      | 0       | extra attempts after the first one                                     |
-| `retryDelay` | number (ms) | 300     | wait before the first new attempt; each next wait is 2x the one before |
-
-```ts
-await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
 ```
 
 ## Rules
@@ -24,6 +13,10 @@ await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
 When: a request sets no `retry`, or no `retryDelay`.
 
 Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, and each next wait is 2x the one before.
+
+```ts
+await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
+```
 
 ### fact: what-is-retried
 

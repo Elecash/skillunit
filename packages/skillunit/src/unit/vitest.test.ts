@@ -112,7 +112,7 @@ describe('skillunit/vitest', () => {
   it('leaves a passed unit with its file, from the project, and the line of its declaration', () => {
     expect(run.byId('default-timeout')).toEqual([
       {
-        skillunit: 1,
+        skillunit: 2,
         id: 'default-timeout',
         file: 'tests/a.test.ts',
         line: lineOf(TEST, "'default-timeout',") - 1,

@@ -1,6 +1,6 @@
 # tinyfetch — errors
 
-A request that fails throws. What it throws depends on how it failed, and the rules below say how to tell.
+What a request that fails throws, and how to tell the errors apart.
 
 ```ts
 import { isHttpError, tf } from "tinyfetch";

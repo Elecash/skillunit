@@ -344,7 +344,7 @@ of `skillunit.yaml`, and `line` the line of the declaration.
 
 ```json
 {
-  "skillunit": 1,
+  "skillunit": 2,
   "status": "passed",
   "id": "default-timeout",
   "kind": "fact",
@@ -385,7 +385,7 @@ in `ask`.
 
 ```json
 {
-  "skillunit": 1,
+  "skillunit": 2,
   "status": "passed",
   "kind": "question",
   "id": "which-file-for-retries",
@@ -405,6 +405,8 @@ import hashlib, json, pathlib
 import pytest
 
 UNITS = pathlib.Path(__file__).parent / "tmp" / "skill-units"
+# The file of the skill each test file declares last with `setup`, and the place of its next unit.
+CURRENT = {}
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -413,6 +415,24 @@ def pytest_runtest_makereport(item, call):
     report = outcome.get_result()
     if report.when == "call":
         item.skill_report = report
+
+
+def write(request, record):
+    UNITS.mkdir(parents=True, exist_ok=True)
+    name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
+    (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
+
+
+@pytest.fixture
+def setup(request):
+    """Declares a file of the skill: the units of the tests after this one in the file belong to it."""
+
+    def declare(id, file, **keys):
+        path, line, _ = request.node.location
+        CURRENT[path] = {"setup": id, "order": 0}
+        write(request, {"skillunit": 2, "status": "passed", "kind": "file", "id": id, "file": path, "line": line + 1, "test": request.node.nodeid, "skillFile": file, **keys})
+
+    return declare
 
 
 @pytest.fixture
@@ -430,19 +450,26 @@ def unit(request):
     if not spec or report is None or report.skipped:
         return
     file, line, _ = request.node.location
-    record = {"skillunit": 1, "id": spec.pop("id"), "file": file, "line": line + 1, "test": request.node.nodeid}
+    record = {"skillunit": 2, "id": spec.pop("id"), "file": file, "line": line + 1, "test": request.node.nodeid}
+    owner = CURRENT.get(file)
+    if owner:
+        record.update(setup=owner["setup"], order=owner["order"])
+        owner["order"] += 1
     if report.passed:
         kind = "rule" if "do" in spec else "decision" if "paths" in spec else "fact"
         record.update(status="passed", kind=kind, examples=spec.pop("examples", []), **spec)
     else:
         crash = getattr(report.longrepr, "reprcrash", None)
         record.update(status="failed", error=crash.message if crash else str(report.longrepr))
-    UNITS.mkdir(parents=True, exist_ok=True)
-    name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
-    (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
+    write(request, record)
 ```
 
 ```python
+def test_timeouts(setup):
+    # The file of the skill that the units of the tests below belong to.
+    setup("timeouts", file="features/timeouts.md", title="tinyfetch — timeouts", when="Time out a request", description="Every request has a timeout.")
+
+
 def test_default_timeout(unit):
     unit(
         "default-timeout",
@@ -470,7 +497,7 @@ def test_never_disable_timeout(unit):
 ```
 
 `request.node.location` gives the file from pytest's root folder, so this assumes `skillunit.yaml`
-sits there. A test calls `unit` once: a second call fails the test and says so. A failed test's
+sits there. `setup` declares a file of the skill; the units of the tests after it in the same test file belong to it, in the order pytest runs them. A test calls `unit` once: a second call fails the test and says so. A failed test's
 record keeps the assertion's message, as pytest reports it. A parametrized test writes one record
 per case, all with the same id, and SkillUnit refuses an id declared twice; a unit built from
 several cases goes in one test that loops over them. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies

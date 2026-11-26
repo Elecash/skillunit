@@ -9,8 +9,9 @@ import { App, CLI, type Run } from './app.js';
 
 afterAll(() => App.removeAll());
 
-const TEST = 'src/tinyfetch.test.ts';
-const DECLARED = 'src/tinyfetch.skill.test.ts';
+const REQUESTS = 'src/skill/requests.test.ts';
+const RETRIES = 'src/skill/retries.test.ts';
+const TIMEOUTS = 'src/skill/timeouts.test.ts';
 const errors = (run: Run) => (run.report.proof.problems as any[]).filter((p) => p.severity === 'error');
 const lineOf = (text: string, needle: string) => text.split('\n').findIndex((l) => l.includes(needle)) + 1;
 
@@ -24,11 +25,8 @@ describe('the proof of tinyfetch', () => {
     expect(unit.message).toBe(
       "this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.",
     );
-    expect(unit.origin).toEqual({ kind: 'test', file: `../${TEST}`, line: lineOf(app.read(TEST), "'default-timeout',") - 1, unit: 'default-timeout' });
-    // The table's columns are padded again; the row with the value is the one reported.
-    const table = errors(check).find((p) => !p.unit);
-    expect(table).toMatchObject({ file: 'features/timeouts.md', line: lineOf(app.read('skill/features/timeouts.md'), '| `timeout`'), origin: { kind: 'source', file: '../skill-src/features/timeouts.md' } });
-    expect(table.message).toMatch(/^this line is not what the build gives: the build has `\| 'timeout' +\| number \(ms\) \| '5_000' /);
+    expect(unit.origin).toEqual({ kind: 'test', file: `../${TIMEOUTS}`, line: lineOf(app.read(TIMEOUTS), "'default-timeout',") - 1, unit: 'default-timeout' });
+    expect(errors(check)).toHaveLength(1);
 
     const write = app.run('proof', '--write');
     expect(write.code).toBe(0);
@@ -43,11 +41,11 @@ describe('the proof of tinyfetch', () => {
     const unit = lines.indexOf('### rule: query-in-options');
     const right = lines.indexOf('Right:', unit);
     const next = lines.indexOf('### rule: body-as-object');
-    // `Right:`, its block and the `Check:`, up to the heading of the next unit.
+    // `Right:` and its block, up to the heading of the next unit.
     app.write('skill/features/requests.md', [...lines.slice(0, right), ...lines.slice(next)].join('\n'));
     const found = errors(app.run('proof'));
     expect(found.map((p) => p.unit)).toEqual(['query-in-options']);
-    expect(found[0].origin).toEqual({ kind: 'test', file: `../${TEST}`, line: lineOf(app.read(TEST), "'query-in-options',") - 1, unit: 'query-in-options' });
+    expect(found[0].origin).toEqual({ kind: 'test', file: `../${REQUESTS}`, line: lineOf(app.read(REQUESTS), "'query-in-options',") - 1, unit: 'query-in-options' });
     expect(found[0].message).toMatch(/^this line is not what the build gives: the build has `Right:`, the skill has nothing here\./);
     expect(found[0].lines).toEqual({ build: 'Right:', skill: null });
   });
@@ -76,27 +74,33 @@ describe('the proof of tinyfetch', () => {
     app.edit('skill/features/timeouts.md', 'Value: 10 seconds', 'Value: 30 seconds');
     const proof = app.run('proof');
     const [finding] = errors(proof);
-    expect(finding).toMatchObject({ unit: 'default-timeout', origin: { kind: 'test', file: `../${TEST}` } });
+    expect(finding).toMatchObject({ unit: 'default-timeout', origin: { kind: 'test', file: `../${TIMEOUTS}` } });
   });
 
-  it('a body that fails: the slot has no unit, the finding carries the assertion, and the run fails too', () => {
+  it('a body that fails: the finding is on the test, carries the assertion, and the run fails too', () => {
     const app = App.copy('failing-body');
-    app.edit(TEST, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
+    app.edit(REQUESTS, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
     const found = errors(app.run('proof'));
-    expect(found.map((p) => p.file).sort()).toEqual(['../skill-src/features/requests.md', '../skillunit.yaml']);
+    expect(found.map((p) => p.file).sort()).toEqual(['../skillunit.yaml', `../${REQUESTS}`]);
     const finding = found.find((p) => p.unit === 'body-as-object');
-    expect(finding.file).toBe('../skill-src/features/requests.md');
-    expect(finding.message).toMatch(/^the test of `body-as-object` \(src\/tinyfetch\.test\.ts:\d+\) failed, so it left no unit: expected \{ method: 'POST', .* to match object /);
+    expect(finding.line).toBe(lineOf(app.read(REQUESTS), "'body-as-object',") - 1);
+    expect(finding.message).toMatch(/^the test of `body-as-object` \(src\/skill\/requests\.test\.ts:\d+\) failed, so it left no unit: expected \{ method: 'POST', .* to match object /);
   });
 
-  it('a deleted test and a skipped one: no test left the unit', () => {
+  it('a skipped test: its unit leaves the build, and the proof names the unit the skill still has', () => {
     const app = App.copy('gone');
-    app.edit(TEST, "  unit(\n    'response-body',", "  unit.skip(\n    'response-body',");
-    const [finding] = errors(app.run('proof'));
-    expect(finding).toMatchObject({ unit: 'response-body', message: 'no test left the unit `response-body`: its test was skipped or deleted, or did not run' });
+    app.edit(REQUESTS, "  unit(\n    'response-body',", "  unit.skip(\n    'response-body',");
+    const [finding, ...rest] = errors(app.run('proof'));
+    expect(rest).toEqual([]);
+    expect(finding).toMatchObject({
+      file: 'features/requests.md',
+      line: lineOf(app.read('skill/features/requests.md'), '### fact: response-body'),
+      unit: 'response-body',
+      message: 'the skill has the unit `response-body`, and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill',
+    });
   });
 
-  it('proof.run with a command that does not exist: the end of its output, and every slot without its unit', () => {
+  it('proof.run with a command that does not exist: the end of its output, and every file of the skill without its setup()', () => {
     const app = App.copy('no-command');
     app.edit('skillunit.yaml', 'run: "npx vitest run"', 'run: "no-such-test-runner run"');
     const proof = app.run('proof');
@@ -106,30 +110,20 @@ describe('the proof of tinyfetch', () => {
     expect(settings.message).toMatch(/^`proof\.run` \(`no-such-test-runner run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-test-runner/s);
     // One error for the run, not two.
     expect(errors(proof).filter((p) => p.file === '../skillunit.yaml')).toHaveLength(1);
-    expect(errors(proof).filter((p) => p.message.startsWith('no test left the unit')).map((p) => p.unit).sort()).toEqual([
-      'await-every-request',
-      'body-as-object',
-      'cancel-with-signal',
-      'check-with-is-http-error',
-      'client-options',
-      'default-timeout',
-      'method-results',
-      'never-disable-timeout',
-      'one-client-per-api',
-      'query-in-options',
-      'response-body',
-      'retry-defaults',
-      'retry-idempotent-only',
-      'timeout-off',
-      'what-a-failed-request-throws',
-      'what-is-retried',
+    expect(errors(proof).filter((p) => p.message.startsWith('no `setup()` declares')).map((p) => p.file).sort()).toEqual([
+      'SKILL.md',
+      'features/clients.md',
+      'features/errors.md',
+      'features/requests.md',
+      'features/retries.md',
+      'features/timeouts.md',
     ]);
   });
 
   it('an ordinary test that fails: check fails on proof.run, names the test, and every unit still comes from its test', () => {
     const app = App.copy('red-run');
-    app.edit(TEST, "  unit(\n    'cancel-with-signal',", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  unit(\n    'cancel-with-signal',");
-    app.edit(TEST, "import { afterEach, describe, expect, vi } from 'vitest';", "import { afterEach, describe, expect, it, vi } from 'vitest';");
+    app.edit(TIMEOUTS, "  unit(\n    'cancel-with-signal',", "  it('fails on purpose', () => {\n    expect(1).toBe(2);\n  });\n\n  unit(\n    'cancel-with-signal',");
+    app.edit(TIMEOUTS, "import { afterEach, describe, expect, vi } from 'vitest';", "import { afterEach, describe, expect, it, vi } from 'vitest';");
     const check = app.run('check', '--dry-run');
     expect(check.code).toBe(1);
     const found = errors(check);
@@ -139,26 +133,12 @@ describe('the proof of tinyfetch', () => {
     expect(check.report.proof.units.filter((u: any) => u.from === 'test').every((u: any) => u.state === 'passed')).toBe(true);
   });
 
-  it('a unit heading in the source: the error names the file and the line, and says where units go', () => {
-    const app = App.copy('heading');
-    app.write('skill-src/features/errors.md', `${app.read('skill-src/features/errors.md')}\n### rule: log-failed-requests\n\nWhen: code logs a failed request.\n\nDo: log the method and the URL.\n`);
-    const [finding] = errors(app.run('proof'));
-    expect(finding).toEqual(
-      expect.objectContaining({
-        file: '../skill-src/features/errors.md',
-        line: lineOf(app.read('skill-src/features/errors.md'), '### rule: log-failed-requests'),
-        unit: 'log-failed-requests',
-        message: 'units are declared with `unit()`; put `{{unit:log-failed-requests}}` here',
-      }),
-    );
-  });
-
   it('a question whose `expect` names no option: the test of its unit fails and says why', () => {
     const app = App.copy('bad-expect');
-    app.edit(TEST, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
+    app.edit(RETRIES, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
     const finding = errors(app.run('proof')).find((p) => p.unit === 'retry-defaults' && p.message.startsWith('the test of'));
     expect(finding.message).toMatch(
-      /^the test of `retry-defaults` \(src\/tinyfetch\.test\.ts:\d+\) failed, so it left no unit: unit `retry-defaults`: the question `retry-delay-default`: `expect` is "right", which is not an option \(use one of: default, ms1000, none-wait, none\)$/,
+      /^the test of `retry-defaults` \(src\/skill\/retries\.test\.ts:\d+\) failed, so it left no unit: unit `retry-defaults`: the question `retry-delay-default`: `expect` is "right", which is not an option \(use one of: default, ms1000, none-wait, none\)$/,
     );
   });
 
@@ -169,8 +149,8 @@ describe('the proof of tinyfetch', () => {
     expect(declared).toEqual(['one-client-per-api', 'retry-idempotent-only', 'never-disable-timeout']);
     expect(proof.report.proof.summary).toMatchObject({ units: 16, proved: 13, declared: 3 });
     const table = spawnSync(process.execPath, [CLI, 'proof'], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }).stdout;
-    expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${DECLARED}:`);
-    expect(table).not.toContain(`proved by a test, ${DECLARED}`);
+    expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${TIMEOUTS}:`);
+    expect(table).not.toContain(`proved by a test, ${TIMEOUTS}:${lineOf(app.read(TIMEOUTS), "unit('never-disable-timeout'")}`);
     expect(table).toContain('16 units · 13 proved by a test · 3 declared without one');
   });
 

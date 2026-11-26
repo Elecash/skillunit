@@ -47,7 +47,7 @@ export interface Config {
   configFile?: string;
   /** Absolute path of the folder people write, which `skill` is built from. Without it there is no proof layer. */
   source?: string;
-  /** The proof layer: set, with its defaults, whenever `source` is. */
+  /** The proof layer: set, with its defaults, whenever `source` or `proof` is. Without `source`, the skill is built from the records alone. */
   proof?: ProofConfig;
 }
 
@@ -149,8 +149,8 @@ export function loadConfig(path?: string): Config {
       throw fail('`source` and `skill` are two folders, neither inside the other: `skill` is built from `source`');
     }
   }
-  if (raw.proof !== undefined && config.source === undefined) throw fail('`proof` says how the skill is built from `source`; set `source` too');
-  if (config.source !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
+  // With `proof` and no `source`, the skill is built from the records the tests leave alone.
+  if (config.source !== undefined || raw.proof !== undefined) config.proof = readProof(raw.proof ?? {}, root, fail);
   return config;
 }
 

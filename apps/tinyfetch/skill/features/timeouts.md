@@ -1,34 +1,9 @@
 # tinyfetch — timeouts and cancelling
 
-Every request has a timeout, and any request can be cancelled with an `AbortSignal`.
+How long a request waits, and how to cancel it.
 
 ```ts
 import { tf, TimeoutError } from "tinyfetch";
-```
-
-## Options
-
-| Option    | Type        | Default  | Meaning                                                      |
-| --------- | ----------- | -------- | ------------------------------------------------------------ |
-| `timeout` | number (ms) | `10_000` | abort the request after this long; `0` turns the timeout off |
-| `signal`  | AbortSignal | none     | cancel the request                                           |
-
-```ts
-try {
-  await tf.get("https://api.example.com/slow", { timeout: 2_000 });
-} catch (error) {
-  if (error instanceof TimeoutError)
-    console.log("gave up after", error.timeout, "ms");
-}
-```
-
-```ts
-const controller = new AbortController();
-const report = tf.get("https://api.example.com/report", {
-  signal: controller.signal,
-});
-controller.abort();
-await report.catch(() => undefined);
 ```
 
 ## Rules
@@ -46,6 +21,15 @@ Unknown: tinyfetch has no separate connect timeout; say so instead of inventing 
 When: a request sets `timeout`.
 
 Value: the request is aborted with a `TimeoutError` after that many milliseconds; a `timeout` of 0 turns the timeout off, and the request waits until the server answers.
+
+```ts
+try {
+  await tf.get("https://api.example.com/slow", { timeout: 2_000 });
+} catch (error) {
+  if (error instanceof TimeoutError)
+    console.log("gave up after", error.timeout, "ms");
+}
+```
 
 ### rule: never-disable-timeout
 
@@ -68,3 +52,12 @@ await tf.post(
 When: the code passes `signal` and aborts it.
 
 Value: the request rejects with the reason the signal was aborted with.
+
+```ts
+const controller = new AbortController();
+const report = tf.get("https://api.example.com/report", {
+  signal: controller.signal,
+});
+controller.abort();
+await report.catch(() => undefined);
+```

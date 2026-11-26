@@ -4,13 +4,16 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { checkNumbers, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
+import { checkNumbers, checkQuestions, checkSetup, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, type FailedUnit, type PassedFile, type PassedQuestion, type PassedUnit, type UnitExample } from '../unit/contract.js';
 
 /** A record, with the absolute path of its test file and of the record itself. */
 export type ReadUnit = (PassedUnit | FailedUnit) & { path: string; abs: string };
 
 /** The record of a question declared with `ask()`, passed or failed. */
 export type ReadQuestion = (PassedQuestion | (FailedUnit & { kind: 'question' })) & { path: string; abs: string };
+
+/** The record of a file of the skill declared with `setup()`, passed or failed. */
+export type ReadFile = (PassedFile | (FailedUnit & { kind: 'file' })) & { path: string; abs: string };
 
 export interface RecordProblem {
   /** Absolute path of the record. */
@@ -25,6 +28,8 @@ export interface Records {
   units: ReadUnit[];
   /** The records of `ask()`, in the same order. */
   questions: ReadQuestion[];
+  /** The records of `setup()`, in the same order. */
+  files: ReadFile[];
   problems: RecordProblem[];
 }
 
@@ -32,8 +37,9 @@ export interface Records {
 export function readRecords(dir: string, cwd: string): Records {
   const units: ReadUnit[] = [];
   const questions: ReadQuestion[] = [];
+  const files: ReadFile[] = [];
   const problems: RecordProblem[] = [];
-  if (!existsSync(dir)) return { units, questions, problems };
+  if (!existsSync(dir)) return { units, questions, files, problems };
   const names = readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && e.name.endsWith('.json') && !e.name.startsWith('.'))
     .map((e) => e.name)
@@ -53,14 +59,17 @@ export function readRecords(dir: string, cwd: string): Records {
       fail(problem);
       continue;
     }
-    const record = raw as PassedUnit | FailedUnit | PassedQuestion;
-    if (record.kind === 'question') questions.push({ ...record, path, abs: resolve(cwd, record.file) } as ReadQuestion);
-    else units.push({ ...(record as PassedUnit | FailedUnit), path, abs: resolve(cwd, record.file) });
+    const record = raw as PassedUnit | FailedUnit | PassedQuestion | PassedFile;
+    const read = { path, abs: resolve(cwd, record.file) };
+    if (record.kind === 'question') questions.push({ ...record, ...read } as ReadQuestion);
+    else if (record.kind === 'file') files.push({ ...record, ...read } as ReadFile);
+    else units.push({ ...(record as PassedUnit | FailedUnit), ...read });
   }
-  const order = (a: ReadUnit | ReadQuestion, b: ReadUnit | ReadQuestion) => a.abs.localeCompare(b.abs) || a.line - b.line || a.id.localeCompare(b.id);
+  const order = (a: { abs: string; line: number; id: string }, b: { abs: string; line: number; id: string }) => a.abs.localeCompare(b.abs) || a.line - b.line || a.id.localeCompare(b.id);
   units.sort(order);
   questions.sort(order);
-  return { units, questions, problems };
+  files.sort(order);
+  return { units, questions, files, problems };
 }
 
 /** Where a record that parsed says it was declared, if it says. */
@@ -78,15 +87,20 @@ export function checkRecord(raw: unknown): string | undefined {
   const r = raw as Record<string, unknown>;
   if (r.skillunit !== UNIT_CONTRACT) return `\`skillunit\` must be ${UNIT_CONTRACT}, the version of the contract this SkillUnit reads; got ${JSON.stringify(r.skillunit)}`;
   const question = r.kind === 'question';
-  if (typeof r.id !== 'string' || !(question ? QUESTION_ID : UNIT_ID).test(r.id)) return `\`id\` must be ${question ? 'a question' : 'a unit'} id in kebab-case; got ${JSON.stringify(r.id)}`;
+  const file = r.kind === 'file';
+  if (typeof r.id !== 'string' || !(question ? QUESTION_ID : UNIT_ID).test(r.id)) return `\`id\` must be ${question ? 'a question' : file ? 'a file' : 'a unit'} id in kebab-case; got ${JSON.stringify(r.id)}`;
   if (typeof r.file !== 'string' || !r.file) return '`file` must be the test file, from the folder of skillunit.yaml';
   if (typeof r.line !== 'number' || !Number.isInteger(r.line) || r.line < 0) return '`line` must be the line of the declaration, from 1';
   if (r.test !== undefined && typeof r.test !== 'string') return '`test` must be the title of the test';
+  if (r.setup !== undefined && (typeof r.setup !== 'string' || !UNIT_ID.test(r.setup))) return '`setup` must be the id of the `setup()` the record belongs to';
+  if (r.order !== undefined && (typeof r.order !== 'number' || !Number.isInteger(r.order) || r.order < 0)) return '`order` must be the place of the unit in its file, from 0';
+  if (file && (r.setup !== undefined || r.order !== undefined)) return 'a file has no `setup` and no `order`';
   if (r.status === 'failed') return typeof r.error === 'string' ? undefined : '`error` must be the message of what failed';
   if (r.status !== 'passed') return `\`status\` must be "passed" or "failed"; got ${JSON.stringify(r.status)}`;
   if (question) return checkQuestionRecord(r);
+  if (file) return checkFileRecord(r);
 
-  const { skillunit: _v, status: _s, id, kind, file: _f, line: _l, test: _t, examples, error: _e, body, ...spec } = r;
+  const { skillunit: _v, status: _s, id, kind, file: _f, line: _l, test: _t, setup: _p, order: _o, examples, error: _e, body, ...spec } = r;
   if (body !== undefined && body !== false) return '`body` is `false` for a unit declared with no body, and absent otherwise';
   let found: string;
   try {
@@ -114,9 +128,21 @@ export function checkRecord(raw: unknown): string | undefined {
   return undefined;
 }
 
+/** What is wrong with the record of a file declared with `setup()`, if anything. */
+function checkFileRecord(r: Record<string, unknown>): string | undefined {
+  const { skillunit: _v, status: _s, id, kind: _k, file: _f, line: _l, test: _t, skillFile, ...spec } = r;
+  if (typeof skillFile !== 'string') return '`skillFile` must be the path of the file in the skill folder, such as `features/retries.md`';
+  try {
+    checkSetup(id, { file: skillFile, ...spec });
+  } catch (e) {
+    return (e as Error).message;
+  }
+  return undefined;
+}
+
 /** What is wrong with the record of a question declared with `ask()`, if anything. */
 function checkQuestionRecord(r: Record<string, unknown>): string | undefined {
-  const { skillunit: _v, status: _s, id, kind: _k, file: _f, line: _l, test: _t, skillFile, ask, ...rest } = r;
+  const { skillunit: _v, status: _s, id, kind: _k, file: _f, line: _l, test: _t, setup: _p, skillFile, ask, ...rest } = r;
   const extra = Object.keys(rest)[0];
   if (extra !== undefined) return `a question has no \`${extra}\``;
   if (typeof skillFile !== 'string' || !skillFile.trim()) return '`skillFile` must be the built file the question is about, such as `SKILL.md`';

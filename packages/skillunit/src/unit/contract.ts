@@ -63,7 +63,7 @@
  */
 
 /** Bumped when a field changes meaning or disappears. */
-export const UNIT_CONTRACT = 1;
+export const UNIT_CONTRACT = 2;
 
 export type UnitKind = 'rule' | 'decision' | 'fact';
 
@@ -150,7 +150,15 @@ interface RecordBase {
   test: string;
 }
 
-export interface PassedUnit extends RecordBase {
+/** Where a unit or a question goes: the file of the skill, by the id of its `setup()`, and its place there. */
+interface Placed {
+  /** The id of the `setup()` declared last before it in its test file. Absent with none. */
+  setup?: string;
+  /** Its place among the units of that file, from 0, in the order they are declared. */
+  order?: number;
+}
+
+export interface PassedUnit extends RecordBase, Placed {
   status: 'passed';
   kind: UnitKind;
   /** `false` when the unit was declared with no body: no test proves it. */
@@ -168,16 +176,16 @@ export interface PassedUnit extends RecordBase {
   examples: UnitExample[];
 }
 
-export interface FailedUnit extends RecordBase {
+export interface FailedUnit extends RecordBase, Placed {
   status: 'failed';
-  /** Set when the record is of a question declared with `ask()`. */
-  kind?: 'question';
+  /** Set when the record is of a question declared with `ask()`, or of a file declared with `setup()`. */
+  kind?: 'question' | 'file';
   /** The message of what the body or the spec threw. */
   error: string;
 }
 
 /** What `ask()` leaves. */
-export interface PassedQuestion extends RecordBase {
+export interface PassedQuestion extends RecordBase, Placed {
   status: 'passed';
   kind: 'question';
   /** The built file the question is about, from the skill folder. */
@@ -185,7 +193,28 @@ export interface PassedQuestion extends RecordBase {
   ask: AskedQuestion[];
 }
 
-export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion;
+/** What `setup(id, spec)` takes: a file of the skill, its heading, its row in the index and its line. */
+export interface SetupSpec {
+  /** The path of the file in the skill folder, such as `features/retries.md`. */
+  file: string;
+  /** Its heading: `# <title>`. */
+  title: string;
+  /** Its row in the index of `SKILL.md`: the task that sends the agent to it. `SKILL.md` has none. */
+  when?: string;
+  /** One line under the title: what the file is about. */
+  description: string;
+  /** `SKILL.md` only: the frontmatter of the skill. */
+  frontmatter?: { name: string; description: string };
+}
+
+/** What `setup()` leaves: `file` is the test file, as in every record, and `skillFile` the path in the skill. */
+export interface PassedFile extends RecordBase, Omit<SetupSpec, 'file'> {
+  status: 'passed';
+  kind: 'file';
+  skillFile: string;
+}
+
+export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion | PassedFile;
 
 /** A unit id: kebab-case. */
 export const UNIT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -277,6 +306,51 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
   }
   if (s.ask !== undefined) checkQuestions(id as string, s.ask);
   return kind;
+}
+
+/** The file of a skill that holds its frontmatter and its index. */
+export const SKILL_INDEX = 'SKILL.md';
+
+const SETUP_KEYS = ['file', 'title', 'when', 'description', 'frontmatter'] as const;
+
+/**
+ * The spec of `setup(id, spec)`, after checking it: one line for each text, and no number in any,
+ * since a file of the skill has no `values`. Throws a `UnitSpecError` that says what to fix.
+ */
+export function checkSetup(id: unknown, spec: unknown): SetupSpec {
+  const fail = (message: string): never => {
+    throw new UnitSpecError(`setup ${typeof id === 'string' ? `\`${id}\`` : String(id)}: ${message}`);
+  };
+  if (typeof id !== 'string' || !UNIT_ID.test(id)) fail('the id must be kebab-case, lowercase words joined by hyphens, such as `retries`');
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) fail('the spec must be an object, such as `{ file, title, when, description }`');
+  const s = spec as Record<string, unknown>;
+  const extra = Object.keys(s).find((k) => !(SETUP_KEYS as readonly string[]).includes(k));
+  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${SETUP_KEYS.join(', ')})`);
+  if (typeof s.file !== 'string' || !s.file.trim() || !/\.md$/i.test(s.file)) fail('`file` must be the path of a Markdown file in the skill folder, such as `features/retries.md`');
+  const file = (s.file as string).split('\\').join('/');
+  if (leavesFolder(file)) fail(`\`file\` is ${file}, which is outside the skill folder`);
+  const index = file === SKILL_INDEX;
+  const line = (key: string, value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) fail(`\`${key}\` must be text that is not empty`);
+    if (/[\r\n]/.test(value as string)) fail(`\`${key}\` is one line`);
+    const n = numbersIn(value as string)[0];
+    if (n !== undefined) fail(`the number ${n} in \`${key}\`: a file of the skill has no \`values\`, so its text has no number. A sentence that states a value is a unit, whose test builds it from the code`);
+    return value as string;
+  };
+  const out: SetupSpec = { file, title: line('title', s.title), description: line('description', s.description) };
+  if (index) {
+    if (s.when !== undefined) fail(`\`${SKILL_INDEX}\` is the index, so it has no row in it and no \`when\``);
+    const fm = s.frontmatter;
+    if (!fm || typeof fm !== 'object' || Array.isArray(fm)) fail(`\`${SKILL_INDEX}\` needs \`frontmatter: { name, description }\`, the name of the skill and when to use it`);
+    const { name, description, ...rest } = fm as Record<string, unknown>;
+    if (Object.keys(rest).length) fail(`\`frontmatter\` has an unknown key \`${Object.keys(rest)[0]}\` (allowed: name, description)`);
+    if (typeof name !== 'string' || !UNIT_ID.test(name)) fail('`frontmatter.name` must be the name of the skill in kebab-case, such as `tinyfetch`');
+    out.frontmatter = { name: name as string, description: line('frontmatter.description', description) };
+  } else {
+    if (s.frontmatter !== undefined) fail(`\`frontmatter\` goes in the \`setup()\` of \`${SKILL_INDEX}\` only`);
+    out.when = line('when', s.when);
+  }
+  return out;
 }
 
 /**

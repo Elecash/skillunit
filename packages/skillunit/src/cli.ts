@@ -145,7 +145,7 @@ function parseArgs(command: Command, argv: string[]): Args {
   }
   if (args.base !== undefined && !args.changed) usage('--base only works with --changed');
   if ((command === 'test' || command === 'check') && positional.length) usage(`${command} takes no paths; use --skill and the settings`);
-  else if (command === 'proof' && positional.length) usage('proof takes no paths; it builds `skill` from `source`, as the settings say');
+  else if (command === 'proof' && positional.length) usage('proof takes no paths; it builds `skill` from the tests, as the settings say');
   return args;
 }
 
@@ -172,13 +172,10 @@ async function runCommand(command: Command, args: Args) {
   // `proof --write` builds the skill folder, so it may not exist yet.
   if (!existsSync(config.skill) && !(command === 'proof' && args.write)) usage(`no skill folder at ${config.skill}`);
 
-  // The questions are in the records the tests leave, which only a skill built from `source` has.
+  // The questions are in the records the tests leave, which only a skill built from the tests has.
   const testing = (command === 'test' || command === 'check') && config.proof !== undefined;
-  if (command === 'proof' && !(config.source && config.proof)) {
-    usage(`no \`source\` in ${config.configFile ?? CONFIG_FILE}: the proof builds \`skill\` from \`source\`, the folder people write, and the units the tests declare`);
-  }
-  if (command === 'test' && !(config.source && config.proof)) {
-    usage(`no \`source\` in ${config.configFile ?? CONFIG_FILE}: the questions are declared in the tests, with \`unit()\` and \`ask()\`, for a skill built from \`source\``);
+  if ((command === 'proof' || command === 'test') && !config.proof) {
+    usage(`no \`proof\` in ${config.configFile ?? CONFIG_FILE}: the skill is built from the units and questions the tests declare, with \`setup()\`, \`unit()\` and \`ask()\`, and \`proof.run\` runs those tests`);
   }
   if (config.source && !existsSync(config.source) && (command === 'proof' || command === 'check')) usage(`no source folder at ${config.source}`);
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
@@ -196,8 +193,8 @@ async function runCommand(command: Command, args: Args) {
     let testResult: Report | undefined;
     // The proof first: it runs the tests that the questions come from.
     if (command === 'proof' || command === 'check') {
-      if (config.source && config.proof) {
-        proofResult = runProof({ skill: config.skill, source: config.source, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
+      if (config.proof) {
+        proofResult = runProof({ skill: config.skill, ...(config.source ? { source: config.source } : {}), config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
       } else proofResult = { configured: false, ok: true };
     }
     // The units of the skill folder: the file each question is about, and the units the report

@@ -17,7 +17,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
   const fake = add('') as RunnerIt<{ n: number }>;
   if (options.skip !== false) fake.skip = add('skip');
   if (options.only !== false) fake.only = add('only');
-  const { unit, ask } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
+  const { unit, ask, setup } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
   /** Runs every test that is not skipped; returns each one's error message, or `ok`. */
   const run = async () => {
     const out: string[] = [];
@@ -31,7 +31,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
     }
     return out;
   };
-  return { unit, ask, tests, records, run };
+  return { unit, ask, setup, tests, records, run };
 }
 
 const noop: UnitBody<unknown> = () => {};
@@ -50,7 +50,7 @@ describe('each kind, from the keys of the spec', () => {
     expect(await r.run()).toEqual(['ok', 'ok', 'ok']);
     const [rule, fact, decision] = r.records.map((x) => x.record);
     expect(rule).toEqual({
-      skillunit: 1,
+      skillunit: 2,
       id: 'check-status',
       file: expect.stringMatching(/create\.test\.ts$/),
       line: expect.any(Number),
@@ -121,7 +121,7 @@ describe('what the body gives', () => {
     r.unit('retry-delay', { when: 'x.', value: 'y.' }, () => Promise.reject('a string'));
     expect(await r.run()).toEqual(['expected 5000 to be 10000', undefined]);
     expect(r.records.map((x) => x.record)).toEqual([
-      { skillunit: 1, id: 'default-timeout', file: expect.any(String), line: expect.any(Number), test: 'fact default-timeout: 10 seconds.', status: 'failed', error: 'expected 5000 to be 10000' },
+      { skillunit: 2, id: 'default-timeout', file: expect.any(String), line: expect.any(Number), test: 'fact default-timeout: 10 seconds.', status: 'failed', error: 'expected 5000 to be 10000' },
       expect.objectContaining({ id: 'retry-delay', status: 'failed', error: 'a string' }),
     ]);
   });
@@ -291,6 +291,63 @@ describe('a spec with a mistake', () => {
   });
 });
 
+describe('a file of the skill, with setup()', () => {
+  const retries = { file: 'features/retries.md', title: 'tinyfetch — retries', when: 'Retry a request that failed', description: 'tinyfetch can repeat a request that failed.' };
+
+  it('leaves a record of kind `file`, and the units and questions after it belong to it, in order', async () => {
+    const r = runner();
+    r.unit('before', { when: 'x.', do: 'y.' }, noop);
+    r.setup('retries', retries);
+    r.unit('retry-defaults', { when: 'x.', value: 'y.' }, noop);
+    r.ask('when-to-retry', { scenario: 's.', question: 'q?', expect: 'yes' });
+    r.unit('retry-idempotent-only', { when: 'x.', do: 'y.' });
+    expect(r.tests.map((t) => t.name)).toEqual(['rule before: y.', 'file retries: tinyfetch — retries', 'fact retry-defaults: y.', 'question when-to-retry: q?', 'rule retry-idempotent-only: y.']);
+    expect(await r.run()).toEqual(['ok', 'ok', 'ok', 'ok', 'ok']);
+    const [before, file, defaults, question, idempotent] = r.records.map((x) => x.record);
+    expect(before).not.toHaveProperty('setup');
+    expect(file).toMatchObject({ skillunit: 2, status: 'passed', kind: 'file', id: 'retries', skillFile: 'features/retries.md', title: 'tinyfetch — retries', when: 'Retry a request that failed', description: 'tinyfetch can repeat a request that failed.' });
+    expect(file).not.toHaveProperty('setup');
+    expect(defaults).toMatchObject({ setup: 'retries', order: 0 });
+    expect(idempotent).toMatchObject({ setup: 'retries', order: 1, body: false });
+    // A question with no `file` is about the file its `setup()` declares.
+    expect(question).toMatchObject({ kind: 'question', setup: 'retries', skillFile: 'features/retries.md' });
+  });
+
+  it('SKILL.md gives the frontmatter and has no row in the index', async () => {
+    const r = runner();
+    r.setup('tinyfetch', { file: 'SKILL.md', title: 'tinyfetch', description: 'A small HTTP client.', frontmatter: { name: 'tinyfetch', description: 'Make HTTP requests with tinyfetch.' } });
+    expect(await r.run()).toEqual(['ok']);
+    expect(r.records[0]!.record).toMatchObject({ kind: 'file', skillFile: 'SKILL.md', frontmatter: { name: 'tinyfetch', description: 'Make HTTP requests with tinyfetch.' } });
+  });
+
+  it('says what is wrong with a spec, and fails its test', async () => {
+    const message = async (id: string, spec: unknown) => {
+      const r = runner();
+      r.setup(id, spec as never);
+      return (await r.run())[0];
+    };
+    expect(await message('Retries', retries)).toBe('setup `Retries`: the id must be kebab-case, lowercase words joined by hyphens, such as `retries`');
+    expect(await message('retries', { ...retries, file: '../x.md' })).toBe('setup `retries`: `file` is ../x.md, which is outside the skill folder');
+    expect(await message('retries', { ...retries, file: 'retries.txt' })).toBe('setup `retries`: `file` must be the path of a Markdown file in the skill folder, such as `features/retries.md`');
+    expect(await message('retries', { ...retries, title: 'Retries, 3 at most' })).toBe(
+      'setup `retries`: the number 3 in `title`: a file of the skill has no `values`, so its text has no number. A sentence that states a value is a unit, whose test builds it from the code',
+    );
+    expect(await message('retries', { ...retries, description: 'Two\nlines.' })).toBe('setup `retries`: `description` is one line');
+    expect(await message('retries', { ...retries, when: undefined })).toBe('setup `retries`: `when` must be text that is not empty');
+    expect(await message('retries', { ...retries, frontmatter: { name: 'x', description: 'y' } })).toBe('setup `retries`: `frontmatter` goes in the `setup()` of `SKILL.md` only');
+    expect(await message('retries', { ...retries, order: 2 })).toBe('setup `retries`: unknown key `order` (allowed: file, title, when, description, frontmatter)');
+    expect(await message('skill', { file: 'SKILL.md', title: 'T', description: 'D.', when: 'x' })).toBe('setup `skill`: `SKILL.md` is the index, so it has no row in it and no `when`');
+    expect(await message('skill', { file: 'SKILL.md', title: 'T', description: 'D.' })).toBe('setup `skill`: `SKILL.md` needs `frontmatter: { name, description }`, the name of the skill and when to use it');
+  });
+
+  it('a file and a unit cannot have the same id', async () => {
+    const r = runner();
+    r.setup('retries', retries);
+    r.unit('retries', { when: 'x.', do: 'y.' }, noop);
+    expect((await r.run())[1]).toMatch(/^unit `retries`: the id is that of the file `features\/retries\.md` .*; files of the skill and units share one space of ids$/);
+  });
+});
+
 describe('questions for the decision model', () => {
   const question = { scenario: 'The user asks how long a request waits.', question: 'What should the agent answer?', options: { right: '10 seconds', longer: '30 seconds' }, expect: 'right' };
 
@@ -448,7 +505,7 @@ describe('ask()', () => {
     expect(r.tests.map((t) => t.name)).toEqual(['question which-file-for-retries: Which file does the agent read?']);
     expect(await r.run()).toEqual(['ok']);
     expect(r.records[0]!.record).toEqual({
-      skillunit: 1,
+      skillunit: 2,
       id: 'which-file-for-retries',
       file: expect.stringMatching(/create\.test\.ts$/),
       line: expect.any(Number),

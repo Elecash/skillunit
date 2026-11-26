@@ -141,7 +141,7 @@ describe('law 4: with several phrasings a question passes exactly when most of t
 
 /** A record as a helper in another language may write it. */
 const record = (value: string, lang: string) => ({
-  skillunit: 1,
+  skillunit: 2,
   status: 'passed',
   id: 'u',
   kind: 'fact',
@@ -194,9 +194,9 @@ describe('law 7: whatever the model is sent comes from the skill folder', () => 
 
   const ask = { scenario: 'A request times out.', question: 'How long did it wait?', options: ['ten', 'thirty'], expect: 'ten' };
   const unit = (more: Record<string, unknown>): ReadUnit =>
-    ({ skillunit: 1, status: 'passed', id: 'u', kind: 'fact', file: 'src/a.skill.test.ts', line: 1, test: 'fact u', when: 'x.', value: 'y.', examples: [], path: '/p/u.json', abs: '/project/src/a.skill.test.ts', ...more }) as unknown as ReadUnit;
+    ({ skillunit: 2, status: 'passed', id: 'u', kind: 'fact', file: 'src/a.skill.test.ts', line: 1, test: 'fact u', when: 'x.', value: 'y.', examples: [], path: '/p/u.json', abs: '/project/src/a.skill.test.ts', ...more }) as unknown as ReadUnit;
   const question = (skillFile: string): ReadQuestion =>
-    ({ skillunit: 1, status: 'passed', kind: 'question', id: 'q', file: 'src/b.skill.test.ts', line: 1, test: 'question q', skillFile, ask: [{ id: 'q', ...ask }], path: '/p/q.json', abs: '/project/src/b.skill.test.ts' }) as unknown as ReadQuestion;
+    ({ skillunit: 2, status: 'passed', kind: 'question', id: 'q', file: 'src/b.skill.test.ts', line: 1, test: 'question q', skillFile, ask: [{ id: 'q', ...ask }], path: '/p/q.json', abs: '/project/src/b.skill.test.ts' }) as unknown as ReadQuestion;
 
   it('`with` cannot name a file outside the skill folder', () => {
     for (const path of ['../README.md', '../.env', 'features/../../README.md']) {

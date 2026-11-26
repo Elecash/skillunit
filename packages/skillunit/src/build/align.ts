@@ -54,6 +54,8 @@ export interface Difference {
   expectedLine?: number;
   /** The line in `actual`, or undefined when it lacks lines `expected` has. */
   actual: string | undefined;
+  /** The line after the run in `actual`, from 1: the run is `line` up to it. */
+  actualEnd?: number;
 }
 
 /**
@@ -78,6 +80,7 @@ export function differences(expected: string[], actual: string[]): Difference[] 
         expected: a + k < i ? expected[a + k] : undefined,
         ...(a + k < i ? { expectedLine: a + k + 1 } : {}),
         actual: b + k < j ? actual[b + k] : undefined,
+        actualEnd: j + 1,
       });
     }
     a = i + 1;

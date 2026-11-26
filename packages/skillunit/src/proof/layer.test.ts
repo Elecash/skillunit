@@ -31,8 +31,8 @@ function project(files: Record<string, string | null>): string {
 
 /** A record as `unit()` leaves it, declared at `tests/a.test.ts:<line>`. */
 const record = (id: string, line: number, more: Record<string, unknown>) =>
-  `${JSON.stringify({ skillunit: 1, status: 'passed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, examples: [], ...more }, null, 2)}\n`;
-const failed = (id: string, line: number, error: string) => `${JSON.stringify({ skillunit: 1, status: 'failed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, error })}\n`;
+  `${JSON.stringify({ skillunit: 2, status: 'passed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, examples: [], ...more }, null, 2)}\n`;
+const failed = (id: string, line: number, error: string) => `${JSON.stringify({ skillunit: 2, status: 'failed', id, file: 'tests/a.test.ts', line, test: `t ${id}`, error })}\n`;
 
 const config = (root: string, more: Partial<ProofConfig> = {}): ProofConfig => ({ units: join(root, 'tmp/skill-units'), sources: ['tests/*.test.ts'], cwd: root, ...more });
 const run = (root: string, more: Partial<ProofConfig> = {}, options: Partial<ProofOptions> = {}) =>
@@ -416,10 +416,10 @@ describe('a unit in two places, or in none', () => {
   });
 
   it('a record that is not one', () => {
-    const root = project({ ...GOOD, 'tmp/skill-units/broken.json': '{ "skillunit": 1,', 'tmp/skill-units/old.json': '{ "skillunit": 2 }' });
+    const root = project({ ...GOOD, 'tmp/skill-units/broken.json': '{ "skillunit": 2,', 'tmp/skill-units/old.json': '{ "skillunit": 1 }' });
     expect(errors(run(root, {}, { write: true }))).toEqual([
       expect.stringMatching(/^\.\.\/tmp\/skill-units\/broken\.json:1 - error: broken\.json: not valid JSON \(/),
-      '../tmp/skill-units/old.json:1 - error: old.json: `skillunit` must be 1, the version of the contract this SkillUnit reads; got 2',
+      '../tmp/skill-units/old.json:1 - error: old.json: `skillunit` must be 2, the version of the contract this SkillUnit reads; got 1',
     ]);
   });
 });
@@ -445,7 +445,7 @@ describe('questions in a record', () => {
   });
 
   it('the record of `ask()` is no unit: the build does not change', () => {
-    const asked = `${JSON.stringify({ skillunit: 1, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 'question which-file: Which?', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }] })}\n`;
+    const asked = `${JSON.stringify({ skillunit: 2, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 'question which-file: Which?', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }] })}\n`;
     const root = project({ ...GOOD, 'tmp/skill-units/which-file.0009.json': asked });
     const r = run(root, {}, { write: true });
     expect(errors(r)).toEqual([]);
@@ -453,7 +453,7 @@ describe('questions in a record', () => {
   });
 
   it('a record of `ask()` with a mistake is one that is not valid', () => {
-    const asked = (more: object) => `${JSON.stringify({ skillunit: 1, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 't', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }], ...more })}\n`;
+    const asked = (more: object) => `${JSON.stringify({ skillunit: 2, status: 'passed', kind: 'question', id: 'which-file', file: 'tests/a.test.ts', line: 40, test: 't', skillFile: 'SKILL.md', ask: [{ id: 'which-file', ...question }], ...more })}\n`;
     const root = project({
       ...GOOD,
       'tmp/skill-units/a.json': asked({ skillFile: '' }),
@@ -642,7 +642,9 @@ describe('the settings', () => {
 
   it('rejects a wrong key', () => {
     const fails = (yaml: string) => () => load(yaml).config();
-    expect(fails('proof:\n  run: x\n')).toThrow(/`proof` says how the skill is built from `source`; set `source` too/);
+    // With `proof` and no `source`, the skill is built from the records alone.
+    expect(load('proof:\n  run: x\n').config().proof).toMatchObject({ run: 'x' });
+    expect(load('proof:\n  run: x\n').config().source).toBeUndefined();
     expect(fails('skill: ./skill\nsource: ./src\nproof:\n  runs: x\n')).toThrow(/unknown key `proof.runs` \(allowed: run, units, sources, format\)/);
     expect(fails('skill: ./skill\nsource: ./src\nproof:\n  run: ""\n')).toThrow(/`proof.run` must be a command/);
     expect(fails('skill: ./skill\nsource: ./src\nproof:\n  units: ""\n')).toThrow(/`proof.units` must be a folder/);

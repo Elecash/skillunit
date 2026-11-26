@@ -10,13 +10,17 @@
  *
  * `ask(id, spec)`: a question about the prose of a built file, which belongs to no unit.
  *
+ * `setup(id, spec)`: a file of the skill, its title, its row in the index and its line. Each unit
+ * and question belongs to the last `setup()` declared before it in its test file, and its record
+ * says so.
+ *
  * Questions are checked when they are declared and written in the records. The runner asks the
  * model nothing: SkillUnit asks them after the build.
  *
  * This module imports nothing from Node at load time: a runner that cannot write files passes
  * its own `write`, and the default one is loaded only when a unit is written.
  */
-import { checkAsk, checkNumbers, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
+import { checkAsk, checkNumbers, checkQuestions, checkSetup, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedFile, type PassedQuestion, type PassedUnit, type SetupSpec, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
 
 /** What the body of a unit gets, besides the runner's own context. */
 export interface UnitContext {
@@ -71,6 +75,10 @@ export type AskFn = (id: string, spec: AskSpec, ...rest: any[]) => void;
 
 export type Ask = AskFn & { skip: AskFn; only: AskFn };
 
+export type SetupFn = (id: string, spec: SetupSpec, ...rest: any[]) => void;
+
+export type Setup = SetupFn & { skip: SetupFn; only: SetupFn };
+
 /** Files of this helper, whose frames the stack of a call to `unit` starts with. */
 const OWN = new Set<string>();
 export function ownFile(url: string): void {
@@ -78,12 +86,23 @@ export function ownFile(url: string): void {
 }
 ownFile(import.meta.url);
 
-export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnitOptions<Ctx> = {}): { unit: Unit<Ctx>; ask: Ask } {
+export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnitOptions<Ctx> = {}): { unit: Unit<Ctx>; ask: Ask; setup: Setup } {
   const write = options.write ?? defaultWrite;
   /** Declarations of each id at each place, so a loop that declares one id twice gets two keys. */
   const seen = new Map<string, number>();
   /** The id of each question declared so far, and what declared it. */
   const asked = new Map<string, string>();
+  /** The `setup()` declared last in each test file, with the next place among its units. */
+  const current = new Map<string, { id: string; file: string; order: number }>();
+  /** Ids of files and of units share one space: a region `skill:<id>` names either. */
+  const fileIds = new Map<string, string>();
+  const unitIds = new Map<string, string>();
+  /** The file of the skill a unit or a question declared at `place` belongs to, and its place there. */
+  const placed = (place: UnitPlace | undefined, unit: boolean) => {
+    const owner = place ? current.get(place.file) : undefined;
+    if (!owner) return {};
+    return unit ? { setup: owner.id, order: owner.order++ } : { setup: owner.id };
+  };
 
   /** A key for one declaration: the same across runs, and different for two declarations. */
   const keyOf = (prefix: string, id: unknown, place: UnitPlace | undefined) => {
@@ -119,17 +138,21 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
         }
         if (spec.ask !== undefined) questions = checkQuestions(id, spec.ask);
         claim(questions ?? [], `unit \`${id}\``, `the unit \`${id}\` (${where(place)})`);
+        const file = fileIds.get(id);
+        if (file) throw new UnitSpecError(`unit \`${id}\`: the id is that of ${file}; files of the skill and units share one space of ids`);
+        unitIds.set(id, `the unit \`${id}\` (${where(place)})`);
       } catch (e) {
         problem = e;
       }
       const title = kind ? `${kind} ${id}: ${sentence(kind, spec)}` : `unit ${String(id)}`;
       const key = keyOf('', id, place);
+      const belongs = placed(place, true);
 
       register(
         title,
         async (ctx: Ctx) => {
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
-          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
           const failed = async (error: unknown) => {
             // An id that is not one cannot be named by a slot; nothing would read the record.
             if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', error: messageOf(error) }, key);
@@ -196,20 +219,23 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
       const place = callerPlace(new Error().stack);
       let checked: ReturnType<typeof checkAsk> | undefined;
       let problem: unknown;
+      const owner = place ? current.get(place.file) : undefined;
       try {
-        checked = checkAsk(id, spec);
+        // A question with no `file` is about the file of the skill its `setup()` declares.
+        checked = checkAsk(id, owner && spec && typeof spec === 'object' && spec.file === undefined ? { ...spec, file: owner.file } : spec);
         claim([checked.question], `ask \`${id}\``, `\`ask('${id}')\` (${where(place)})`);
       } catch (e) {
         problem = e;
       }
       const title = checked ? `question ${id}: ${checked.question.question}` : `question ${String(id)}`;
       const key = keyOf('ask:', id, place);
+      const belongs = placed(place, false);
 
       register(
         title,
         async (ctx: Ctx) => {
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
-          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
           if (problem) {
             if (typeof id === 'string' && QUESTION_ID.test(id)) await write({ ...head, status: 'failed', kind: 'question', error: messageOf(problem) }, key);
             throw problem;
@@ -221,9 +247,49 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
       );
     };
 
+  const declareSetup = (register: RunnerIt<Ctx> | undefined, how: string): SetupFn =>
+    function setup(id, spec, ...rest) {
+      if (!register) throw new Error(`setup${how}: the runner's \`it\` has no \`${how.slice(1)}\``);
+      const place = callerPlace(new Error().stack);
+      let checked: SetupSpec | undefined;
+      let problem: unknown;
+      try {
+        checked = checkSetup(id, spec);
+        const unit = unitIds.get(id);
+        if (unit) throw new UnitSpecError(`setup \`${id}\`: the id is that of ${unit}; files of the skill and units share one space of ids`);
+        const other = fileIds.get(id);
+        if (other) throw new UnitSpecError(`setup \`${id}\`: ${other} has this id; give one of them another`);
+        fileIds.set(id, `the file \`${checked.file}\` (${where(place)})`);
+      } catch (e) {
+        problem = e;
+      }
+      // The units and questions declared after it in this test file belong to it, even when its
+      // spec has a mistake: they are then reported with the file, not as belonging to none.
+      if (place && typeof id === 'string') current.set(place.file, { id, file: checked?.file ?? '', order: 0 });
+      const title = checked ? `file ${id}: ${checked.title}` : `file ${String(id)}`;
+      const key = keyOf('setup:', id, place);
+
+      register(
+        title,
+        async (ctx: Ctx) => {
+          const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          if (problem) {
+            if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', kind: 'file', error: messageOf(problem) }, key);
+            throw problem;
+          }
+          const { file: skillFile, ...rest } = checked!;
+          const record: PassedFile = { ...head, status: 'passed', kind: 'file', skillFile, ...rest };
+          await write(record, key);
+        },
+        ...rest,
+      );
+    };
+
   const unit = Object.assign(declareUnit(it, ''), { skip: declareUnit(it.skip?.bind(it), '.skip'), only: declareUnit(it.only?.bind(it), '.only') });
   const ask = Object.assign(declareAsk(it, ''), { skip: declareAsk(it.skip?.bind(it), '.skip'), only: declareAsk(it.only?.bind(it), '.only') });
-  return { unit, ask };
+  const setup = Object.assign(declareSetup(it, ''), { skip: declareSetup(it.skip?.bind(it), '.skip'), only: declareSetup(it.only?.bind(it), '.only') });
+  return { unit, ask, setup };
 }
 
 /** The sentence a test is titled with: what the unit says. */

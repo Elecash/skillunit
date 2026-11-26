@@ -16,6 +16,7 @@ import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, sta
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { alignLines, differences } from '../build/align.js';
 import { buildSkill, listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
+import { buildFromRecords } from '../build/from-records.js';
 import { readRecords, type Records } from '../build/records.js';
 import type { ProofConfig } from '../config.js';
 import type { Origin, Problem } from '../problems.js';
@@ -26,8 +27,8 @@ import { output, quote } from './shell.js';
 export interface ProofOptions {
   /** Folder of the built skill. */
   skill: string;
-  /** Folder the skill is built from. */
-  source: string;
+  /** Folder the skill is built from. Without it, the skill is built from the records alone: each `setup()` is a file. */
+  source?: string;
   config: ProofConfig;
   /** The settings file, for findings about the settings. */
   configFile?: string;
@@ -74,8 +75,8 @@ export interface ProofResult {
   ok: boolean;
   /** Absolute path of the skill folder. */
   skill: string;
-  /** Absolute path of the source. */
-  source: string;
+  /** Absolute path of the source, or null for a skill built from the records alone. */
+  source: string | null;
   write: boolean;
   run: RunReport;
   units: UnitProof[];
@@ -160,7 +161,7 @@ export function proof(options: ProofOptions): ProofResult {
 /** The proof, and where each line of the skill folder comes from. */
 export function runProof(options: ProofOptions): { result: ProofResult; origin: OriginLookup } {
   const skillDir = resolve(options.skill);
-  const sourceDir = resolve(options.source);
+  const sourceDir = options.source === undefined ? null : resolve(options.source);
   const cfg = options.config;
   const fromSkill = (abs: string) => relative(skillDir, abs).split('\\').join('/') || '.';
   const fromProject = (abs: string) => relative(cfg.cwd, abs).split('\\').join('/') || '.';
@@ -194,7 +195,9 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const regions = readRegions(cfg, records, fromProject);
   for (const p of regions.problems) add(fromSkill(p.file), p.line, p.message);
 
-  const build = buildSkill({ source: sourceDir, records: records.units, regions: regions.regions, missingReason, shown: fromProject });
+  const build = sourceDir
+    ? buildSkill({ source: sourceDir, records: records.units, regions: regions.regions, missingReason, shown: fromProject })
+    : buildFromRecords({ units: records.units, files: records.files, regions: regions.regions, shown: fromProject });
   for (const p of build.problems) add(fromSkill(p.file), p.line, p.message, p.unit ? { unit: p.unit } : {});
 
 
@@ -213,6 +216,7 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   // ---------------------------------------------------------------- 4: compare, or write
   const files: FileProof[] = [];
   const builtNames = new Set(build.files.map((f) => f.file));
+  const builtIds = new Set(build.units.map((u) => u.id));
   for (const f of build.files) {
     if (f.broken) {
       files.push({ file: f.file, state: 'broken' });
@@ -234,12 +238,12 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     if (!have) {
       files.push({ file: f.file, state: 'missing' });
       const first = f.origins[0];
-      add(f.file, 1, `the skill folder has no \`${f.file}\`, which \`source\` builds. Run \`skillunit proof --write\``, first ? { origin: toOrigin(first, fromSkill) } : {});
+      add(f.file, 1, `the skill folder has no \`${f.file}\`, which ${sourceDir ? '`source` builds' : 'a `setup()` declares'}. Run \`skillunit proof --write\``, first ? { origin: toOrigin(first, fromSkill) } : {});
       continue;
     }
     files.push({ file: f.file, state: 'differs' });
     if (f.bytes) {
-      add(f.file, 1, `this file is not the one in \`source\`, which it is copied from: edit ${fromProject(join(sourceDir, f.file))}, then run \`skillunit proof --write\``, { origin: { kind: 'source', file: fromSkill(join(sourceDir, f.file)), line: 1 } });
+      add(f.file, 1, `this file is not the one in \`source\`, which it is copied from: edit ${fromProject(join(sourceDir!, f.file))}, then run \`skillunit proof --write\``, { origin: { kind: 'source', file: fromSkill(join(sourceDir!, f.file)), line: 1 } });
       continue;
     }
     // One finding per block that differs, so a value in a table and the unit that states it are
@@ -255,8 +259,19 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       const o = f.origins[Math.min(unformatted[index] ?? index, f.origins.length - 1)];
       return o ? toOrigin(o, fromSkill) : undefined;
     };
+    const haveLines = haveText.split(/\r?\n/);
     for (const d of found.slice(0, MAX_DIFFERENCES)) {
       const line = Math.min(d.line, lineCount(haveText));
+      // Lines only the skill has that hold a unit the build has nowhere: its test is gone. They
+      // belong to no unit of the build, so they are named by their own heading.
+      const stale = d.expected === undefined ? staleUnit(haveLines, d.line, d.actualEnd ?? d.line, builtIds) : undefined;
+      if (stale) {
+        add(f.file, stale.line, `the skill has the unit \`${stale.id}\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill`, {
+          unit: stale.id,
+          lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
+        });
+        continue;
+      }
       // A line the build has belongs to the unit the build puts it in; a line only the skill has,
       // to the line of the build it stands for.
       const from = d.expectedLine !== undefined ? builtOrigin(d.expectedLine - 1) : origin(f.file, line);
@@ -276,7 +291,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     if (builtNames.has(name)) continue;
     files.push({ file: name, state: 'extra' });
     const left = options.write ? '. `--write` leaves it there' : '';
-    if (basename(name).startsWith('.')) add(name, 1, `no file of \`source\` builds \`${name}\`, and none can: the build leaves out a name that starts with a dot. Remove it from the skill folder${left}`);
+    if (!sourceDir) add(name, 1, `no \`setup()\` declares \`${name}\`: declare it in a test, or remove it from the skill folder${left}`);
+    else if (basename(name).startsWith('.')) add(name, 1, `no file of \`source\` builds \`${name}\`, and none can: the build leaves out a name that starts with a dot. Remove it from the skill folder${left}`);
     else add(name, 1, `no file of \`source\` builds \`${name}\`: move it to ${fromProject(join(sourceDir, name))}, or remove it from the skill folder${left}`);
   }
   files.sort((a, b) => a.file.localeCompare(b.file));
@@ -410,6 +426,17 @@ function shownPair(build: string | undefined, skill: string | undefined): [strin
   while (at < build.length && at < skill.length && build[at] === skill[at]) at++;
   const start = Math.max(0, at - BEFORE);
   return [shownLine(build, 'nothing here', start), shownLine(skill, 'nothing here', start)];
+}
+
+const UNIT_HEADING = /^#{1,6}\s+(?:rule|decision|fact):\s*(\S+?)\s*#*\s*$/;
+
+/** The first unit heading in lines `from` up to `to` (from 1) whose id the build has nowhere. */
+function staleUnit(lines: string[], from: number, to: number, built: Set<string>): { line: number; id: string } | undefined {
+  for (let i = from - 1; i < Math.min(to - 1, lines.length); i++) {
+    const id = UNIT_HEADING.exec(lines[i]!)?.[1];
+    if (id !== undefined && !built.has(id)) return { line: i + 1, id };
+  }
+  return undefined;
 }
 
 /** The lines of a file: a line end at the end starts no line. */
