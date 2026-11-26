@@ -2,7 +2,7 @@
 
 How to declare a unit in the test that checks it, so the skill is built from the code and changes when the code does.
 
-A unit that a test can check is declared in that test with `unit()` from `skillunit/vitest`, or `createUnit` from `skillunit/unit` for another runner. `source` in `skillunit.yaml` is the folder people write; `skill` is built from it. In the source, `{{unit:<id>}}` alone on a line is where a unit from a test goes, and `{{value:<id>.<name>}}` is a value a test lists in `values`. A unit no test can check, such as advice, is declared with `unit()` and no body: it is built like any unit, and the report reads `declared, no test`. A unit heading written in the source is an error.
+A unit that a test can check is declared in that test with `unit()` from `skillunit/vitest`, or `createUnit` from `skillunit/unit` for another runner. `source` in `skillunit.yaml` is the folder people write; `skill` is built from it. In the source, `{{unit:<id>}}` alone on a line is where a unit from a test goes, and `{{value:<id>.<name>}}` is a value a test lists in `values`. A unit no test can check, such as advice, is declared with `unit()` and no body: it is built like any unit, and the report reads `declared, no test`. With `skillunit/vitest`, a body that makes no assertion, and calls neither `u.value()` nor `u.example()`, fails its test. A unit heading written in the source is an error.
 
 | Spec key | Kind | Becomes |
 | --- | --- | --- |

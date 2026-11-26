@@ -4,7 +4,7 @@
  * passes; without a body, it declares a unit no test proves. `ask(id, spec)` declares a question
  * about the prose of a built file.
  */
-import { it, type TestContext } from 'vitest';
+import { expect, it, type TestContext } from 'vitest';
 import { createUnit, ownFile } from './unit/create.js';
 import { writeUnit } from './unit/write.js';
 
@@ -18,6 +18,8 @@ export const { unit, ask } = createUnit<TestContext>(it as never, {
   isSkip: (e) => (e as { code?: unknown } | null)?.code === 'VITEST_PENDING',
   // `expect.soft` fails the test without throwing.
   failure: (ctx) => (ctx.task.result?.state === 'fail' ? (ctx.task.result.errors?.[0]?.message ?? 'the test failed') : undefined),
+  // The assertions of the global `expect`, and of the test context's own when the body used it.
+  assertions: (ctx) => expect.getState().assertionCalls + (ctx.expect === expect ? 0 : ctx.expect.getState().assertionCalls),
 });
 
 export type { AskSpec, UnitContext, UnitQuestion, UnitSpec } from './unit/index.js';

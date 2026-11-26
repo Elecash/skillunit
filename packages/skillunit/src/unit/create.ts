@@ -55,6 +55,12 @@ export interface CreateUnitOptions<Ctx> {
   isSkip?: (error: unknown) => boolean;
   /** A failure the runner recorded without throwing, such as a soft assertion, after the body returned. */
   failure?: (ctx: Ctx) => string | undefined;
+  /**
+   * How many assertions the test has made so far, when the runner counts them. With it, a body
+   * that returns having made none, and called neither `u.value()` nor `u.example()`, fails its
+   * test: a unit no test proves is declared with no body. Without it, nothing is counted.
+   */
+  assertions?: (ctx: Ctx) => number | undefined;
 }
 
 export type UnitFn<Ctx> = (id: string, spec: UnitSpec, body?: UnitBody<Ctx>, ...rest: any[]) => void;
@@ -135,17 +141,22 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
           let value = spec.value;
           const examples: UnitExample[] = (spec.examples ?? []).map((x) => ({ lang: x.lang, text: x.text }));
           if (body) {
+            /** The body built the unit from what it observed, so its drift shows in the built skill. */
+            let built = false;
+            const before = options.assertions?.(ctx);
             const u: UnitContext = {
               value(text) {
                 if (kind !== 'fact') throw new Error(`unit \`${id}\`: \`u.value\` sets the Value of a fact, and this is a ${kind}`);
                 if (typeof text !== 'string' || !text.trim()) throw new Error(`unit \`${id}\`: \`u.value\` takes text that is not empty`);
                 value = text;
+                built = true;
               },
               example(lang, text) {
                 if (kind === 'decision') throw new Error(`unit \`${id}\`: a decision shows its examples in its paths, from the regions \`skill:${id}.<path>\`; \`u.example\` is for a rule or a fact`);
                 if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) throw new Error(`unit \`${id}\`: \`u.example\` takes a fence language first, such as \`text\` or \`json\`; got ${JSON.stringify(lang)}`);
                 if (typeof text !== 'string') throw new Error(`unit \`${id}\`: \`u.example\` takes the block's text as a string`);
                 examples.push({ lang, text });
+                built = true;
               },
             };
             try {
@@ -154,6 +165,12 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
                 throw new Error(`unit \`${id}\`: the fact has no Value; give \`value\` in its spec or call \`u.value(text)\` in its body`);
               }
               checkNumbers(id, { ...spec, value });
+              const after = options.assertions?.(ctx);
+              if (!built && before !== undefined && after !== undefined && after <= before) {
+                throw new Error(
+                  `unit \`${id}\`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: \`unit(id, spec)\` is a unit no test proves`,
+                );
+              }
             } catch (e) {
               if (options.isSkip?.(e)) throw e;
               await failed(e);

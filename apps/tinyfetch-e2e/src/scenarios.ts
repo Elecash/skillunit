@@ -331,6 +331,21 @@ export const scenarios: Scenario[] = [
     expect: { proof: ['what-is-retried', '../skillunit.yaml'] },
   },
   {
+    name: 'body that asserts nothing',
+    change: 'empty the body of `response-body`, so it calls tinyfetch and asserts nothing',
+    apply(app) {
+      app.edit(
+        TEST,
+        "      expect(await tf.get('http://x/json')).toEqual({ id: 1 });\n      expect(await tf.get('http://x/text')).toBe('plain');\n      expect(await tf.get('http://x/html')).toBe('<p>hi</p>');\n",
+        "      await tf.get('http://x/json');\n",
+      );
+      app.commit('Assert nothing');
+    },
+    // `skillunit/vitest` counts the assertions of the body: none, so the test fails and the unit
+    // is not built.
+    expect: { proof: ['response-body', '../skillunit.yaml'] },
+  },
+  {
     name: 'no value typed twice 1: the constant changes',
     change: 'in `src/retry.ts`, change `RETRY_TIMES` from 2 to 3, and edit nothing else',
     apply(app) {

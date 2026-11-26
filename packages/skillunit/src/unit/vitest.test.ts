@@ -101,7 +101,7 @@ unit('bad-spec', { when: 'x.', do: 'y.', value: 'z.' } as never, () => {});
 `;
 
 describe('skillunit/vitest', () => {
-  const run = vitest({ 'tests/a.test.ts': TEST, 'tests/b.test.ts': `import { unit } from $ENTRY;\nunit.only('only-one', { when: 'x.', do: 'y.' }, () => {});\nunit('not-this', { when: 'x.', do: 'y.' }, () => {});\n` });
+  const run = vitest({ 'tests/a.test.ts': TEST, 'tests/b.test.ts': `import { expect } from $API;\nimport { unit } from $ENTRY;\nunit.only('only-one', { when: 'x.', do: 'y.' }, () => expect(1).toBe(1));\nunit('not-this', { when: 'x.', do: 'y.' }, () => {});\n` });
 
   it('runs every unit as a test, and fails the run when one fails', () => {
     expect(run.status, run.output).toBe(1);
@@ -154,13 +154,51 @@ describe('skillunit/vitest', () => {
     expect(run.byId('one-client')).toEqual([]);
     expect(run.byId('skipped-inside')).toEqual([]);
     expect(run.byId('not-this')).toEqual([]);
-    expect(run.byId('only-one')).toEqual([expect.objectContaining({ status: 'passed', file: 'tests/b.test.ts', line: 2 })]);
+    expect(run.byId('only-one')).toEqual([expect.objectContaining({ status: 'passed', file: 'tests/b.test.ts', line: 3 })]);
+  });
+
+  it('a body that asserts nothing fails, unless it builds the unit with `u.value()` or `u.example()`', () => {
+    const r = vitest({
+      'tests/a.test.ts': `import { beforeEach, describe, expect } from $API;
+import { unit } from $ENTRY;
+
+unit('empty-body', { when: 'x.', do: 'y.' }, () => {});
+unit('soft-pass', { when: 'x.', do: 'y.' }, () => {
+  expect.soft(1).toBe(1);
+});
+unit('context-expect', { when: 'x.', do: 'y.' }, (_u, { expect }) => {
+  expect(1).toBe(1);
+});
+unit('sets-value', { when: 'x.' }, (u) => u.value('what the body saw.'));
+unit('adds-example', { when: 'x.', value: 'y.' }, (u) => u.example('text', 'z'));
+unit('declared', { when: 'x.', do: 'y.' });
+
+describe('a hook', () => {
+  beforeEach(() => {
+    expect(1).toBe(1);
+  });
+  unit('hook-only', { when: 'x.', do: 'y.' }, () => {});
+});
+`,
+    });
+    expect(r.status, r.output).toBe(1);
+    const state = Object.fromEntries(r.records.map((x) => [x.id, x.status === 'failed' ? x.error : x.status]));
+    const none = 'the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves';
+    expect(state).toEqual({
+      'empty-body': `unit \`empty-body\`: ${none}`,
+      'hook-only': `unit \`hook-only\`: ${none}`,
+      'soft-pass': 'passed',
+      'context-expect': 'passed',
+      'sets-value': 'passed',
+      'adds-example': 'passed',
+      declared: 'passed',
+    });
   });
 
   it('takes the line from Vitest when it gives it', () => {
     const located = vitest(
       // The call spans lines: the stack gives the line of \`unit(\`, Vitest the line of the test.
-      { 'tests/a.test.ts': `import { unit } from $ENTRY;\n\nunit(\n  'one-client',\n  { when: 'x.', do: 'y.' },\n  () => {},\n);\n` },
+      { 'tests/a.test.ts': `import { unit } from $ENTRY;\n\nunit(\n  'one-client',\n  { when: 'x.', do: 'y.' },\n  (_u, { expect }) => expect(1).toBe(1),\n);\n` },
       ', includeTaskLocation: true',
     );
     expect(located.records).toEqual([expect.objectContaining({ id: 'one-client', file: 'tests/a.test.ts', line: 3 })]);
@@ -174,7 +212,7 @@ const ask = (expect: string) => ({
   options: { right: \`\${DEFAULT_TIMEOUT / 1000} seconds\`, longer: \`\${(3 * DEFAULT_TIMEOUT) / 1000} seconds\` },
   expect,
 });
-unit('default-timeout', { when: 'x.', value: 'y.', ask: ask('right') }, () => {});
+unit('default-timeout', { when: 'x.', value: 'y.', ask: ask('right') }, (_u, { expect }) => expect(1).toBe(1));
 unit('retry-delay', { when: 'x.', value: 'y.', ask: ask('shorter') }, () => {});
 unit('never-disable-timeout', { when: 'x.', do: 'y.', ask: { ...ask('right'), id: 'upload-timeout' } });
 question('which-file', { file: 'features/index.md', scenario: 's.', question: 'Which file?', options: ['retries', 'errors'], expect: 'retries' });

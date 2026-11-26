@@ -189,6 +189,61 @@ describe('a number typed into the text of a unit with a body', () => {
   });
 });
 
+describe('a body that asserts nothing', () => {
+  /** A runner whose assertions are counted by `assert`, as a runner's `expect` counts them. */
+  const counted = () => {
+    let count = 0;
+    const tests: Registered[] = [];
+    const records: UnitRecord[] = [];
+    const fake = ((name: string, fn: Registered['fn']) => void tests.push({ name, fn, how: '', rest: [] })) as RunnerIt<{ n: number }>;
+    const { unit } = createUnit(fake, { write: (record) => void records.push(record), assertions: () => count });
+    const assert = () => void count++;
+    const run = async () => {
+      const out: string[] = [];
+      for (const t of tests) {
+        try {
+          await t.fn({ n: 1 });
+          out.push('ok');
+        } catch (e) {
+          out.push((e as Error).message);
+        }
+      }
+      return out;
+    };
+    return { unit, assert, records, run };
+  };
+
+  it('fails, with the reason, when the runner counts assertions and the body made none', async () => {
+    const r = counted();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    r.unit('asserts', { when: 'x.', do: 'y.' }, () => r.assert());
+    r.unit('sets-value', { when: 'x.' }, (u) => u.value('seen.'));
+    r.unit('adds-example', { when: 'x.', value: 'y.' }, (u) => u.example('text', 'z'));
+    r.unit('declared', { when: 'x.', do: 'y.' });
+    expect(await r.run()).toEqual([
+      'unit `empty`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves',
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+    ]);
+    expect(r.records.map((x) => x.status)).toEqual(['failed', 'passed', 'passed', 'passed', 'passed']);
+  });
+
+  it('counts only what the body asserted: assertions made before it, by a hook, do not count', async () => {
+    const r = counted();
+    r.assert();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    expect((await r.run())[0]).toMatch(/^unit `empty`: the body made no assertion/);
+  });
+
+  it('a helper made without `assertions` accepts an empty body', async () => {
+    const r = runner();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    expect(await r.run()).toEqual(['ok']);
+  });
+});
+
 describe('a spec with a mistake', () => {
   const fails = async (id: string, spec: unknown) => {
     const r = runner();

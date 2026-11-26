@@ -102,10 +102,26 @@ When the body passes, the helper writes the unit as JSON into the `proof.units` 
 nearest `skillunit.yaml` above the working directory. When it throws, the helper writes a record
 with the id and the error's message, and throws again. A skipped test writes nothing.
 
+A body that returns having made no assertion fails as well, with a record that says so:
+
+```text
+unit `response-body`: the body made no assertion, so no test proves this unit. Assert in the body
+what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves
+```
+
+`skillunit/vitest` counts the assertions of Vitest's `expect`, `expect.soft` included, and of
+the `expect` of the test context when the body uses it, from the start of the body to its end:
+an assertion in a `beforeEach` does not count. A body that calls `u.value()` or `u.example()`
+passes with no assertion, since it builds the unit from what it observed, and a change shows in
+the built skill.
+
 `skillunit/vitest` binds Vitest's `it`. For another runner, `skillunit/unit` exports
 `createUnit(it, options)`, which gives `unit` and `ask`. `options.write(record, key)` replaces
 the function that writes the file, for a runner that cannot write files itself, such as one in a
-browser.
+browser. `options.assertions(ctx)` returns how many assertions the test has made so far; with
+it, a body that made none fails, as with `skillunit/vitest`. Without it nothing is counted, so a
+project that asserts with `node:assert` under Vitest, which Vitest does not count, makes its own
+helper with `createUnit(it)` and no `assertions`.
 
 ```ts
 import { it } from 'node:test';
@@ -469,8 +485,10 @@ the record, not when pytest runs the test.
   checks.
 - Other words of a sentence that its body does not check can be false. `do: 'retry only GET'`
   passes with a body that asserts nothing about methods.
-- A body that asserts nothing still leaves its unit. Proof knows the test ran and passed, and
-  not what it checked.
+- The count of assertions comes from the runner. `skillunit/vitest` counts Vitest's `expect`; a
+  helper made with `createUnit` and no `assertions`, and the pytest fixture above, count nothing,
+  so a body there that asserts nothing still leaves its unit. A body that counts as asserting can
+  still assert something other than what its sentence says.
 - A body that builds its sentence from what it observes does not go red when the behaviour
   changes. `what-is-retried` above passes whatever is retried; the signal is the difference in
   the skill, which someone has to read in the pull request.
