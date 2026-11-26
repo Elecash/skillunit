@@ -157,7 +157,7 @@ describe('skillunit/vitest', () => {
     expect(run.byId('only-one')).toEqual([expect.objectContaining({ status: 'passed', file: 'tests/b.test.ts', line: 3 })]);
   });
 
-  it('a body that asserts nothing fails, unless it builds the unit with `u.value()` or `u.example()`', () => {
+  it('a body that asserts nothing fails, unless it builds the sentence with `u.value()`; with only `u.example()` it is declared', () => {
     const r = vitest({
       'tests/a.test.ts': `import { beforeEach, describe, expect } from $API;
 import { unit } from $ENTRY;
@@ -193,6 +193,8 @@ describe('a hook', () => {
       'adds-example': 'passed',
       declared: 'passed',
     });
+    expect(r.records.find((x) => x.id === 'adds-example')).toMatchObject({ body: false, examples: [{ lang: 'text', text: 'z' }] });
+    expect(r.records.find((x) => x.id === 'sets-value')).not.toHaveProperty('body');
   });
 
   it('takes the line from Vitest when it gives it', () => {

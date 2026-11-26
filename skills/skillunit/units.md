@@ -12,6 +12,14 @@ unit('retry-delay', { when: 'a request is sent again.', values: { delay: DEFAULT
 
 ## Rules
 
+### rule: start-from-the-code
+
+When: a skill is written, or its units are chosen.
+
+Do: read the source of the code first, and list what an agent that writes code with it needs to know and can get wrong; then write a unit for each row of the list, or say why the row is left out.
+
+Even when: the project has a skill or a README already: units copied from them say what the old text said, not what the code does.
+
 ### fact: setup-a-file
 
 When: a test declares a file of the skill with `setup()`.
@@ -46,7 +54,7 @@ Value: the keys of its spec make the kind of a unit: `do` a rule, `value` a fact
 
 When: a test writes the spec of a unit.
 
-Value: a spec takes `when`, `do`, `value`, `decide`, `paths`, `unknown`, `evenWhen`, `values`, `ask` and `examples`, and no other key; every unit has `when`. `unknown` goes only with a fact, `evenWhen` goes only with a rule or a decision and `examples` goes only with a rule or a fact.
+Value: a spec takes `when`, `do`, `value`, `decide`, `paths`, `unknown`, `evenWhen`, `values` and `ask`, and no other key; every unit has `when`. `unknown` goes only with a fact and `evenWhen` goes only with a rule or a decision.
 
 ### fact: ids
 
@@ -58,13 +66,13 @@ Value: an id is kebab-case, such as `retry-delay`. Files and units share one spa
 
 When: the body of a unit makes no assertion.
 
-Value: with `skillunit/vitest`, a body that makes no assertion and calls neither `u.value` nor `u.example` fails its test, so its unit is not built. A unit that no test proves is declared with no body.
+Value: with `skillunit/vitest`, a body proves its unit when it makes an assertion or calls `u.value`. A body that only calls `u.example` builds its unit, counted as declared: no test proves it. A body that does none of the three fails its test, so its unit is not built.
 
 ### fact: no-body
 
 When: a unit is something no test can state, such as advice.
 
-Value: `unit(id, spec)` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives `value` in its spec.
+Value: `unit(id, spec)` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives `value` in its spec. A unit with no body shows no block, since only a body calls `u.example`; a body that only shows blocks is how advice shows one.
 
 ### fact: u-value
 
@@ -74,9 +82,18 @@ Value: `u.value(text)` in a body sets the value of a fact from what the body obs
 
 ### fact: u-example
 
-When: the body of a unit produces a block worth showing: an output, a config, a table.
+When: the body of a unit produces a block worth showing: a command, a config, an output.
 
-Value: `u.example(lang, text)` adds a fenced block the body produced, after the unit's regions: under `Right:` in a rule, and under the value of a fact. A decision refuses it.
+Value: `u.example(lang, text)` adds a fenced block the body produced, after the unit's regions: under `Right:` in a rule, and under the value of a fact. A decision refuses it. `u.example` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared, in the proof's summary and in every report.
+
+```ts
+unit('install-the-server', { when: 'the server is not installed.', do: 'run it with `npx`, so nothing is installed for good.' }, (u) => {
+  const config = { servers: { example: { command: 'npx', args: ['-y', pkg.name] } } };
+  expect(pkg.bin).toBeDefined(); // `npx` can run the package
+  u.example('bash', `npx -y ${pkg.name}`);
+  u.example('json', JSON.stringify(config, null, 2));
+});
+```
 
 ### fact: regions
 
@@ -107,3 +124,35 @@ Value: `exportNames(entry)` from `skillunit/typescript` gives the names a TypeSc
 When: a sentence names a key of a type of the code: an option, a method, a field.
 
 Value: `key<T>(name)` from `skillunit/vitest` or `skillunit/unit` returns `name` and accepts only a key of `T`, so a key renamed in the code fails the type-check of each test that still names it.
+
+### rule: say-no-more
+
+When: a test writes the sentence of a unit with a body.
+
+Do: write no more than the body checks: "every", "any", "always" and "never" need a body that goes through every case, or the sentence names the cases the body tried.
+
+Even when: the sentence is what the docs of the code say: a body that tries one form proves that form only.
+
+### rule: example-is-library-code
+
+When: a test marks a region for the skill.
+
+Do: put in it only the code an agent would write with the library: no assertion, no helper of the test, no fake server.
+
+Even when: the whole test would show that the example works: set up before the `#region` line, and assert after `#endregion`.
+
+### rule: type-check-the-tests
+
+When: the tests of the skill use `key()` or an object typed against a type of the code.
+
+Do: run the type-check on the test files too, where CI runs it: a key renamed in the code fails there, and only there.
+
+Even when: the tests pass: a test run that strips the types, as Vitest does, does not check them.
+
+### rule: prove-with-a-change
+
+When: a unit and its body are written, and the body passes.
+
+Do: make the smallest change to the code that makes the sentence false, run the tests and `check --dry-run`, and undo the change: something must go red. A unit where nothing goes red is not done.
+
+Even when: the body looks right: two bodies of this skill passed and proved nothing, until a change to the code showed it.

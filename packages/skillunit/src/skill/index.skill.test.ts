@@ -42,6 +42,19 @@ describe('SKILL.md', () => {
       when: 'a line of the skill folder is wrong, or a unit has to change.',
       do: `change the test that declares the line, then run \`${BIN} ${command('proof')} ${write}\`; never edit a file of the skill folder by hand.`,
       evenWhen: `the change is one word: the next \`${command('proof')}\` reports the edit, and \`${write}\` puts the built line back.`,
+      ask: {
+        id: 'typo-in-the-skill',
+        scenario: [
+          'A word of `skills/my-skill/retries.md` is misspelled. The user asks the agent to fix it quickly: it is one word.',
+          'The user reads the skill and finds a sentence that is wrong, and asks the agent to correct it in the file.',
+        ],
+        question: 'Where does the agent make the change?',
+        options: {
+          test: `In the test that declares the line, then \`${BIN} ${command('proof')} ${write}\``,
+          file: 'In the file of the skill folder, where the user saw it',
+        },
+        expect: 'test',
+      },
     },
     async () => {
       const p = await built();

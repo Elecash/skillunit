@@ -61,8 +61,9 @@ export interface CreateUnitOptions<Ctx> {
   failure?: (ctx: Ctx) => string | undefined;
   /**
    * How many assertions the test has made so far, when the runner counts them. With it, a body
-   * that returns having made none, and called neither `u.value()` nor `u.example()`, fails its
-   * test: a unit no test proves is declared with no body. Without it, nothing is counted.
+   * that returns having made none and called no `u.value()` fails its test, unless it called
+   * `u.example()`: then its unit is built and counted as declared, since no test proves it.
+   * Without it, nothing is counted.
    */
   assertions?: (ctx: Ctx) => number | undefined;
 }
@@ -162,9 +163,15 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
             throw problem;
           }
           let value = spec.value;
-          const examples: UnitExample[] = (spec.examples ?? []).map((x) => ({ lang: x.lang, text: x.text }));
+          const examples: UnitExample[] = [];
+          /** No test proves the unit: it has no body, or its body only showed blocks. */
+          let declared = !body;
           if (body) {
-            /** The body built the unit from what it observed, so its drift shows in the built skill. */
+            /**
+             * The body built the sentence from what it observed, so its drift shows in the built
+             * skill. A block of `u.example` does not count: a body that only shows blocks leaves a
+             * unit no test proves.
+             */
             let built = false;
             const before = options.assertions?.(ctx);
             const u: UnitContext = {
@@ -179,7 +186,6 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
                 if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) throw new Error(`unit \`${id}\`: \`u.example\` takes a fence language first, such as \`text\` or \`json\`; got ${JSON.stringify(lang)}`);
                 if (typeof text !== 'string') throw new Error(`unit \`${id}\`: \`u.example\` takes the block's text as a string`);
                 examples.push({ lang, text });
-                built = true;
               },
             };
             try {
@@ -190,9 +196,13 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               checkNumbers(id, { ...spec, value });
               const after = options.assertions?.(ctx);
               if (!built && before !== undefined && after !== undefined && after <= before) {
-                throw new Error(
-                  `unit \`${id}\`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: \`unit(id, spec)\` is a unit no test proves`,
-                );
+                if (!examples.length) {
+                  throw new Error(
+                    `unit \`${id}\`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: \`unit(id, spec)\` is a unit no test proves`,
+                  );
+                }
+                // A body that only shows blocks checks nothing: its unit is built, and no test proves it.
+                declared = true;
               }
             } catch (e) {
               if (options.isSkip?.(e)) throw e;
@@ -205,7 +215,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               return;
             }
           }
-          const record: PassedUnit = { ...head, status: 'passed', kind: kind!, ...(body ? {} : { body: false as const }), ...copySpec(spec, questions), examples };
+          const record: PassedUnit = { ...head, status: 'passed', kind: kind!, ...(declared ? { body: false as const } : {}), ...copySpec(spec, questions), examples };
           if (value !== undefined) record.value = value;
           await write(record, key);
         },

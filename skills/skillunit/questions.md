@@ -45,3 +45,35 @@ Value: a question is not asked, and the report says why, when the skill folder d
 When: a file of the skill is large, or many questions are about it.
 
 Value: a request larger than the model takes is not sent: the report says so, and names the largest parts. Questions with another `section` go in a request of their own, so a large file can be asked about in parts.
+
+### rule: when-to-ask
+
+When: a test decides whether a unit gets a question.
+
+Do: give a question to a rule or a decision an agent would plausibly get wrong, and to a fact whose sentence leaves something to work out: two values to combine, an exception to apply. A fact that states one value from the code gets no question.
+
+Even when: the user asks for a question on every unit: a question about one value passes without its unit, or fails on a wording, and proves nothing either way.
+
+### rule: scenario-pulls
+
+When: a test writes the scenario and the options of a question.
+
+Do: write the scenario so that it pulls toward the wrong answer: the user asks for what the rule forbids, or the shortcut is in plain sight. The wrong options are the answers an agent gives without the unit.
+
+Even when: a plain scenario reads better: common sense then passes the question, and it passes without its unit too.
+
+### rule: no-sums-no-absence
+
+When: a question would have the reader work out a number, or decide that something does not exist.
+
+Do: do not ask the reader to add numbers up, or to conclude from a list that what it leaves out does not exist. When the skill must say that something is not there, a fact says it in so many words, in `unknown`.
+
+Even when: the list is complete: shown "these options and no other", a reader still does not say that an option is missing.
+
+### rule: copy-check
+
+When: a question passes, and the test should show that its unit is what makes it pass.
+
+Do: delete the text of the unit in a copy of the skill folder, keep its heading, and ask with `test --skill <copy>`. A question that still passes goes, or its unit changes; never change a threshold to keep it.
+
+Even when: the question passes with its unit: that says nothing about whether the unit is what answers it.

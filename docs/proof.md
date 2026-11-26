@@ -512,6 +512,11 @@ the record, not when pytest runs the test.
   checks.
 - Other words of a sentence that its body does not check can be false. `do: 'retry only GET'`
   passes with a body that asserts nothing about methods.
+- The rule of assertions catches a body emptied by mistake: a body that makes no assertion and
+  calls no `u.value()` fails its test, and one that only calls `u.example()` leaves a unit
+  counted as declared, not proved. It does not catch `expect(true).toBe(true)`, which counts as
+  an assertion. What catches it is a change to the code that makes the sentence false: when
+  nothing goes red, the body proves nothing.
 - The count of assertions comes from the runner. `skillunit/vitest` counts Vitest's `expect`; a
   helper made with `createUnit` and no `assertions`, and the pytest fixture above, count nothing,
   so a body there that asserts nothing still leaves its unit. A body that counts as asserting can

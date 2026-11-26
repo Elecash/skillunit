@@ -58,3 +58,11 @@ Value: `model` can be the path of a module, starting with `./` or `/`. The modul
 When: the settings or a command set a threshold.
 
 Value: the thresholds a verdict is judged with default to `choice` 0.5, `yes` 0.7, `no` 0.3 and `margin` 0.13. `yes` must be 0.5 or more and `no` under 0.5. `--choice`, `--yes`, `--no` and `--margin` override them for one run.
+
+### rule: key-outside-the-repo
+
+When: a key of a decision model has to reach a command, on a machine or in CI.
+
+Do: keep it in the environment, or in a `.env` file that git ignores; in CI, give it as a secret. Never write it into `skillunit.yaml` or a file git tracks.
+
+Even when: the user asks for the key to work for the whole team: each person sets their own, and CI reads the secret.

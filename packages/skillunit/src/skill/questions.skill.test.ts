@@ -53,6 +53,13 @@ describe('questions.md', () => {
       when: 'a verdict is read, or a threshold is chosen.',
       value: `a question with \`${q('options')}\` passes when the expected option has the highest probability, and that probability is at least \`${threshold('choice')}\`, ${choice} by default; a tie at the top never passes. A yes or no question passes when P(yes) is at least \`${threshold('yes')}\`, ${yes}, for \`yes\`, or at most \`${threshold('no')}\`, ${no}, for \`no\`.`,
       values: { choice, yes, no },
+      // The exception to apply: a tie at the top, at the threshold.
+      ask: {
+        id: 'tie-at-the-top',
+        scenario: `A question expects \`wait\`. The model gives \`wait\` and \`now\` the same probability, ${choice} each, and \`${NONE}\` none.`,
+        question: 'Does the question pass?',
+        expect: 'no',
+      },
     },
     () => {
       const th = { ...DEFAULT_THRESHOLDS };
@@ -189,4 +196,74 @@ describe('questions.md', () => {
       expect(model.calls).toHaveLength(1);
     },
   );
+
+  // A gap: which unit an agent would get wrong is judgement; no test of SkillUnit can state it.
+  unit('when-to-ask', {
+    when: 'a test decides whether a unit gets a question.',
+    do: 'give a question to a rule or a decision an agent would plausibly get wrong, and to a fact whose sentence leaves something to work out: two values to combine, an exception to apply. A fact that states one value from the code gets no question.',
+    evenWhen: 'the user asks for a question on every unit: a question about one value passes without its unit, or fails on a wording, and proves nothing either way.',
+    ask: {
+      id: 'which-units-get-a-question',
+      scenario: 'A skill has rules, decisions, and facts that each state one value built from the code. The user asks for questions, so that the decision model covers the skill.',
+      question: 'Which units does the agent give a question?',
+      options: {
+        plausible: 'The rules and decisions an agent could get wrong, and the facts that leave something to work out',
+        every: 'Every unit, so that each one is covered by the decision model',
+        facts: 'Every fact, since its value is the part that can drift',
+      },
+      expect: 'plausible',
+    },
+  });
+
+  // A gap: how a scenario reads to a model is judgement; `phrasings` is how SkillUnit asks it.
+  unit('scenario-pulls', {
+    when: 'a test writes the scenario and the options of a question.',
+    do: "write the scenario so that it pulls toward the wrong answer: the user asks for what the rule forbids, or the shortcut is in plain sight. The wrong options are the answers an agent gives without the unit.",
+    evenWhen: 'a plain scenario reads better: common sense then passes the question, and it passes without its unit too.',
+    ask: {
+      id: 'a-scenario-that-pulls',
+      scenario: 'A rule says to leave `retry` off a POST request. The agent drafts its question with the scenario "An order is created with a POST request."',
+      question: 'Is the scenario ready?',
+      options: {
+        pull: 'No: it needs what pulls toward retrying, such as a network that drops now and then, or a user who asks for retries',
+        ready: 'Yes: it names the method the rule is about, and a scenario should not hint at the answer',
+      },
+      expect: 'pull',
+    },
+  });
+
+  // A gap: what a reader concludes is judgement; `unknown` is the key a fact has for it.
+  unit('no-sums-no-absence', {
+    when: 'a question would have the reader work out a number, or decide that something does not exist.',
+    do: `do not ask the reader to add numbers up, or to conclude from a list that what it leaves out does not exist. When the skill must say that something is not there, a fact says it in so many words, in \`${key<UnitSpec>('unknown')}\`.`,
+    evenWhen: 'the list is complete: shown "these options and no other", a reader still does not say that an option is missing.',
+    ask: {
+      id: 'say-it-is-not-there',
+      scenario: 'A fact lists the options of a request, and none of them is a connect timeout. The agent wants the skill to keep agents from inventing one.',
+      question: 'What does the agent change?',
+      options: {
+        unknown: `It gives the fact an \`${key<UnitSpec>('unknown')}\` that says there is no connect timeout`,
+        list: 'Nothing: the list shows every option, so a question can ask whether a connect timeout is among them',
+      },
+      expect: 'unknown',
+    },
+  });
+
+  // A gap: the copy is the user's to make; `skill-copy` is how SkillUnit asks about it.
+  unit('copy-check', {
+    when: 'a question passes, and the test should show that its unit is what makes it pass.',
+    do: `delete the text of the unit in a copy of the skill folder, keep its heading, and ask with \`${command('test')} ${option('test', '--skill')} <copy>\`. A question that still passes goes, or its unit changes; never change a threshold to keep it.`,
+    evenWhen: 'the question passes with its unit: that says nothing about whether the unit is what answers it.',
+    ask: {
+      id: 'is-the-question-proven',
+      scenario: 'The agent added a question to a unit, and the question passes on the skill. The user asks whether the question is proven, and wants to move on.',
+      question: 'What does the agent do before it says the question is proven?',
+      options: {
+        copy: 'Ask it again on a copy of the skill in which the text of its unit is deleted, and check that it fails there',
+        done: 'Nothing more: it passes on the skill, so it is proven',
+        twice: 'Ask it again on the same skill, to see that it passes twice',
+      },
+      expect: 'copy',
+    },
+  });
 });

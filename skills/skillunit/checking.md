@@ -69,3 +69,11 @@ Value: `--reporter` takes `table`, `json`, `junit` and `github`; `table` is the 
 When: the proof reports a line of the skill.
 
 Value: each finding about a line of the skill names the test that declares it: in `origin`, in the JSON report, and after the finding in the table.
+
+### rule: when-a-test-fails
+
+When: the test of a unit fails after a change to the code.
+
+Do: find out which moved. When the code changed on purpose, change the sentence and the body to say what the code does now, then `proof --write`; when it did not, fix the code. Never change the body only so that it passes.
+
+Even when: the fix in the body is one line: a body that passes and a sentence that is false is the drift the skill is built to catch.

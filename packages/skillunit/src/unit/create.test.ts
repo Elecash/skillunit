@@ -218,6 +218,7 @@ describe('a body that asserts nothing', () => {
     r.unit('asserts', { when: 'x.', do: 'y.' }, () => r.assert());
     r.unit('sets-value', { when: 'x.' }, (u) => u.value('seen.'));
     r.unit('adds-example', { when: 'x.', value: 'y.' }, (u) => u.example('text', 'z'));
+    r.unit('checks-its-example', { when: 'x.', value: 'y.' }, (u) => (r.assert(), u.example('text', 'z')));
     r.unit('declared', { when: 'x.', do: 'y.' });
     expect(await r.run()).toEqual([
       'unit `empty`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves',
@@ -225,8 +226,11 @@ describe('a body that asserts nothing', () => {
       'ok',
       'ok',
       'ok',
+      'ok',
     ]);
-    expect(r.records.map((x) => x.status)).toEqual(['failed', 'passed', 'passed', 'passed', 'passed']);
+    expect(r.records.map((x) => x.status)).toEqual(['failed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+    // A body that only shows blocks proves nothing: its unit is declared, with its blocks.
+    expect(r.records.map((x) => (x as { body?: false }).body)).toEqual([undefined, undefined, undefined, false, undefined, false]);
   });
 
   it('counts only what the body asserted: assertions made before it, by a hook, do not count', async () => {
@@ -270,9 +274,9 @@ describe('a spec with a mistake', () => {
     const message = async (spec: unknown) => (await fails('a-unit', spec)).message;
     expect(await message(null)).toBe('unit `a-unit`: the spec must be an object, such as `{ when: …, do: … }`');
     expect(await message({ do: 'y.' })).toBe('unit `a-unit`: `when` is missing: every unit says when it applies');
-    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask, examples)');
+    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)');
     // `check` is not a key of a unit.
-    expect(await message({ when: 'x.', do: 'y.', check: 'forbid `/x/` in ts' } as never)).toBe('unit `a-unit`: unknown key `check` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask, examples)');
+    expect(await message({ when: 'x.', do: 'y.', check: 'forbid `/x/` in ts' } as never)).toBe('unit `a-unit`: unknown key `check` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)');
     expect(await message({ when: '', do: 'y.' })).toBe('unit `a-unit`: `when` must be text that is not empty');
     expect(await message({ when: 'x.', do: 'one.\n\ntwo.' })).toBe('unit `a-unit`: `do` has a blank line; a label is one paragraph');
     expect(await message({ when: 'x.', do: 'y.', paths: [] })).toMatch(/`do` and `decide` are two kinds/);
@@ -459,29 +463,10 @@ describe('a unit with no body', () => {
     expect(r.records[0]!.record).toMatchObject({ body: false, ask: [{ id: 'never-disable-timeout', ...ask }] });
   });
 
-  it('shows examples in any language from `examples`, before those of `u.example`', async () => {
+  it('takes no `examples` in a spec: a block comes from the body, with `u.example`', async () => {
     const r = runner();
-    r.unit('init-first', { when: 'x.', do: 'y.', examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }] });
-    r.unit('outcomes', { when: 'x.', value: 'y.', examples: [{ lang: 'yaml', text: 'a: 1\n' }] }, (u) => u.example('text', 'from the body'));
-    expect(await r.run()).toEqual(['ok', 'ok']);
-    expect(r.records.map((x) => (x.record as { examples: unknown[] }).examples)).toEqual([
-      [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }],
-      [{ lang: 'yaml', text: 'a: 1\n' }, { lang: 'text', text: 'from the body' }],
-    ]);
-  });
-
-  it('`examples` with a mistake, or on a decision, fails', async () => {
-    const r = runner();
-    r.unit('a-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'two words', text: 'z' }] });
-    r.unit('b-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'sh' }] } as never);
-    r.unit('c-rule', { when: 'x.', do: 'y.', examples: { lang: 'sh', text: 'z' } } as never);
-    r.unit('a-decision', { when: 'x.', paths: [{ path: 'one', when: 'y.' }], examples: [{ lang: 'sh', text: 'z' }] });
-    expect(await r.run()).toEqual([
-      'unit `a-rule`: each example has a fence language in `lang`, such as `sh` or `yaml`; got "two words"',
-      'unit `b-rule`: the `sh` example needs its text in `text`',
-      "unit `c-rule`: `examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`",
-      'unit `a-decision`: a decision shows its examples in its paths, from the regions `skill:a-decision.<path>`; `examples` is for a rule or a fact',
-    ]);
+    r.unit('init-first', { when: 'x.', do: 'y.', examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }] } as never);
+    expect(await r.run()).toEqual(['unit `init-first`: unknown key `examples` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)']);
   });
 
   it('a fact with no body needs `value`, and a third argument that is not a function fails', async () => {

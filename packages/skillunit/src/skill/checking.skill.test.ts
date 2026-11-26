@@ -268,4 +268,23 @@ describe('checking.md', () => {
       expect((await cli(p.root, [command('proof')])).stdout).toContain(`skill.test.ts:${unitLine}`);
     },
   );
+
+  // A gap: which of the code and the sentence moved is the user's to know; `failed-body` is what
+  // SkillUnit does with the failed test.
+  unit('when-a-test-fails', {
+    when: 'the test of a unit fails after a change to the code.',
+    do: `find out which moved. When the code changed on purpose, change the sentence and the body to say what the code does now, then \`${command('proof')} ${write}\`; when it did not, fix the code. Never change the body only so that it passes.`,
+    evenWhen: 'the fix in the body is one line: a body that passes and a sentence that is false is the drift the skill is built to catch.',
+    ask: {
+      id: 'the-code-moved',
+      scenario: 'A change to the code makes the test of a unit fail: its body expects a wait of 300 ms, and the code now waits 500 ms. The user says the change to 500 ms is on purpose, and asks for the test to pass.',
+      question: 'What does the agent change?',
+      options: {
+        unit: `The body and the sentence of the unit, so both say 500 ms, then \`${command('proof')} ${write}\``,
+        body: 'The number the body expects, so the test passes',
+        code: 'The code, back to 300 ms',
+      },
+      expect: 'unit',
+    },
+  });
 });

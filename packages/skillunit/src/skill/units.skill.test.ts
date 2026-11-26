@@ -9,7 +9,7 @@ import { exportNames, type ExportNames } from '../typescript.js';
 import { checkNumbers, checkQuestions, checkSpec, numbersIn, SETUP_KEYS, SKILL_INDEX, SPEC_KEYS, UNIT_CONTRACT, type UnitKind, type UnitRecord, type UnitSpec } from '../unit/contract.js';
 import { createUnit } from '../unit/create.js';
 import { vitestOptions } from '../unit/vitest-options.js';
-import { and, cleanUp, code, entry, or, PACKAGE, project, runner, scratch } from './helpers.js';
+import { and, cleanUp, cli, code, command, entry, option, or, PACKAGE, project, report, runner, scratch } from './helpers.js';
 import { DEFAULT_RETRY_DELAY, retryWaits } from './retry.js';
 
 afterEach(cleanUp);
@@ -31,7 +31,51 @@ const TYPESCRIPT = entry('./typescript');
 const vitestNames = exportNames(new URL('../vitest.ts', import.meta.url)).values;
 const unitNames = exportNames(new URL('../unit/index.ts', import.meta.url)).values;
 
+/**
+ * `unit()` as `skillunit/vitest` makes it, assertions counted, with a writer of its own so the
+ * units it declares stay out of this skill. `run(ctx)` runs them in the test that calls it.
+ */
+function counted() {
+  const tests: ((ctx: never) => unknown)[] = [];
+  const records: UnitRecord[] = [];
+  const made = createUnit((_name: string, fn: (ctx: never) => unknown) => void tests.push(fn), { ...vitestOptions, write: (r: UnitRecord) => void records.push(r) } as never);
+  const run = async (ctx: unknown) => {
+    const out: string[] = [];
+    for (const t of tests.splice(0)) {
+      try {
+        await t(ctx as never);
+        out.push('ok');
+      } catch (e) {
+        out.push((e as Error).message);
+      }
+    }
+    return out;
+  };
+  return { unit: made.unit, setup: made.setup, records, run };
+}
+
 describe('units.md', () => {
+  // A gap: how a project chose its units is not in SkillUnit's code, so no test of it can state
+  // this. `setup-a-file` and the facts after it are what a test can state about a unit.
+  unit('start-from-the-code', {
+    when: 'a skill is written, or its units are chosen.',
+    do: 'read the source of the code first, and list what an agent that writes code with it needs to know and can get wrong; then write a unit for each row of the list, or say why the row is left out.',
+    evenWhen: 'the project has a skill or a README already: units copied from them say what the old text said, not what the code does.',
+    ask: {
+      id: 'units-from-the-code',
+      scenario: [
+        'The user asks the agent to add SkillUnit to a library that has a hand-written skill already, and to be quick about it.',
+        'A library has a README with a section per feature. The user asks for its skill to be built with SkillUnit, starting today.',
+      ],
+      question: 'Where does the agent take the units from?',
+      options: {
+        code: 'The source of the library: a list of what an agent needs to know and can get wrong, then a unit for each row',
+        old: 'The text that is there already: one unit for each section of the skill or the README',
+      },
+      expect: 'code',
+    },
+  });
+
   unit('setup-a-file', { when: `a test declares a file of the skill with \`${setup.name}()\`.` }, async (u) => {
     const r = runner();
     {
@@ -147,7 +191,6 @@ describe('units.md', () => {
       evenWhen: 'e.',
       values: { n: 1 },
       ask: { scenario: 's.', question: 'q?', expect: 'yes' },
-      examples: [{ lang: 'sh', text: 'ls' }],
     };
     const bases: [UnitKind, object][] = [
       ['rule', { when: sample.when, do: sample.do }],
@@ -203,25 +246,20 @@ describe('units.md', () => {
     'body-asserts',
     {
       when: `the body of a unit makes no assertion.`,
-      value: `with \`${VITEST}\`, a body that makes no assertion and calls neither \`u.${ctx('value')}\` nor \`u.${ctx('example')}\` fails its test, so its unit is not built. A unit that no test proves is declared with no body.`,
+      value: `with \`${VITEST}\`, a body proves its unit when it makes an assertion or calls \`u.${ctx('value')}\`. A body that only calls \`u.${ctx('example')}\` builds its unit, counted as declared: no test proves it. A body that does none of the three fails its test, so its unit is not built.`,
     },
     async (_u, outer) => {
-      const tests: ((ctx: never) => unknown)[] = [];
-      const made = createUnit((_name: string, fn: (ctx: never) => unknown) => void tests.push(fn), { ...vitestOptions, write: () => {} } as never);
+      const made = counted();
       made.unit('asserts-nothing', { when: 'x.', do: 'y.' }, () => {});
+      made.unit('only-an-example', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'a command typed here'));
       made.unit('asserts', { when: 'x.', do: 'y.' }, () => expect(1).toBe(1));
       made.unit('builds-its-value', { when: 'x.' }, (u) => u.value('y.'));
-      const results: string[] = [];
-      for (const t of tests) {
-        try {
-          await t(outer as never);
-          results.push('ok');
-        } catch (e) {
-          results.push((e as Error).message);
-        }
-      }
+      made.unit('asserts-and-shows', { when: 'x.', do: 'y.' }, (u) => (expect(1).toBe(1), u.example('bash', 'ls')));
+      const results = await made.run(outer);
       expect(results[0]).toContain('the body made no assertion');
-      expect(results.slice(1)).toEqual(['ok', 'ok']);
+      expect(results.slice(1)).toEqual(['ok', 'ok', 'ok', 'ok']);
+      const declared = (id: string) => (made.records.find((r) => r.id === id) as { body?: false }).body === false;
+      expect(['only-an-example', 'asserts', 'builds-its-value', 'asserts-and-shows'].map(declared)).toEqual([true, false, false, false]);
     },
   );
 
@@ -229,7 +267,7 @@ describe('units.md', () => {
     'no-body',
     {
       when: 'a unit is something no test can state, such as advice.',
-      value: `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives \`${spec('value')}\` in its spec.`,
+      value: `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives \`${spec('value')}\` in its spec. A unit with no body shows no block, since only a body calls \`u.${ctx('example')}\`; a body that only shows blocks is how advice shows one.`,
     },
     async () => {
       const p = await project((r) => {
@@ -243,6 +281,11 @@ describe('units.md', () => {
       const r = runner();
       r.unit('no-value', { when: 'x.' });
       expect((await r.run())[0]).toContain('a unit with no body gives `value` in its spec');
+      expect(() => checkSpec('a', { when: 'x.', do: 'y.', examples: [{ lang: 'bash', text: 'ls' }] })).toThrow('unknown key `examples`');
+      const advice = counted();
+      advice.unit('advice-with-a-block', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'ls'));
+      expect(await advice.run({ expect, task: {} })).toEqual(['ok']);
+      expect(advice.records[0]).toMatchObject({ body: false, examples: [{ lang: 'bash', text: 'ls' }] });
     },
   );
 
@@ -261,7 +304,35 @@ describe('units.md', () => {
     },
   );
 
-  unit('u-example', { when: 'the body of a unit produces a block worth showing: an output, a config, a table.' }, async (u) => {
+  unit('u-example', { when: 'the body of a unit produces a block worth showing: a command, a config, an output.' }, async (u, outer) => {
+    const made = counted();
+    {
+      const { unit } = made;
+      const pkg = PACKAGE;
+      // #region skill:u-example
+      unit('install-the-server', { when: 'the server is not installed.', do: 'run it with `npx`, so nothing is installed for good.' }, (u) => {
+        const config = { servers: { example: { command: 'npx', args: ['-y', pkg.name] } } };
+        expect(pkg.bin).toBeDefined(); // `npx` can run the package
+        u.example('bash', `npx -y ${pkg.name}`);
+        u.example('json', JSON.stringify(config, null, 2));
+      });
+      // #endregion
+    }
+    made.setup('demo', INDEX);
+    made.unit('show-the-command', { when: 'x.', do: 'y.' }, (u) => u.example('bash', `npx -y ${PACKAGE.name}`));
+    expect(await made.run(outer)).toEqual(['ok', 'ok', 'ok']);
+    expect(made.records[0]).toMatchObject({ examples: [{ lang: 'bash', text: `npx -y ${PACKAGE.name}` }, { lang: 'json' }] });
+    // The setup comes first in the file, so both units belong to it.
+    const shown = await project(() => {});
+    [made.records[1]!, { ...made.records[0]!, setup: 'demo', order: 0 }, made.records[2]!].forEach((r, i) => shown.write(`tmp/skill-units/${i}.json`, JSON.stringify({ ...r, file: 'skill.test.ts' })));
+    const built = shown.proof({ write: true });
+    expect(built.summary).toMatchObject({ proved: 1, declared: 1 });
+    const units = report(await cli(shown.root, [command('proof'), '--json'])).units!;
+    expect(units.map((x) => [x.id, x.from])).toEqual([['install-the-server', 'test'], ['show-the-command', 'declared']]);
+    const printed = async (reporter: string) => (await cli(shown.root, [command('proof'), option('proof', '--reporter'), reporter])).stdout;
+    expect(await printed('table')).toMatch(/declared, no test/);
+    expect(await printed('junit')).toMatch(/name="from" value="declared"/);
+    expect(await printed('github')).toContain('1 declared without one');
     const p = await project(
       (r) => {
         r.setup('demo', INDEX);
@@ -281,7 +352,9 @@ describe('units.md', () => {
     expect(rule.indexOf(label)).toBeLessThan(rule.indexOf('region();'));
     const fact = text.slice(text.indexOf('### fact: a-fact'));
     expect(fact).toMatch(/Value: v\.\n\n```text\nfrom the body\n```/);
-    u.value(`\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, after the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it.`);
+    u.value(
+      `\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, after the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it. \`u.${ctx('example')}\` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared, in the proof's summary and in every report.`,
+    );
   });
 
   unit(
@@ -380,5 +453,74 @@ describe('units.md', () => {
     expect(vitestNames).toContain(key.name);
     expect(unitNames).toContain(key.name);
     u.value(`\`${key.name}<T>(name)\` from \`${VITEST}\` or \`${UNIT}\` returns \`name\` and accepts only a key of \`T\`, so a key renamed in the code fails the type-check of each test that still names it.`);
+  });
+
+  // A gap: only a reader can compare a sentence with what its body checks.
+  unit('say-no-more', {
+    when: 'a test writes the sentence of a unit with a body.',
+    do: 'write no more than the body checks: "every", "any", "always" and "never" need a body that goes through every case, or the sentence names the cases the body tried.',
+    evenWhen: 'the sentence is what the docs of the code say: a body that tries one form proves that form only.',
+    ask: {
+      id: 'every-case-or-name-them',
+      scenario: 'A body checks that a base URL that ends in `/` and a path that does not start with one are joined. The user wants the unit to say what the docs say: "`baseUrl` is the prefix of every path".',
+      question: 'What does the agent do?',
+      options: {
+        cases: 'Try every form of the slashes in the body, or have the sentence name the one form it tried',
+        docs: 'Keep the sentence of the docs: the body passes, and the docs are the reference for the code',
+      },
+      expect: 'cases',
+    },
+  });
+
+  // A gap: what belongs in a region is judgement; `regions` says how a region is copied.
+  unit('example-is-library-code', {
+    when: 'a test marks a region for the skill.',
+    do: 'put in it only the code an agent would write with the library: no assertion, no helper of the test, no fake server.',
+    evenWhen: 'the whole test would show that the example works: set up before the `#region` line, and assert after `#endregion`.',
+    ask: {
+      id: 'region-around-the-call',
+      scenario: 'A test starts a fake server, calls `client.get(url)`, and asserts on what it returns. The user wants the skill to show the whole test, so readers see that the example works.',
+      question: 'What does the agent put between `#region` and `#endregion`?',
+      options: {
+        call: 'The call to the library only; the fake server and the assertion stay outside the region',
+        whole: 'The whole test: the fake server, the call and the assertion',
+      },
+      expect: 'call',
+    },
+  });
+
+  // A gap: the type-check is the project's to run; `key` says what fails in it.
+  unit('type-check-the-tests', {
+    when: `the tests of the skill use \`${key.name}()\` or an object typed against a type of the code.`,
+    do: 'run the type-check on the test files too, where CI runs it: a key renamed in the code fails there, and only there.',
+    evenWhen: 'the tests pass: a test run that strips the types, as Vitest does, does not check them.',
+    ask: {
+      id: 'type-check-test-files',
+      scenario: `The project's type-check leaves out the \`*.test.ts\` files, to be fast, and the tests of the skill use \`${key.name}()\`. The user asks to leave the type-check as it is.`,
+      question: 'What does the agent do with the type-check?',
+      options: {
+        add: 'Add the test files of the skill to the type-check that CI runs',
+        leave: 'Leave it as it is: CI runs the tests, and a test fails when a key it names is wrong',
+      },
+      expect: 'add',
+    },
+  });
+
+  // A gap: the change to make runs on the user's code, not on SkillUnit's.
+  unit('prove-with-a-change', {
+    when: 'a unit and its body are written, and the body passes.',
+    do: `make the smallest change to the code that makes the sentence false, run the tests and \`${command('check')} ${option('check', '--dry-run')}\`, and undo the change: something must go red. A unit where nothing goes red is not done.`,
+    evenWhen: 'the body looks right: two bodies of this skill passed and proved nothing, until a change to the code showed it.',
+    ask: {
+      id: 'break-the-code',
+      scenario: 'The agent wrote a unit, and its body passes. The user asks to move on to the next unit.',
+      question: 'What does the agent do first?',
+      options: {
+        change: 'Change the code so the sentence is false, check that something goes red, and undo the change',
+        next: 'Move on: the body passes, so the code does what the sentence says',
+        reread: 'Read the body again next to the sentence, and move on when they match',
+      },
+      expect: 'change',
+    },
   });
 });

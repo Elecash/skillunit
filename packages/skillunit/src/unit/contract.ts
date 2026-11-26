@@ -35,7 +35,8 @@
  * `ask` holds the questions for the decision model, in the form `unit()` takes them: one question
  * or a list, with or without `id`. SkillUnit checks them again when it reads the record.
  *
- * A unit declared with no body, which no test proves, has `"body": false`.
+ * A unit no test proves has `"body": false`: it was declared with no body, or its body made no
+ * assertion and only showed blocks with `u.example`, which are then in `examples`.
  *
  * A question about the prose of a file, declared with `ask()`, leaves `"kind": "question"`, its
  * own `id`, the built file it is about in `skillFile`, and itself in `ask`:
@@ -93,11 +94,6 @@ export interface UnitSpec {
   values?: Record<string, UnitScalar>;
   /** Questions for the decision model about this unit: one, or a list. */
   ask?: UnitQuestion | UnitQuestion[];
-  /**
-   * A rule or a fact: blocks to show, such as a command or a config. They come before the blocks
-   * of `u.example`, and are how a unit with no body shows an example in a language its file is not.
-   */
-  examples?: UnitExample[];
 }
 
 /**
@@ -161,7 +157,7 @@ interface Placed {
 export interface PassedUnit extends RecordBase, Placed {
   status: 'passed';
   kind: UnitKind;
-  /** `false` when the unit was declared with no body: no test proves it. */
+  /** `false` when no test proves the unit: declared with no body, or a body that only showed blocks. */
   body?: false;
   when: string;
   do?: string;
@@ -172,7 +168,7 @@ export interface PassedUnit extends RecordBase, Placed {
   evenWhen?: string;
   values?: Record<string, UnitScalar>;
   ask?: AskedQuestion[];
-  /** The blocks of `u.example`, in the order of the calls. */
+  /** The blocks of `u.example`, in the order of the calls: a command, a config, an output. A unit with no body has none. */
   examples: UnitExample[];
 }
 
@@ -226,8 +222,8 @@ export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 /** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
 export const NONE = 'none';
 
-export const SPEC_KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask', 'examples'] as const;
-/** A fence language: what `u.example` and `examples` take. */
+export const SPEC_KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask'] as const;
+/** A fence language: what `u.example` takes, and the `lang` of each block in `examples` of a record. */
 export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
 export const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
 /** The file a question about prose reads when it names none. */
@@ -292,16 +288,6 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
         fail(`the value \`${name}\` must be text, a finite number or a boolean; got ${JSON.stringify(v) ?? String(v)}`);
       }
       if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since a sentence holds it`);
-    }
-  }
-  if (s.examples !== undefined) {
-    if (kind === 'decision') fail(`a decision shows its examples in its paths, from the regions \`skill:${id as string}.<path>\`; \`examples\` is for a rule or a fact`);
-    if (!Array.isArray(s.examples)) fail("`examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`");
-    for (const x of s.examples as unknown[]) {
-      const { lang, text, ...rest } = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
-      if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) fail(`each example has a fence language in \`lang\`, such as \`sh\` or \`yaml\`; got ${JSON.stringify(lang)}`);
-      if (typeof text !== 'string') fail(`the \`${lang as string}\` example needs its text in \`text\``);
-      if (Object.keys(rest).length) fail(`an example has an unknown key \`${Object.keys(rest)[0]}\` (allowed: lang, text)`);
     }
   }
   if (s.ask !== undefined) checkQuestions(id as string, s.ask);

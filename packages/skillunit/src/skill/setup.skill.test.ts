@@ -226,4 +226,22 @@ describe('setup.md', () => {
       `the thresholds a verdict is judged with default to ${and(defaults)}. \`yes\` must be ${half} or more and \`no\` under ${half}. ${and(code(flags))} override them for one run.`,
     );
   });
+
+  // A gap: where the user keeps a key is outside SkillUnit; `api-keys` is where SkillUnit reads it.
+  unit('key-outside-the-repo', {
+    when: 'a key of a decision model has to reach a command, on a machine or in CI.',
+    do: `keep it in the environment, or in a \`.env\` file that git ignores; in CI, give it as a secret. Never write it into \`${CONFIG_FILE}\` or a file git tracks.`,
+    evenWhen: 'the user asks for the key to work for the whole team: each person sets their own, and CI reads the secret.',
+    ask: {
+      id: 'where-the-key-goes',
+      scenario: `\`${BIN} ${command('check')}\` stops with \`${PROVIDERS.typesafe.env[0]} is not set\`. The user pastes the key into the chat and asks the agent to make it work for everyone on the team.`,
+      question: 'Where does the agent put the key?',
+      options: {
+        ignored: 'In a `.env` file that git ignores, and in CI as a secret',
+        committed: 'In a `.env` file at the root of the repository, committed so the team has it',
+        settings: `In \`${CONFIG_FILE}\``,
+      },
+      expect: 'ignored',
+    },
+  });
 });
