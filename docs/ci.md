@@ -56,19 +56,20 @@ or the question does.
 ## What a run costs
 
 The questions about one file of the skill go in one request to the decision model, whatever
-their number, and the request carries the text under test once. Measured on 2026-11-25:
+their number, and the request carries the text under test once. Measured on 2026-11-26, the same
+on each of three runs:
 
 | Skill | Requests | Questions | `typesafe`: input / output tokens | `openai`: input / output tokens |
 | --- | --- | --- | --- | --- |
-| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,600 / 830 | about 7,900 / 0 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 58 | about 30,200 / 2,900 | about 30,400 / 0 |
+| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,700 / 830 | about 8,100 / 0 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 59 | about 31,300 / 2,900 | about 31,600 / 0 |
 
 Output tokens are free on both. At the prices of November 2026:
 
 | Provider | Price per million input tokens | A run of tinyfetch | A run of SkillUnit's own skill |
 | --- | --- | --- | --- |
 | `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0004 | about $0.0013 |
-| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0008 | about $0.0030 |
+| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0008 | about $0.0032 |
 
 OpenAI caches the start of a request that holds 1,024 tokens or more of skill text. A request
 sent again within 30 minutes then pays 10% for that part, and the first request pays 25% more
