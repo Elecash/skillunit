@@ -1,9 +1,23 @@
 // What the tests of the skill share: a `fetch` that answers what a test tells it to, and the
 // helpers that build sentences. Not a test: it declares nothing.
 import { tf } from 'tinyfetch';
+import type * as Tinyfetch from 'tinyfetch';
+import type { Client } from 'tinyfetch';
+import { key } from 'skillunit/vitest';
 import { vi } from 'vitest';
+import type { Method } from '../request.js';
 
-export type Reply = { status?: number; body?: unknown; delay?: number; type?: string } | Error;
+/** An export of tinyfetch, such as `create`. */
+export const exported = key<typeof Tinyfetch>;
+/** A method of a client, such as `post`. */
+export const method = key<Client>;
+/** A method of the default client, such as `tf.post`. */
+export const call = (name: Extract<keyof Client, string>) => `${exported('tf')}.${name}`;
+/** An HTTP method tinyfetch sends, such as `GET`. */
+export const verb = (name: Method) => name;
+
+/** One answer of the fake server; `raw` is a body sent as it is, which `body` would encode. */
+export type Reply = { status?: number; body?: unknown; raw?: string; delay?: number; type?: string } | Error;
 export const calls: { url: string; init: RequestInit }[] = [];
 
 /** Replaces `fetch` with one that answers each call with the next reply. */
@@ -13,6 +27,8 @@ export function serve(...replies: Reply[]) {
     calls.push({ url: url.toString(), init });
     const reply = replies.shift() ?? { status: 200 };
     if (reply instanceof Error) throw reply;
+    // As `fetch` does, a signal aborted before the call rejects it at once.
+    if (init.signal?.aborted) throw init.signal.reason;
     if (reply.delay) {
       await new Promise((resolve, reject) => {
         const timer = setTimeout(resolve, reply.delay);
@@ -23,8 +39,9 @@ export function serve(...replies: Reply[]) {
       });
     }
     const type = reply.type ?? 'application/json';
-    const text = reply.body === undefined ? '' : type.includes('json') ? JSON.stringify(reply.body) : String(reply.body);
-    return new Response(text, { status: reply.status ?? 200, headers: { 'content-type': type } });
+    const text = reply.raw ?? (reply.body === undefined ? '' : type.includes('json') ? JSON.stringify(reply.body) : String(reply.body));
+    // An empty body is no body, which a status such as 204 needs.
+    return new Response(text || null, { status: reply.status ?? 200, headers: { 'content-type': type } });
   });
 }
 
@@ -49,3 +66,5 @@ export const everyMethod = (url: string) => Object.values(methods(url));
 
 /** `a`, `a and b`, `a, b and c`. */
 export const and = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
+/** `a`, `a or b`, `a, b or c`. */
+export const or = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);

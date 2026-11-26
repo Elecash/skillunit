@@ -16,7 +16,7 @@ export interface RequestOptions {
 
 /** Options of a client: shared by every request it makes. */
 export interface ClientOptions {
-  /** Prefix of every path, such as `https://api.example.com/v1`. */
+  /** Prefix of every path that is not a whole URL, such as `https://api.example.com/v1`. */
   baseUrl?: string;
   headers?: Record<string, string>;
   /** The timeout of every request the client makes; a request's own `timeout` wins. */

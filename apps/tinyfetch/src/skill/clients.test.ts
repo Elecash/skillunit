@@ -3,102 +3,84 @@
 // #region skill:clients
 import { create } from 'tinyfetch';
 // #endregion
-import { tf } from 'tinyfetch';
-import { setup, unit } from 'skillunit/vitest';
-import { afterEach, describe, expect, vi } from 'vitest';
-import { DEFAULT_TIMEOUT } from '../timeout.js';
-import { calls, reset, serve } from './helpers.js';
+import { tf, type ClientOptions } from 'tinyfetch';
+import { key, setup, unit } from 'skillunit/vitest';
+import { afterEach, describe, expect } from 'vitest';
+import { DEFAULT_BASE, JSON_TYPE } from '../request.js';
+import { and, calls, exported, method, reset, serve } from './helpers.js';
 
 afterEach(reset);
 
 setup('clients', {
   file: 'features/clients.md',
   title: 'tinyfetch — clients',
-  when: 'Make many requests to one API',
-  description: 'Make many requests to one API through a client.',
+  when: 'Make many requests to one API with a client',
+  description: `What a client made with \`${exported('create')}\` shares between its requests.`,
 });
 
-// Examples of the units with no body: type-checked with the tests, and never run.
-export async function examples() {
-  // #region skill:one-client-per-api.shared
-  const api = create({ baseUrl: 'https://api.example.com/v1/' });
-  await api.get('users');
-  await api.get('orders');
-  // #endregion
-}
+const code = (items: string[]) => items.map((i) => `\`${i}\``);
+const clientOpt = key<ClientOptions>;
 
 describe('features/clients.md', () => {
+  unit('client-options', { when: `the code makes a client with \`${exported('create')}\`.` }, async (u) => {
+    // Typed against the type: a key added to `ClientOptions` fails the type-check until it is here.
+    const every: Required<ClientOptions> = { baseUrl: 'https://api.example.com', headers: { 'x-team': 'a' }, timeout: 1_000 };
+    serve({ body: {} });
+    await create(every).get('/users');
+    expect(calls[0]!.url).toBe('https://api.example.com/users');
+    expect(tf.create).toBe(create);
+    // No headers of its own, and no base URL: what `create()` with nothing gives.
+    serve({ body: {} }, { body: {} });
+    await tf.get('/users');
+    await create().get('/users');
+    expect(calls.map((c) => [c.url, c.init.headers])).toEqual([
+      [`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }],
+      [`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }],
+    ]);
+    const [made, byDefault] = [exported('create'), exported('tf')];
+    u.value(`\`${made}(options)\` makes a client whose requests share the options ${and(code(Object.keys(every)))}; \`${byDefault}\` is a client made with none, and \`${byDefault}.${made}\` is \`${made}\`.`);
+  });
+
   unit(
-    'client-options',
+    'base-url',
     {
-      when: 'the code creates a client with `create`.',
-      value: "`baseUrl` is the prefix of every path, `headers` are sent with every request, and `timeout` is the timeout of every request that sets none; a request's own `timeout` wins.",
+      when: `the code sets \`${clientOpt('baseUrl')}\`, or calls a client with a path.`,
+      // A path to join: a base with a path of its own, and a path that starts with `/`.
+      ask: {
+        id: 'base-with-a-path',
+        scenario: `The code makes a client with \`${exported('create')}({ ${clientOpt('baseUrl')}: "https://api.example.com/v1" })\` and calls \`${method('get')}("/users")\` on it.`,
+        question: 'Which URL does the request go to?',
+        options: {
+          joined: '`https://api.example.com/v1/users`',
+          root: '`https://api.example.com/users`',
+        },
+        expect: 'joined',
+      },
     },
-    async () => {
-      serve({ body: [{ id: 1 }] });
-      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-      // #region skill:client-options
-      const api = create({
-        baseUrl: 'https://api.example.com/v1/',
-        headers: { authorization: 'Bearer token' },
-      });
-      const orders = await api.get<{ id: number }[]>('orders');
-      console.log(orders.length);
+    async (u) => {
+      serve({ body: [] });
+      // #region skill:base-url
+      const api = create({ baseUrl: 'https://api.example.com/v1' });
+      await api.get('/users');
       // #endregion
-      expect(log).toHaveBeenCalledWith(1);
-      expect(calls[0]).toMatchObject({ url: 'https://api.example.com/v1/orders', init: { headers: { authorization: 'Bearer token' } } });
-
-      serve({ body: [{ id: 1 }] }, { body: [] });
-      const shared = tf.create({ baseUrl: 'https://api.example.com/v1/', headers: { authorization: 'Bearer t' } });
-      expect(await shared.get('users', { query: { page: 2, q: 'a b' } })).toEqual([{ id: 1 }]);
-      await shared.post('orders', {});
-      expect(calls.map((c) => c.url)).toEqual(['https://api.example.com/v1/users?page=2&q=a+b', 'https://api.example.com/v1/orders']);
-      for (const c of calls) expect(c.init.headers).toMatchObject({ authorization: 'Bearer t', accept: 'application/json' });
-
-      vi.useFakeTimers();
-      const slow = tf.create({ timeout: DEFAULT_TIMEOUT / 2 });
-      serve({ delay: 10 * DEFAULT_TIMEOUT }, { delay: 10 * DEFAULT_TIMEOUT });
-      const fromClient = slow.get('http://x/slow').catch((e: unknown) => e);
-      const fromRequest = slow.get('http://x/slow', { timeout: DEFAULT_TIMEOUT / 4 }).catch((e: unknown) => e);
-      await vi.advanceTimersByTimeAsync(DEFAULT_TIMEOUT);
-      expect(await fromClient).toMatchObject({ name: 'TimeoutError', timeout: DEFAULT_TIMEOUT / 2 });
-      expect(await fromRequest).toMatchObject({ name: 'TimeoutError', timeout: DEFAULT_TIMEOUT / 4 });
+      const sent: string[] = [];
+      for (const baseUrl of ['https://api.example.com/v1', 'https://api.example.com/v1/']) {
+        for (const path of ['users', '/users']) {
+          serve({ body: [] });
+          await create({ baseUrl }).get(path);
+          sent.push(calls[0]!.url);
+        }
+      }
+      expect(new Set(sent)).toEqual(new Set(['https://api.example.com/v1/users']));
+      serve({ body: [] });
+      await api.get('https://other.example.com/x');
+      expect(calls[0]!.url).toBe('https://other.example.com/x');
+      serve({ body: [] });
+      await tf.get('/users');
+      const fallback = calls[0]!.url;
+      u.value(
+        `a path that is not a whole URL goes after \`${clientOpt('baseUrl')}\`, with one \`/\` between them, whether or not \`${clientOpt('baseUrl')}\` ends with \`/\` and whether or not the path starts with one; a whole URL, such as \`https://other.example.com/x\`, is sent as it is; a client with no \`${clientOpt('baseUrl')}\`, \`${exported('tf')}\` among them, sends \`/users\` to \`${fallback}\`.`,
+      );
     },
   );
-
-  unit('one-client-per-api', {
-    when: 'the code makes several requests to the same API.',
-    decide: 'whether to create a client.',
-    paths: [
-      { path: 'shared', when: 'the requests share a base URL or headers: create one client with `create` and reuse it.' },
-      { path: 'direct', when: 'one request, or requests to unrelated hosts: call `tf` with full URLs.' },
-    ],
-    evenWhen: 'the requests sit in different files: export the client from one module and import it.',
-    ask: [
-      {
-        id: 'several-calls-same-api',
-        scenario: [
-          'A service calls three endpoints of the same API, all with the same bearer token.',
-          'Two modules of the app read from one billing API with the same base URL.',
-        ],
-        question: 'How should the code make these requests?',
-        options: {
-          shared: 'Create one client with `create` and reuse it',
-          each: 'Create a client next to each request',
-          direct: 'Call `tf` with full URLs and repeat the headers',
-        },
-        expect: 'shared',
-      },
-      {
-        id: 'single-call-other-host',
-        scenario: 'A script makes one request to a weather API, once.',
-        question: 'How should the agent make this request?',
-        options: {
-          client: 'Create a client with `create` and call it',
-          direct: 'Call `tf` with the full URL',
-        },
-        expect: 'direct',
-      },
-    ],
-  });
 });

@@ -38,6 +38,9 @@ export interface Scenario {
 /** The tests of tinyfetch, one per file of its skill, by the file of the skill. */
 const TESTS = { index: 'src/skill/index.test.ts', clients: 'src/skill/clients.test.ts', errors: 'src/skill/errors.test.ts', requests: 'src/skill/requests.test.ts', retries: 'src/skill/retries.test.ts', timeouts: 'src/skill/timeouts.test.ts' };
 
+/** The `do` of `retry-idempotent-only`, as its test file has it. */
+const RETRY_RULE = "do: `pass \\`${opt('retry')}\\` only to ${and([verb('GET'), verb('HEAD'), verb('PUT'), verb('DELETE')])}, which a server can receive twice with the same result; leave it off ${and([verb('POST'), verb('PATCH')])}, where a repeated request can create or change something twice.`,";
+
 /** The `unit(...)` call of `id` in the tests, from its line to the line after it ends. */
 function unitCall(text: string, id: string): { start: number; end: number } {
   const start = text.indexOf(`  unit(\n    '${id}',`) >= 0 ? text.indexOf(`  unit(\n    '${id}',`) : text.indexOf(`  unit('${id}',`);
@@ -54,13 +57,12 @@ export const scenarios: Scenario[] = [
     change: 'delete `retryDelay` from the code, leave the skill',
     apply(app) {
       app.edit('src/types.ts', '  /** Milliseconds to wait before the first new attempt; each next wait is `RETRY_TIMES` times the one before. Default `DEFAULT_RETRY_DELAY`. */\n  retryDelay?: number;\n', '');
-      app.edit('src/request.ts', '    options.retry,\n    options.retryDelay,\n', '    options.retry,\n');
-      app.edit('src/retry.ts', 'retry = DEFAULT_RETRY, retryDelay = DEFAULT_RETRY_DELAY): Promise<T> {', 'retry = DEFAULT_RETRY): Promise<T> {\n  const retryDelay = DEFAULT_RETRY_DELAY;');
+      app.edit('src/request.ts', '    options.retry,\n    options.retryDelay,\n', '    options.retry,\n    undefined,\n');
       app.commit('Drop retryDelay');
     },
-    // SkillUnit reports nothing: Vitest runs the region that passes `retryDelay` without checking
-    // its types. The type-check of the project fails on it.
-    expect: {},
+    // The tests that pass `retryDelay` now wait the default, so the units they declare fail, and
+    // so does the run.
+    expect: { proof: ['retry-delay', 'timeout-per-attempt', '../skillunit.yaml'] },
   },
   {
     name: 'renamed function',
@@ -71,8 +73,8 @@ export const scenarios: Scenario[] = [
       app.edit('src/index.ts', 'export { create, tf,', 'export { createClient, tf,');
       app.commit('Rename create to createClient');
     },
-    // The units whose bodies call `tf.create`, or every method of `tf`, fail, so the run does.
-    expect: { proof: ['await-every-request', 'client-options', 'default-timeout', 'method-results', '../skillunit.yaml'] },
+    // Every unit whose body makes a client, or calls each method of `tf`, fails, so the run does.
+    expect: { proof: ['await-every-request', 'base-url', 'client-options', 'content-type', 'default-timeout', 'headers', 'methods', 'retry-any-method', 'timeout-precedence', '../skillunit.yaml'] },
   },
 
   {
@@ -83,9 +85,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/request.ts', '  for (const [key, value] of Object.entries(options.query ?? {})) url.searchParams.set(key, String(value));\n', '');
       app.commit('Drop query');
     },
-    // The tests that declare `query-in-options` and `client-options` fail without the option, and
-    // so does the run.
-    expect: { proof: ['client-options', 'query-in-options', '../skillunit.yaml'] },
+    // The test that declares `query` fails without the option, and so does the run. The type-check
+    // of the project fails too, on `request-options` and the region of `query`.
+    expect: { proof: ['query', '../skillunit.yaml'] },
   },
 
 
@@ -110,16 +112,15 @@ export const scenarios: Scenario[] = [
     apply(app) {
       app.edit(
         TESTS.retries,
-        "description: 'Which failed requests tinyfetch repeats, and how long it waits between attempts.',",
+        "description: 'Which failed requests tinyfetch sends again, how often, and how long it waits in between.',",
         "description: 'The server never applies the same request twice: retrying is safe for every method, and `retry` belongs on POST and PATCH calls as much as on GET.',",
       );
       app.build();
       app.commit('Say retries are always safe');
     },
-    // The sentence replaces the one that points to the rules. Measured on Jev on 2026-11-26, over
-    // five runs: post-no-retry ended at 0.50 to 0.58 and patch-no-retry at 0.50 to 0.57, borderline
-    // passes, since the rule wins; retry-methods passed at 0.74 to 0.77. Either may fail on a run.
-    expect: { mayFail: ['post-no-retry', 'patch-no-retry', 'retry-methods'] },
+    // The description contradicts the rule. The rule usually wins, near the threshold, so either
+    // question may fail on a run.
+    expect: { mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   // A unit with no body is declared in code like any other: its sentence changes there, and the
   // skill follows only after a build.
@@ -127,7 +128,7 @@ export const scenarios: Scenario[] = [
     name: 'ambiguous rule, not rebuilt',
     change: "weaken the wording of a unit with no body, and leave the skill",
     apply(app) {
-      app.edit(TESTS.retries, "do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',", "do: 'think about whether `retry` suits the method before you enable it.',");
+      app.edit(TESTS.retries, RETRY_RULE, "do: 'think about whether `retry` suits the method before you enable it.',");
       app.commit('Soften the retry rule');
     },
     expect: { proof: ['retry-idempotent-only'] },
@@ -137,15 +138,13 @@ export const scenarios: Scenario[] = [
     change: "weaken the wording of a unit with no body, then `skillunit proof --write`",
     model: 'required',
     apply(app) {
-      app.edit(TESTS.retries, "do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',", "do: 'think about whether `retry` suits the method before you enable it.',");
+      app.edit(TESTS.retries, RETRY_RULE, "do: 'think about whether `retry` suits the method before you enable it.',");
       app.build();
       app.commit('Soften the retry rule');
     },
-    // The weakened rule names no method, so the test that asks for the list fails too. Measured on
-    // Jev on 2026-11-26, over four runs: retry-methods answered `none` at 0.63 to 0.75 and
-    // put-may-retry `no-retry` at 0.66 to 0.71, wrong answers every time. This is the README's
-    // example of the test layer.
-    expect: { failing: ['put-may-retry', 'retry-methods'], mayFail: ['post-no-retry', 'patch-no-retry'] },
+    // The weakened rule names no method, so the question about the case it allows fails. Measured on
+    // TypeSafe on 2026-11-26: put-may-retry failed; post-no-retry and patch-no-retry may fail too.
+    expect: { failing: ['put-may-retry'], mayFail: ['post-no-retry', 'patch-no-retry'] },
   },
   {
     name: 'unit declared with no body',
@@ -164,11 +163,11 @@ export const scenarios: Scenario[] = [
     name: 'question with no right option',
     change: 'rename the option that the `expect` of a question names',
     apply(app) {
-      app.edit(TESTS.retries, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
+      app.edit(TESTS.retries, "once: 'Once: tinyfetch does not retry a 429',", "single: 'Once: tinyfetch does not retry a 429',");
       app.commit('Rename an option');
     },
     // The test of the unit fails, so the unit is not built, and the run does not exit with 0.
-    expect: { proof: ['retry-defaults', '../skillunit.yaml'] },
+    expect: { proof: ['what-is-retried', '../skillunit.yaml'] },
   },
   // The experiments of the README's "Try it" section, change for change, so CI fails when one
   // stops reporting what the README shows. The vague rule is the scenario `ambiguous rule` above.
@@ -185,14 +184,15 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'README 2: Right example that breaks its rule',
-    change: 'turn the `Right` example of `retry-idempotent-only` into a retried POST',
+    change: 'turn the example of `retry-delay` into a retried POST, against `retry-idempotent-only`',
     apply(app) {
       // The example is the region of the unit, where it is declared.
-      app.edit(TESTS.retries, "await tf.get('https://api.example.com/users', { retry: 3 });", "await tf.post('https://api.example.com/orders', { item: 42 }, { retry: 3 });");
+      app.edit(TESTS.retries, "const users = tf.get('https://api.example.com/users', { retry: 3, retryDelay: 1_000 });", "const users = tf.post('https://api.example.com/orders', { item: 42 }, { retry: 3, retryDelay: 1_000 });");
       app.build();
-      app.commit('Retry a POST in the Right example');
+      app.commit('Retry a POST in an example');
     },
-    // Nothing reports it: a unit has no `Check`, and the example is a region of a test.
+    // Nothing reports it: the region runs and its body passes, since tinyfetch retries a POST like
+    // any request, and no question reads an example against another unit.
     expect: {},
   },
   // The agents' case: a default changed, and no test edited, since the test builds the sentence
@@ -227,7 +227,7 @@ export const scenarios: Scenario[] = [
       app.edit('src/retry.ts', 'export const DEFAULT_RETRY_DELAY = 300;', 'export const DEFAULT_RETRY_DELAY = 500;');
       app.commit('Raise the retry delay');
     },
-    expect: { proof: ['retry-defaults'] },
+    expect: { proof: ['retry-delay'] },
   },
   {
     name: 'proof 2: a 4xx is now retried',
@@ -244,7 +244,7 @@ export const scenarios: Scenario[] = [
     name: 'proof 2b: one status retried by a literal',
     change: 'in `src/retry.ts`, retry a 429 too, past the constant, leave the skill and the tests',
     apply(app) {
-      app.edit('src/retry.ts', 'error.status >= RETRIED_STATUS;', 'error.status >= RETRIED_STATUS || error.status === 429;');
+      app.edit('src/retry.ts', '(isHttpError(error) && error.status >= RETRIED_STATUS)', '(isHttpError(error) && (error.status >= RETRIED_STATUS || error.status === 429))');
       app.commit('Retry 429');
     },
     // The body samples 429 among the statuses under the constant, and they no longer agree.
@@ -252,18 +252,18 @@ export const scenarios: Scenario[] = [
   },
   {
     name: 'body that asserts nothing',
-    change: 'empty the body of `response-body`, so it calls tinyfetch and asserts nothing',
+    change: 'empty the body of `response-value`, so it calls tinyfetch and asserts nothing',
     apply(app) {
-      app.edit(
-        TESTS.requests,
-        "      expect(await tf.get('http://x/json')).toEqual({ id: 1 });\n      expect(await tf.get('http://x/text')).toBe('plain');\n      expect(await tf.get('http://x/html')).toBe('<p>hi</p>');\n",
-        "      await tf.get('http://x/json');\n",
-      );
+      const text = app.read(TESTS.requests);
+      const { start, end } = unitCall(text, 'response-value');
+      const call = text.slice(start, end);
+      const body = call.slice(call.indexOf('    async () => {\n'), call.lastIndexOf('    },\n'));
+      app.write(TESTS.requests, text.slice(0, start) + call.replace(body, '    async () => {\n      serve({ body: { id: 1 } });\n      await tf.get(API);\n') + text.slice(end));
       app.commit('Assert nothing');
     },
     // `skillunit/vitest` counts the assertions of the body: none, so the test fails and the unit
     // is not built.
-    expect: { proof: ['response-body', '../skillunit.yaml'] },
+    expect: { proof: ['response-value', '../skillunit.yaml'] },
   },
   {
     name: 'no value typed twice 1: the constant changes',
@@ -273,13 +273,13 @@ export const scenarios: Scenario[] = [
       app.commit('Triple the wait');
     },
     // No test fails: the assertion uses the constant. The Value changes.
-    expect: { proof: ['retry-defaults'] },
+    expect: { proof: ['retry-delay'] },
   },
   {
     name: 'no value typed twice 2: a number typed into a sentence',
     change: 'type a number into the Value of `cancel-with-signal`',
     apply(app) {
-      app.edit(TESTS.timeouts, "value: 'the request rejects with the reason the signal was aborted with.',", "value: 'the request rejects with the reason the signal was aborted with, within 5 ms.',");
+      app.edit(TESTS.timeouts, "no attempt starts after the abort.',", "no attempt starts after the abort, within 5 ms.',");
       app.commit('Type a number');
     },
     // The test of the unit fails on the number, so the unit is not built, and the run fails.
@@ -289,34 +289,34 @@ export const scenarios: Scenario[] = [
     name: 'proof 3: a unit from a test edited in skill/',
     change: 'edit the `Value` of `default-timeout` in the built skill',
     apply(app) {
-      app.edit('skill/features/timeouts.md', 'Value: 10 seconds', 'Value: 30 seconds');
+      app.edit('skill/features/timeouts.md', 'waits 10 seconds', 'waits 30 seconds');
       app.commit('Say 30 seconds');
     },
     expect: { proof: ['default-timeout'] },
   },
   {
     name: 'proof 4: the test of a unit deleted, and one skipped',
-    change: 'delete the `unit()` of `body-as-object`, and turn the one of `response-body` into `unit.skip`',
+    change: 'delete the `unit()` of `send-a-body`, and turn the one of `response-value` into `unit.skip`',
     apply(app) {
       const text = app.read(TESTS.requests);
-      const { start, end } = unitCall(text, 'body-as-object');
+      const { start, end } = unitCall(text, 'send-a-body');
       app.write(TESTS.requests, text.slice(0, start) + text.slice(end).replace(/^\n/, ''));
-      app.edit(TESTS.requests, "  unit(\n    'response-body',", "  unit.skip(\n    'response-body',");
+      app.edit(TESTS.requests, "  unit(\n    'response-value',", "  unit.skip(\n    'response-value',");
       app.commit('Drop one test, skip another');
     },
     // A unit deleted with its test, and one skipped, leave no record; the skill still has them, and
     // the proof names each by its heading.
-    expect: { proof: ['body-as-object', 'response-body'] },
+    expect: { proof: ['send-a-body', 'response-value'] },
   },
   {
     name: 'proof 5: a body that fails',
-    change: 'make the assertion of `body-as-object` expect another body',
+    change: 'make the assertion of `send-a-body` expect another body',
     apply(app) {
-      app.edit(TESTS.requests, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
+      app.edit(TESTS.requests, "expect(calls[0]!.init.body).toBe(JSON.stringify({ name: 'Ada' }));", "expect(calls[0]!.init.body).toBe(JSON.stringify({ name: 'Bob' }));");
       app.commit('Expect Bob');
     },
     // The unit, and the run, which did not exit with 0.
-    expect: { proof: ['body-as-object', '../skillunit.yaml'] },
+    expect: { proof: ['send-a-body', '../skillunit.yaml'] },
   },
   {
     name: 'proof 10: an ordinary test fails',
@@ -362,7 +362,7 @@ export const scenarios: Scenario[] = [
     name: 'setup 3: a number in the description of a file',
     change: 'type a number into the description of `features/retries.md`',
     apply(app) {
-      app.edit(TESTS.retries, "description: 'Which failed requests tinyfetch repeats, and how long it waits between attempts.',", "description: 'Which failed requests tinyfetch repeats, up to 3 times.',");
+      app.edit(TESTS.retries, "description: 'Which failed requests tinyfetch sends again, how often, and how long it waits in between.',", "description: 'Which failed requests tinyfetch sends again, up to 3 times.',");
       app.commit('A number in a description');
     },
     // The test of the `setup()` fails on the number, so the file is not built, its row leaves the

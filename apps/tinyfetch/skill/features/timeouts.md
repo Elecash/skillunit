@@ -1,6 +1,6 @@
 # tinyfetch — timeouts and cancelling
 
-How long a request waits, and how to cancel it.
+How long a request waits for the server, and how to stop it sooner.
 
 ```ts
 import { tf, TimeoutError } from "tinyfetch";
@@ -10,48 +10,33 @@ import { tf, TimeoutError } from "tinyfetch";
 
 ### fact: default-timeout
 
-When: the user asks how long a request waits by default.
+When: a request sets no `timeout`, and its client sets none.
 
-Value: 10 seconds (`timeout: 10_000`), for every method.
+Value: the request waits 10 seconds (`timeout: 10_000`), whatever its method, then rejects with a `TimeoutError` whose `timeout` is that number of milliseconds.
 
-Unknown: tinyfetch has no separate connect timeout; say so instead of inventing one.
+### fact: timeout-precedence
+
+When: a client or a request sets `timeout`.
+
+Value: a request's own `timeout` wins over the `timeout` of its client, and the client's over the default.
 
 ### fact: timeout-off
 
-When: a request sets `timeout`.
+When: a request sets `timeout` to turn it off.
 
-Value: the request is aborted with a `TimeoutError` after that many milliseconds; a `timeout` of 0 turns the timeout off, and the request waits until the server answers.
+Value: `timeout: 0` turns the timeout off, and so does a negative `timeout`: tinyfetch sets no timer for the request, which then waits for the server as long as it takes.
 
-```ts
-try {
-  await tf.get("https://api.example.com/slow", { timeout: 2_000 });
-} catch (error) {
-  if (error instanceof TimeoutError)
-    console.log("gave up after", error.timeout, "ms");
-}
-```
+### fact: timeout-per-attempt
 
-### rule: never-disable-timeout
+When: a request sets both `timeout` and `retry`.
 
-When: a request may take long, such as an upload or a report.
-
-Do: raise `timeout` to a number of milliseconds that fits the request, and never set it to `0`.
-
-Right:
-
-```ts
-await tf.post(
-  "https://api.example.com/uploads",
-  { size: 1 },
-  { timeout: 120_000 },
-);
-```
+Value: `timeout` is the time of one attempt, and each attempt gets its own: with `retry`, the whole request can take longer than `timeout`.
 
 ### fact: cancel-with-signal
 
-When: the code passes `signal` and aborts it.
+When: the code passes `signal` to a request, and aborts it.
 
-Value: the request rejects with the reason the signal was aborted with.
+Value: the request rejects with the reason given to `abort()`, or with an `AbortError` when `abort()` is given none, whether the signal was aborted before the request, during an attempt, or while the request waits before a new attempt; no attempt starts after the abort.
 
 ```ts
 const controller = new AbortController();
@@ -59,5 +44,12 @@ const report = tf.get("https://api.example.com/report", {
   signal: controller.signal,
 });
 controller.abort();
-await report.catch(() => undefined);
 ```
+
+### rule: never-disable-timeout
+
+When: a request may take long, such as an upload or a report.
+
+Do: raise its `timeout` to a number of milliseconds that fits the request, and never set `timeout: 0`.
+
+Even when: the user asks for the request to wait as long as it needs; with no timeout, a server that never answers keeps the request waiting forever.

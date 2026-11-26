@@ -60,6 +60,9 @@ export interface ProofConfig {
 }
 
 
+/** What `proof.format` has where each built file goes. */
+export const FORMAT_FILE = '{file}';
+
 /** Where tests leave units when `proof.units` is not set, from the config file's folder. */
 export const DEFAULT_PROOF_UNITS = './tmp/skill-units';
 
@@ -85,7 +88,9 @@ export function thresholdsProblem(th: Partial<Thresholds>, name: (key: 'yes' | '
   return undefined;
 }
 
-const KEYS = new Set(['skill', 'context', 'model', 'thresholds', 'proof']);
+/** The keys of `skillunit.yaml`. */
+export const SETTINGS_KEYS = ['skill', 'context', 'model', 'thresholds', 'proof'] as const;
+const KEYS = new Set<string>(SETTINGS_KEYS);
 
 /**
  * Loads the config file at `path`, or `./skillunit.yaml` if it exists. With no file, the skill
@@ -136,7 +141,8 @@ export function loadConfig(path?: string): Config {
   return config;
 }
 
-const PROOF_KEYS = ['run', 'units', 'format'];
+/** The keys of `proof` in `skillunit.yaml`. */
+export const PROOF_KEYS: readonly string[] = ['run', 'units', 'format'];
 
 function readProof(value: unknown, root: string, fail: (msg: string) => Error): ProofConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('`proof` must be a mapping, such as `proof: { run: "npx vitest run" }`');
@@ -154,7 +160,7 @@ function readProof(value: unknown, root: string, fail: (msg: string) => Error): 
     out.units = resolve(root, raw.units);
   }
   if (raw.format !== undefined) {
-    if (typeof raw.format !== 'string' || !raw.format.includes('{file}')) throw fail('`proof.format` must be a command with `{file}` where the skill file goes');
+    if (typeof raw.format !== 'string' || !raw.format.includes(FORMAT_FILE)) throw fail(`\`proof.format\` must be a command with \`${FORMAT_FILE}\` where the skill file goes`);
     out.format = raw.format;
   }
   return out;

@@ -22,40 +22,39 @@ describe('the proof of tinyfetch', () => {
     const check = app.run('check', '--dry-run');
     expect(check.code).toBe(1);
     const unit = errors(check).find((p) => p.unit === 'default-timeout');
-    expect(unit.message).toBe(
-      "this line is not what the build gives: the build has `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.",
-    );
+    expect(unit.message).toMatch(/^this line is not what the build gives: the build has `Value: the request waits 5 seconds \('timeout: 5_000'\), .*`, the skill has `Value: the request waits 10 seconds \('timeout: 10_000'\), .*`\. Run `skillunit proof --write` to update the skill\./);
+    expect(unit.lines.skill).toBe(unit.lines.build.replace('5 seconds', '10 seconds').replace('5_000', '10_000'));
     expect(unit.origin).toEqual({ kind: 'test', file: `../${TIMEOUTS}`, line: lineOf(app.read(TIMEOUTS), "'default-timeout',") - 1, unit: 'default-timeout' });
     expect(errors(check)).toHaveLength(1);
 
     const write = app.run('proof', '--write');
     expect(write.code).toBe(0);
     expect(write.report.proof.files.filter((f: any) => f.state === 'written').map((f: any) => f.file)).toEqual(['features/timeouts.md']);
-    expect(app.read('skill/features/timeouts.md')).toContain('Value: 5 seconds (`timeout: 5_000`), for every method.');
+    expect(app.read('skill/features/timeouts.md')).toContain('Value: the request waits 5 seconds (`timeout: 5_000`), whatever its method');
     expect(app.run('check', '--dry-run').code).toBe(0);
   });
 
   it('the last lines of a unit gone from skill/: the finding is on that unit, not on the next one', () => {
     const app = App.copy('lacks-end');
     const lines = app.read('skill/features/requests.md').split('\n');
-    const unit = lines.indexOf('### rule: query-in-options');
+    const unit = lines.indexOf('### rule: send-a-body');
     const right = lines.indexOf('Right:', unit);
-    const next = lines.indexOf('### rule: body-as-object');
+    const next = lines.indexOf('### fact: content-type');
     // `Right:` and its block, up to the heading of the next unit.
     app.write('skill/features/requests.md', [...lines.slice(0, right), ...lines.slice(next)].join('\n'));
     const found = errors(app.run('proof'));
-    expect(found.map((p) => p.unit)).toEqual(['query-in-options']);
-    expect(found[0].origin).toEqual({ kind: 'test', file: `../${REQUESTS}`, line: lineOf(app.read(REQUESTS), "'query-in-options',") - 1, unit: 'query-in-options' });
+    expect(found.map((p) => p.unit)).toEqual(['send-a-body']);
+    expect(found[0].origin).toEqual({ kind: 'test', file: `../${REQUESTS}`, line: lineOf(app.read(REQUESTS), "'send-a-body',") - 1, unit: 'send-a-body' });
     expect(found[0].message).toMatch(/^this line is not what the build gives: the build has `Right:`, the skill has nothing here\./);
     expect(found[0].lines).toEqual({ build: 'Right:', skill: null });
   });
 
   it('a long line that differs at its end: the message shows both ends, and the JSON both lines', () => {
     const app = App.copy('long-line');
-    app.edit('skill/features/retries.md', 'each next wait is 2x the one before.', 'each next wait is 3x the one before.');
+    app.edit('skill/features/retries.md', 'before each next one 2x the wait before it.', 'before each next one 3x the wait before it.');
     const [finding] = errors(app.run('proof'));
-    expect(finding.unit).toBe('retry-defaults');
-    expect(finding.message).toMatch(/the build has `….*each next wait is 2x the one before\.`, the skill has `….*each next wait is 3x the one before\.`\./);
+    expect(finding.unit).toBe('retry-delay');
+    expect(finding.message).toMatch(/the build has `….*before each next one 2x the wait before it\.`, the skill has `….*before each next one 3x the wait before it\.`\./);
     expect(finding.lines.skill).toBe(finding.lines.build.replace('2x', '3x'));
   });
 
@@ -70,7 +69,7 @@ describe('the proof of tinyfetch', () => {
 
   it('a unit edited in skill/ by hand: the finding names the test to edit', () => {
     const app = App.copy('by-hand');
-    app.edit('skill/features/timeouts.md', 'Value: 10 seconds', 'Value: 30 seconds');
+    app.edit('skill/features/timeouts.md', 'waits 10 seconds', 'waits 30 seconds');
     const proof = app.run('proof');
     const [finding] = errors(proof);
     expect(finding).toMatchObject({ unit: 'default-timeout', origin: { kind: 'test', file: `../${TIMEOUTS}` } });
@@ -78,24 +77,24 @@ describe('the proof of tinyfetch', () => {
 
   it('a body that fails: the finding is on the test, carries the assertion, and the run fails too', () => {
     const app = App.copy('failing-body');
-    app.edit(REQUESTS, `body: '{"name":"Ada"}'`, `body: '{"name":"Bob"}'`);
+    app.edit(REQUESTS, "expect(calls[0]!.init.body).toBe(JSON.stringify({ name: 'Ada' }));", "expect(calls[0]!.init.body).toBe(JSON.stringify({ name: 'Bob' }));");
     const found = errors(app.run('proof'));
     expect(found.map((p) => p.file).sort()).toEqual(['../skillunit.yaml', `../${REQUESTS}`]);
-    const finding = found.find((p) => p.unit === 'body-as-object');
-    expect(finding.line).toBe(lineOf(app.read(REQUESTS), "'body-as-object',") - 1);
-    expect(finding.message).toMatch(/^the test of `body-as-object` \(src\/skill\/requests\.test\.ts:\d+\) failed, so it left no unit: expected \{ method: 'POST', .* to match object /);
+    const finding = found.find((p) => p.unit === 'send-a-body');
+    expect(finding.line).toBe(lineOf(app.read(REQUESTS), "'send-a-body',") - 1);
+    expect(finding.message).toMatch(/^the test of `send-a-body` \(src\/skill\/requests\.test\.ts:\d+\) failed, so it left no unit: expected '\{"name":"Ada"\}' to be '\{"name":"Bob"\}'/);
   });
 
   it('a skipped test: its unit leaves the build, and the proof names the unit the skill still has', () => {
     const app = App.copy('gone');
-    app.edit(REQUESTS, "  unit(\n    'response-body',", "  unit.skip(\n    'response-body',");
+    app.edit(REQUESTS, "  unit(\n    'response-value',", "  unit.skip(\n    'response-value',");
     const [finding, ...rest] = errors(app.run('proof'));
     expect(rest).toEqual([]);
     expect(finding).toMatchObject({
       file: 'features/requests.md',
-      line: lineOf(app.read('skill/features/requests.md'), '### fact: response-body'),
-      unit: 'response-body',
-      message: 'the skill has the unit `response-body`, and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill',
+      line: lineOf(app.read('skill/features/requests.md'), '### fact: response-value'),
+      unit: 'response-value',
+      message: 'the skill has the unit `response-value`, and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill',
     });
   });
 
@@ -134,10 +133,10 @@ describe('the proof of tinyfetch', () => {
 
   it('a question whose `expect` names no option: the test of its unit fails and says why', () => {
     const app = App.copy('bad-expect');
-    app.edit(RETRIES, 'right: `${DEFAULT_RETRY_DELAY} ms`,', 'default: `${DEFAULT_RETRY_DELAY} ms`,');
-    const finding = errors(app.run('proof')).find((p) => p.unit === 'retry-defaults' && p.message.startsWith('the test of'));
+    app.edit(RETRIES, "once: 'Once: tinyfetch does not retry a 429',", "single: 'Once: tinyfetch does not retry a 429',");
+    const finding = errors(app.run('proof')).find((p) => p.unit === 'what-is-retried' && p.message.startsWith('the test of'));
     expect(finding.message).toMatch(
-      /^the test of `retry-defaults` \(src\/skill\/retries\.test\.ts:\d+\) failed, so it left no unit: unit `retry-defaults`: the question `retry-delay-default`: `expect` is "right", which is not an option \(use one of: default, ms1000, none-wait, none\)$/,
+      /^the test of `what-is-retried` \(src\/skill\/retries\.test\.ts:\d+\) failed, so it left no unit: unit `what-is-retried`: the question `retry-on-429`: `expect` is "once", which is not an option \(use one of: single, four, until, none\)$/,
     );
   });
 
@@ -145,12 +144,12 @@ describe('the proof of tinyfetch', () => {
     const app = App.copy('declared');
     const proof = app.run('proof');
     const declared = (proof.report.proof.units as any[]).filter((u) => u.from === 'declared').map((u) => u.id);
-    expect(declared).toEqual(['one-client-per-api', 'retry-idempotent-only', 'never-disable-timeout']);
-    expect(proof.report.proof.summary).toMatchObject({ units: 16, proved: 13, declared: 3 });
+    expect(declared).toEqual(['retry-idempotent-only', 'never-disable-timeout']);
+    expect(proof.report.proof.summary).toMatchObject({ units: 24, proved: 22, declared: 2 });
     const table = spawnSync(process.execPath, [CLI, 'proof'], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }).stdout;
     expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${TIMEOUTS}:`);
     expect(table).not.toContain(`proved by a test, ${TIMEOUTS}:${lineOf(app.read(TIMEOUTS), "unit('never-disable-timeout'")}`);
-    expect(table).toContain('16 units · 13 proved by a test · 3 declared without one');
+    expect(table).toContain('24 units · 22 proved by a test · 2 declared without one');
   });
 
   it('check --dry-run with no key: every question is ready, and nothing is sent', () => {
@@ -159,7 +158,7 @@ describe('the proof of tinyfetch', () => {
     const run = spawnSync(process.execPath, [CLI, 'check', '--dry-run', '--json'], { cwd: app.root, encoding: 'utf8', env });
     expect(run.status).toBe(0);
     const test = JSON.parse(run.stdout).test;
-    expect(test.summary).toMatchObject({ tests: 16, passed: 16, usage: { input_tokens: 0, output_tokens: 0 } });
+    expect(test.summary).toMatchObject({ tests: 9, passed: 9, usage: { input_tokens: 0, output_tokens: 0 } });
     expect(test.requests.flatMap((r: any) => r.verdicts).every((v: any) => v.answer === '(dry run)' && v.declared)).toBe(true);
     expect(test.problems).toEqual([]);
   });

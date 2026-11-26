@@ -3,10 +3,13 @@
 // #region skill:retries
 import { tf } from 'tinyfetch';
 // #endregion
-import { setup, unit } from 'skillunit/vitest';
+import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect, vi } from 'vitest';
 import { DEFAULT_RETRY, DEFAULT_RETRY_DELAY, RETRIED_STATUS, RETRY_TIMES } from '../retry.js';
-import { and, calls, reset, serve, type Reply } from './helpers.js';
+import type { RequestOptions } from 'tinyfetch';
+import { and, call, calls, methods, reset, serve, verb, type Reply } from './helpers.js';
+
+const opt = key<RequestOptions>;
 
 afterEach(reset);
 
@@ -14,150 +17,179 @@ setup('retries', {
   file: 'features/retries.md',
   title: 'tinyfetch — retries',
   when: 'Retry a request that failed',
-  description: 'Which failed requests tinyfetch repeats, and how long it waits between attempts.',
+  description: 'Which failed requests tinyfetch sends again, how often, and how long it waits in between.',
 });
 
-// Examples of the units with no body: type-checked with the tests, and never run.
-export async function examples() {
-  // #region skill:retry-idempotent-only
-  await tf.get('https://api.example.com/users', { retry: 3 });
-  // #endregion
-}
+const API = 'https://api.example.com/users';
 
 describe('features/retries.md', () => {
   unit(
-    'retry-defaults',
+    'retry-count',
     {
-      when: 'a request sets no `retry`, or no `retryDelay`.',
-      value: `\`retry\` is ${DEFAULT_RETRY}, ${DEFAULT_RETRY === 0 ? 'so a failed request is not repeated' : `so a failed request is repeated up to ${DEFAULT_RETRY} times`}; \`retryDelay\` is ${DEFAULT_RETRY_DELAY} ms before the first new attempt, and each next wait is ${RETRY_TIMES}x the one before.`,
-      values: { retry: DEFAULT_RETRY, 'retry-delay': DEFAULT_RETRY_DELAY, 'retry-times': RETRY_TIMES },
-      ask: {
-        id: 'retry-delay-default',
-        scenario: 'The agent sets `retry` and leaves `retryDelay` out.',
-        question: 'How long does tinyfetch wait before the first new attempt?',
-        options: {
-          right: `${DEFAULT_RETRY_DELAY} ms`,
-          ms1000: '1 second',
-          'none-wait': 'It retries at once',
-        },
-        expect: 'right',
-      },
+      when: `a request sets \`${opt('retry')}\`, or sets none.`,
+      value: `\`${opt('retry')}\` is how many more attempts tinyfetch makes after the first one fails; it is ${DEFAULT_RETRY} by default${DEFAULT_RETRY === 0 ? ', so a failed request is not sent again' : ''}.`,
+      values: { retry: DEFAULT_RETRY },
     },
     async () => {
-      serve({ body: [] });
-      // #region skill:retry-defaults
-      await tf.get('https://api.example.com/users', { retry: 3, retryDelay: 500 });
-      // #endregion
-      expect(calls).toHaveLength(1);
-
       vi.useFakeTimers();
-      serve(...Array.from({ length: DEFAULT_RETRY + 1 }, () => ({ status: 503 })), { body: 'never' });
-      const failed = tf.get('http://x/a').catch((e: unknown) => e);
+      serve(...Array.from({ length: DEFAULT_RETRY + 5 }, () => ({ status: 503 })));
+      const failed = tf.get(API).catch((e: unknown) => e);
       await vi.runAllTimersAsync();
       expect(await failed).toMatchObject({ status: 503 });
       expect(calls).toHaveLength(DEFAULT_RETRY + 1);
-
-      serve({ status: 503 }, { status: 503 }, { body: 'ok' });
-      const pending = tf.get('http://x/a', { retry: 2 });
-      await vi.advanceTimersByTimeAsync(DEFAULT_RETRY_DELAY - 1);
-      expect(calls).toHaveLength(1);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(calls).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(RETRY_TIMES * DEFAULT_RETRY_DELAY - 1);
-      expect(calls).toHaveLength(2);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(calls).toHaveLength(3);
-      expect(await pending).toBe('ok');
+      for (const retry of [1, 3]) {
+        serve(...Array.from({ length: retry + 5 }, () => ({ status: 503 })));
+        const pending = tf.get(API, { retry }).catch((e: unknown) => e);
+        await vi.runAllTimersAsync();
+        await pending;
+        expect(calls).toHaveLength(retry + 1);
+      }
     },
   );
 
-  // The sentence is what the body observes, case by case: a change in what is retried shows up as
-  // a change in the skill, not as a failed test. Each case is sampled more than once, and its
-  // samples must agree.
-  unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
-    // Statuses an API answers, on the side of the constant each is on, and the two next to it.
-    const statuses = [400, 404, 429, 499, 500, 502, 503, 599];
-    const above = [RETRIED_STATUS, ...statuses.filter((s) => s >= RETRIED_STATUS)];
-    const under = [RETRIED_STATUS - 1, ...statuses.filter((s) => s < RETRIED_STATUS)];
-    const cases: [string, Reply[]][] = [
-      ['a network error', [new TypeError('fetch failed')]],
-      [`a status of ${RETRIED_STATUS} or above`, above.map((status) => ({ status }))],
-      [`a status under ${RETRIED_STATUS}`, under.map((status) => ({ status }))],
-      ['a timeout', [{ delay: 50 }]],
-    ];
-    const retried: string[] = [];
-    const never: string[] = [];
-    for (const [name, replies] of cases) {
-      const seen = new Set<boolean>();
-      for (const reply of replies) {
-        serve(reply, { body: 'ok' });
-        await tf.get('http://x/a', { retry: 1, retryDelay: 1, timeout: 10 }).catch(() => undefined);
-        seen.add(calls.length > 1);
+  unit(
+    'retry-delay',
+    {
+      when: `a request with \`${opt('retry')}\` fails and is sent again.`,
+      value: `before the first new attempt tinyfetch waits \`${opt('retryDelay')}\`, ${DEFAULT_RETRY_DELAY} ms by default, and before each next one ${RETRY_TIMES}x the wait before it.`,
+      values: { delay: DEFAULT_RETRY_DELAY, times: RETRY_TIMES },
+    },
+    async () => {
+      vi.useFakeTimers();
+      /** Checks the waits of `pending`, whose first attempt and three new ones fail but the last. */
+      const waits = async (pending: Promise<unknown>, first: number) => {
+        for (const [n, wait] of [first, first * RETRY_TIMES, first * RETRY_TIMES ** 2].entries()) {
+          await vi.advanceTimersByTimeAsync(wait - 1);
+          expect(calls).toHaveLength(n + 1);
+          await vi.advanceTimersByTimeAsync(1);
+          expect(calls).toHaveLength(n + 2);
+        }
+        expect(await pending).toBe('ok');
+      };
+      serve({ status: 503 }, { status: 503 }, { status: 503 }, { body: 'ok' });
+      await waits(tf.get(API, { retry: 3 }), DEFAULT_RETRY_DELAY);
+      serve({ status: 503 }, { status: 503 }, { status: 503 }, { body: 'ok' });
+      // #region skill:retry-delay
+      const users = tf.get('https://api.example.com/users', { retry: 3, retryDelay: 1_000 });
+      // #endregion
+      await waits(users, 1_000);
+    },
+  );
+
+  // The sentence is what the body observes, case by case: each case is tried more than once, and
+  // its tries must agree.
+  unit(
+    'what-is-retried',
+    {
+      when: `a request with \`${opt('retry')}\` fails.`,
+      values: { 'retried-status': RETRIED_STATUS },
+      // A case to place: a status the sentence does not name.
+      ask: {
+        id: 'retry-on-429',
+        scenario: `A request sets \`${opt('retry')}: 3\`, and the API answers it with 429 Too Many Requests every time.`,
+        question: 'How many times does tinyfetch send the request?',
+        options: {
+          once: 'Once: tinyfetch does not retry a 429',
+          four: 'Four times: the first attempt and three more',
+          until: 'Until the API answers with another status',
+        },
+        expect: 'once',
+      },
+    },
+    async (u) => {
+      const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
+      const answer = (reply: Reply) => () => retried(reply);
+      const cases: [string, (() => Promise<boolean>)[]][] = [
+        ['a network error', [answer(new TypeError('fetch failed')), answer(new TypeError('socket hang up'))]],
+        [`a status of ${RETRIED_STATUS} or above with any body`, [...range(RETRIED_STATUS, 599).map((status) => answer({ status })), answer({ status: 503, raw: '{' })]],
+        [`a status under ${RETRIED_STATUS}`, range(300, RETRIED_STATUS - 1).map((status) => answer({ status }))],
+        ['a timeout', [answer({ delay: 50 }), answer({ delay: 80 })]],
+        ['an abort', [() => retried({ delay: 50 }, new Error('the user left')), () => retried({ delay: 50 }, undefined)]],
+        ['an `ok` response that says it is JSON and does not parse', [answer({ raw: '{' }), answer({ raw: 'not json' })]],
+      ];
+      const yes: string[] = [];
+      const no: string[] = [];
+      for (const [name, tries] of cases) {
+        const seen = new Set<boolean>();
+        for (const attempt of tries) seen.add(await attempt());
+        expect([...seen], `the tries of ${name} agree`).toHaveLength(1);
+        (seen.has(true) ? yes : no).push(name);
       }
-      expect([...seen], `the samples of ${name} agree`).toHaveLength(1);
-      (seen.has(true) ? retried : never).push(name);
+      u.value(`${yes.length ? `${and(yes)} ${yes.length > 1 ? 'are' : 'is'} retried` : 'nothing is retried'}${no.length ? `; ${and(no)} never ${no.length > 1 ? 'are' : 'is'}` : ''}.`);
+    },
+  );
+
+  unit('retry-any-method', { when: `the code passes \`${opt('retry')}\` to a request.` }, async (u) => {
+    const all = methods(API);
+    for (const name of Object.keys(all)) {
+      serve({ status: 503 }, { body: {} });
+      await retryCall(name);
+      expect(calls, name).toHaveLength(2);
     }
-    const parts = [retried.length ? `${and(retried)} ${retried.length > 1 ? 'are' : 'is'} retried` : 'nothing is retried', never.length ? `${and(never)} never ${never.length > 1 ? 'are' : 'is'}` : ''];
-    u.value(`${parts.filter(Boolean).join('; ')}.`);
+    u.value(`\`${opt('retry')}\` sends a request again whatever its method, ${and(Object.keys(all).map((m) => `\`${m}\``))} alike: tinyfetch does not check whether a method is safe to repeat.`);
   });
 
+  // A gap: whether the server can take a request twice is not in tinyfetch; `retry-any-method`
+  // is the part a test states, and this advice stands on it.
   unit('retry-idempotent-only', {
-    when: 'a request may be retried.',
-    do: 'enable `retry` only for GET, HEAD, PUT and DELETE.',
+    when: `the code adds \`${opt('retry')}\` to a request.`,
+    do: `pass \`${opt('retry')}\` only to ${and([verb('GET'), verb('HEAD'), verb('PUT'), verb('DELETE')])}, which a server can receive twice with the same result; leave it off ${and([verb('POST'), verb('PATCH')])}, where a repeated request can create or change something twice.`,
+    evenWhen: `the network drops now and then, or the API answers 503 now and then; tinyfetch sends a ${verb('POST')} again like any other request, so only the code keeps it from being sent twice.`,
     ask: [
       {
         id: 'post-no-retry',
         scenario: [
-          'An order is created with `tf.post`, and the network drops now and then.',
-          'A payment is sent with `tf.post` to an API that sometimes answers 503.',
+          `An order is created with \`${call('post')}\`, and the network drops now and then.`,
+          `A payment is sent with \`${call('post')}\` to an API that sometimes answers 503.`,
         ],
-        question: 'Should the agent pass `retry` to that call?',
-        options: {
-          retry: 'Pass `retry` to the `tf.post` call',
-          'no-retry': 'Leave `retry` off the `tf.post` call',
-        },
+        ...retryOrNot('post'),
         expect: 'no-retry',
       },
       {
         id: 'patch-no-retry',
-        scenario: [
-          'A user profile is updated with `tf.patch`, and the API sometimes answers 503.',
-          'A stock count is decreased with `tf.patch`, and the network drops now and then.',
-        ],
-        question: 'Should the agent pass `retry` to that call?',
-        options: {
-          retry: 'Pass `retry` to the `tf.patch` call',
-          'no-retry': 'Leave `retry` off the `tf.patch` call',
-        },
+        scenario: `A stock count is decreased with \`${call('patch')}\`, and the API sometimes answers 503.`,
+        ...retryOrNot('patch'),
         expect: 'no-retry',
       },
       {
-        id: 'retry-methods',
-        scenario: 'The agent adds `retry` to the calls of a client that uses every method tinyfetch has.',
-        question: 'Which methods may get `retry`?',
-        options: {
-          idempotent: 'GET, HEAD, PUT and DELETE',
-          all: 'Every method, POST and PATCH included',
-          reads: 'GET and HEAD only',
-        },
-        expect: 'idempotent',
-      },
-      {
         id: 'put-may-retry',
-        scenario: 'A settings document is replaced with `tf.put`, and the API sometimes answers 503.',
-        question: 'Should the agent pass `retry` to that call?',
-        options: {
-          retry: 'Yes, `retry` is allowed for this method',
-          'no-retry': 'No, leave `retry` off for this method',
-        },
+        scenario: `A settings document is replaced with \`${call('put')}\`, and the API sometimes answers 503.`,
+        ...retryOrNot('put'),
         expect: 'retry',
-      },
-      {
-        id: 'get-may-retry',
-        scenario: 'A list of users is read with `tf.get`, and the API sometimes answers 503.',
-        question: 'May the agent pass `retry` to that call?',
-        expect: 'yes',
       },
     ],
   });
 });
+
+/** The question and options of whether to pass `retry` to a call of `name`. */
+function retryOrNot(name: Parameters<typeof call>[0]) {
+  return {
+    question: `Should the agent pass \`${opt('retry')}\` to that call?`,
+    options: {
+      retry: `Pass \`${opt('retry')}\` to the \`${call(name)}\` call`,
+      'no-retry': `Leave \`${opt('retry')}\` off the \`${call(name)}\` call`,
+    },
+  };
+}
+
+/**
+ * Whether a request whose first attempt gets `reply`, with `retry: 1`, is sent a second time.
+ * With `abort`, the request's signal is aborted while the first attempt waits for its answer:
+ * with that reason, or with none when it is `undefined`.
+ */
+async function retried(reply: Reply, ...abort: [unknown?]): Promise<boolean> {
+  serve(reply, { body: 'ok' });
+  const controller = new AbortController();
+  const pending = tf.get(API, { retry: 1, retryDelay: 1, timeout: 20, signal: controller.signal }).catch(() => undefined);
+  if (abort.length) setTimeout(() => controller.abort(abort[0]), 5);
+  await pending;
+  return calls.length > 1;
+}
+
+/** The method `name` of `tf`, called with `retry: 1`. */
+function retryCall(name: string): Promise<unknown> {
+  const { create: _, ...client } = tf;
+  const method = client[name as keyof typeof client] as (...args: unknown[]) => Promise<unknown>;
+  const options = { retry: 1, retryDelay: 1 };
+  return method.length > 2 ? method(API, {}, options) : method(API, options);
+}

@@ -7,6 +7,7 @@ export default defineConfig({
     alias: {
       'skillunit/vitest': fileURLToPath(new URL('./src/vitest.ts', import.meta.url)),
       'skillunit/unit': fileURLToPath(new URL('./src/unit/index.ts', import.meta.url)),
+      'skillunit/typescript': fileURLToPath(new URL('./src/typescript.ts', import.meta.url)),
     },
   },
   test: {

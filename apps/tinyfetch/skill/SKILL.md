@@ -13,30 +13,31 @@ import { tf } from "tinyfetch";
 
 ## Where to look
 
-| Task                                                               | File                                         |
-| ------------------------------------------------------------------ | -------------------------------------------- |
-| Make many requests to one API                                      | [features/clients.md](features/clients.md)   |
-| Handle a request that failed                                       | [features/errors.md](features/errors.md)     |
-| Send a request, read the response, pass query parameters or a body | [features/requests.md](features/requests.md) |
-| Retry a request that failed                                        | [features/retries.md](features/retries.md)   |
-| Time out or cancel a request                                       | [features/timeouts.md](features/timeouts.md) |
+| Task                                                      | File                                         |
+| --------------------------------------------------------- | -------------------------------------------- |
+| Make many requests to one API with a client               | [features/clients.md](features/clients.md)   |
+| Handle a request that failed                              | [features/errors.md](features/errors.md)     |
+| Send a request: its method, path, body, headers and query | [features/requests.md](features/requests.md) |
+| Retry a request that failed                               | [features/retries.md](features/retries.md)   |
+| Time out or cancel a request                              | [features/timeouts.md](features/timeouts.md) |
 
 ## Rules
 
+### fact: exports
+
+When: the code imports from tinyfetch.
+
+Value: `tinyfetch` exports `HttpError`, `TimeoutError`, `create`, `isHttpError` and `tf`, and the types `Client`, `ClientOptions` and `RequestOptions`.
+
 ### rule: await-every-request
 
-When: the code calls a tinyfetch method.
+When: the code calls a method of a client.
 
-Do: `await` the call, or return its promise: every method returns a promise.
+Do: `await` the call, or return its promise: every method returns a promise, and the value is what it resolves to.
 
 Right:
 
 ```ts
 const user = await tf.get<{ name: string }>("https://api.example.com/users/1");
 console.log(user.name);
-```
-
-```ts
-const users = await tf.get<{ id: number }[]>("https://api.example.com/users");
-console.log(users.length);
 ```

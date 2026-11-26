@@ -3,9 +3,11 @@
 // #region skill:tinyfetch
 import { tf } from 'tinyfetch';
 // #endregion
-import { ask, setup, unit } from 'skillunit/vitest';
+import * as tinyfetch from 'tinyfetch';
+import { exportNames } from 'skillunit/typescript';
+import { setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect, vi } from 'vitest';
-import { everyMethod, reset, serve } from './helpers.js';
+import { and, methods, reset, serve } from './helpers.js';
 
 afterEach(reset);
 
@@ -19,22 +21,23 @@ setup('tinyfetch', {
   },
 });
 
+/** The name of the package, typed: a package renamed fails the import of this file first. */
+const PACKAGE = 'tinyfetch';
+
 describe('SKILL.md', () => {
+  unit('exports', { when: 'the code imports from tinyfetch.' }, (u) => {
+    const { values, types } = exportNames(new URL('../index.ts', import.meta.url));
+    expect(values).toEqual(Object.keys(tinyfetch).sort());
+    for (const name of values) expect(tinyfetch[name as keyof typeof tinyfetch]).toBeDefined();
+    const code = (n: string) => `\`${n}\``;
+    u.value(`\`${PACKAGE}\` exports ${and(values.map(code))}${types.length ? `, and the type${types.length > 1 ? 's' : ''} ${and(types.map(code))}` : ''}.`);
+  });
+
   unit(
     'await-every-request',
     {
-      when: 'the code calls a tinyfetch method.',
-      do: '`await` the call, or return its promise: every method returns a promise.',
-      ask: {
-        id: 'await-the-call',
-        scenario: 'The code needs the name of user 1 from the API and logs it.',
-        question: 'How should it get the name?',
-        options: {
-          await: 'Await `tf.get(...)`, then read `name` from the result',
-          direct: 'Read `.name` straight off the `tf.get(...)` call',
-        },
-        expect: 'await',
-      },
+      when: 'the code calls a method of a client.',
+      do: '`await` the call, or return its promise: every method returns a promise, and the value is what it resolves to.',
     },
     async () => {
       serve({ body: { name: 'Ada' } });
@@ -44,30 +47,13 @@ describe('SKILL.md', () => {
       console.log(user.name);
       // #endregion
       expect(log).toHaveBeenCalledWith('Ada');
-      serve({ body: [{ id: 1 }, { id: 2 }] });
-      // #region skill:await-every-request.list
-      const users = await tf.get<{ id: number }[]>('https://api.example.com/users');
-      console.log(users.length);
-      // #endregion
-      expect(log).toHaveBeenCalledWith(2);
-      for (const call of everyMethod('http://x/a')) {
+      const all = methods('https://api.example.com/users/1');
+      for (const [name, call] of Object.entries(all)) {
         serve({ body: { name: 'Ada' } });
         const pending = call();
-        expect(pending).toBeInstanceOf(Promise);
+        expect(pending, name).toBeInstanceOf(Promise);
         await pending;
       }
     },
   );
-
-  ask('which-file-for-retries', {
-    file: 'SKILL.md',
-    scenario: 'The agent must add retries to a tinyfetch call.',
-    question: 'Which file of the skill should it read?',
-    options: {
-      retries: 'features/retries.md',
-      requests: 'features/requests.md',
-      errors: 'features/errors.md',
-    },
-    expect: 'retries',
-  });
 });

@@ -5,6 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { readRecords, type Records } from './build/records.js';
+import { COMMON_OPTIONS, EXIT, INIT, OPTIONS } from './commands.js';
 import { CONFIG_FILE, loadConfig, thresholdsProblem, type Config, type ProofConfig, type Thresholds } from './config.js';
 import { loadEnv } from './env.js';
 import { Git } from './git.js';
@@ -83,19 +84,12 @@ interface Args {
   thresholds: Partial<Thresholds>;
 }
 
-/** Options each command takes, besides --config, --skill, --reporter and --json. */
-const OPTIONS: Record<Command, string[]> = {
-  proof: ['--compact', '--write', '--no-run'],
-  test: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
-  check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
-};
-
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--version') || argv.includes('-v')) return print(`${version()}\n`);
   const command = argv[0] && !argv[0].startsWith('-') ? argv.shift()! : 'help';
   if (command === 'help' || argv.includes('--help') || argv.includes('-h')) return print(HELP);
-  if (command === 'init') return initCommand(argv[0] ?? '.');
+  if (command === INIT) return initCommand(argv[0] ?? '.');
   if (!(command in OPTIONS)) usage(`unknown command "${command}". Run \`skillunit --help\`.`);
   await runCommand(command as Command, parseArgs(command as Command, argv));
 }
@@ -115,7 +109,7 @@ function parseArgs(command: Command, argv: string[]): Args {
       if (!(v >= 0 && v <= 1)) usage(`${flag} must be a number from 0 to 1`);
       return v;
     };
-    if (flag.startsWith('-') && !['--config', '--skill', '--reporter', '--json', ...OPTIONS[command]].includes(flag)) {
+    if (flag.startsWith('-') && !([...COMMON_OPTIONS, ...OPTIONS[command]] as readonly string[]).includes(flag)) {
       usage(`${command} does not take ${flag}. Run \`skillunit --help\`.`);
     }
     if (flag === '--config') args.config = value();
@@ -222,7 +216,7 @@ async function runCommand(command: Command, args: Args) {
     });
     const root = args.reporter === 'github' ? repositoryRoot(process.cwd()) : undefined;
     print(render(report, args.reporter, { cwd: process.cwd(), ...(root ? { root } : {}), color: args.reporter === 'table' && colorByDefault(), compact: args.compact }));
-    process.exitCode = report.ok ? 0 : 1;
+    process.exitCode = report.ok ? EXIT.passed : EXIT.failed;
   } catch (e) {
     if (e instanceof ConfigError || e instanceof ModelError) usage(e.message);
     throw e;
@@ -305,9 +299,9 @@ function usage(message: string): never {
   const json = argv.includes('--json') || argv.some((a, i) => a === '--reporter' && argv[i + 1] === 'json');
   if (json) {
     const command = argv[0] && !argv[0].startsWith('-') ? argv[0] : null;
-    process.stdout.write(`${JSON.stringify({ schema: REPORT_SCHEMA, command, ok: false, error: { exit: 2, message } }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ schema: REPORT_SCHEMA, command, ok: false, error: { exit: EXIT.usage, message } }, null, 2)}\n`);
   }
-  throw new Exit(2);
+  throw new Exit(EXIT.usage);
 }
 
 main().catch((e: unknown) => {

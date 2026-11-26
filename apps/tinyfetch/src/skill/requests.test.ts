@@ -3,101 +3,191 @@
 // #region skill:requests
 import { tf } from 'tinyfetch';
 // #endregion
-import { setup, unit } from 'skillunit/vitest';
+import type { ClientOptions, RequestOptions } from 'tinyfetch';
+import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
-import { and, calls, methods, reset, serve } from './helpers.js';
+import { JSON_TYPE, PARSED_TYPE } from '../request.js';
+import { and, call, calls, method, methods, or, reset, serve } from './helpers.js';
 
 afterEach(reset);
 
 setup('requests', {
   file: 'features/requests.md',
   title: 'tinyfetch — requests',
-  when: 'Send a request, read the response, pass query parameters or a body',
-  description: 'Send a request and read its response: the methods, query parameters and JSON bodies.',
+  when: 'Send a request: its method, path, body, headers and query',
+  description: 'What a request sends, and what its call resolves to.',
 });
 
+const API = 'https://api.example.com/users';
+const code = (items: string[]) => items.map((i) => `\`${i}\``);
+const opt = key<RequestOptions>;
+const clientOpt = key<ClientOptions>;
+/** The methods of a client, and how many arguments each takes before its options. */
+const { create: _create, ...client } = tf;
+const withBody = Object.entries(client).filter(([, m]) => m.length > 2).map(([n]) => n);
+const withoutBody = Object.entries(client).filter(([, m]) => m.length <= 2).map(([n]) => n);
+const header = (i: number, name: string) => (calls[i]!.init.headers as Record<string, string>)[name];
+
 describe('features/requests.md', () => {
-  // What each method resolves to, as the body observes it: a method added to the client, or one
-  // that changes what it returns, changes the sentence.
-  unit('method-results', { when: 'the code reads what a request resolves to.' }, async (u) => {
-    const body: string[] = [];
-    const nothing: string[] = [];
-    for (const [name, call] of Object.entries(methods('http://x/a'))) {
-      serve({ body: { id: 1 } });
-      const result = await call();
-      if (result === undefined) nothing.push(`\`${name}\``);
-      else {
-        expect(result).toEqual({ id: 1 });
-        body.push(`\`${name}\``);
-      }
+  unit('methods', { when: 'the code sends a request.' }, async (u) => {
+    for (const [name, call] of Object.entries(methods(API))) {
+      serve({ body: {} });
+      await call();
+      expect(calls[0]!.init.method, name).toBe(name.toUpperCase());
+      expect(calls[0]!.init.body === undefined, name).toBe(withoutBody.includes(name));
     }
-    const parts = [body.length ? `${and(body)} resolve to the body of the response` : '', nothing.length ? `${and(nothing)} ${nothing.length > 1 ? 'resolve' : 'resolves'} to \`undefined\`` : ''];
-    u.value(`${parts.filter(Boolean).join('; ')}.`);
+    u.value(`a client has the methods ${and(code(Object.keys(client)))}, and each sends the HTTP method of its name; ${and(code(withBody))} take \`(path, body, options)\`, and ${and(code(withoutBody))} take \`(path, options)\`.`);
   });
 
   unit(
-    'response-body',
+    'request-options',
     {
-      when: 'a request resolves.',
-      value: 'a response whose `content-type` is JSON comes back parsed; any other comes back as text.',
+      when: 'the code passes options to a request.',
     },
-    async () => {
-      serve({ body: { id: 1 } }, { body: 'plain', type: 'text/plain' }, { body: '<p>hi</p>', type: 'text/html' });
-      expect(await tf.get('http://x/json')).toEqual({ id: 1 });
-      expect(await tf.get('http://x/text')).toBe('plain');
-      expect(await tf.get('http://x/html')).toBe('<p>hi</p>');
+    async (u) => {
+      // Typed against the type: a key added to `RequestOptions` fails the type-check until it is here.
+      const every: Required<RequestOptions> = { headers: {}, query: {}, timeout: 1_000, retry: 0, retryDelay: 1, signal: new AbortController().signal };
+      serve({ body: {} });
+      await expect(tf.get(API, every)).resolves.toEqual({});
+      u.value(`the options of a request are ${and(code(Object.keys(every)))}, and no other.`);
     },
   );
 
   unit(
-    'query-in-options',
+    'send-a-body',
     {
-      when: 'a request needs query parameters.',
-      do: 'pass them in the `query` option, which encodes each value.',
+      when: `the code sends data with ${or(code(withBody))}.`,
+      do: `pass the value itself as \`body\`, not \`JSON.stringify(value)\`: tinyfetch sends \`JSON.stringify(body)\`, so a string is sent as a quoted JSON string.`,
+    },
+    async () => {
+      serve({ body: {} });
+      // #region skill:send-a-body
+      await tf.post('https://api.example.com/users', { name: 'Ada' });
+      // #endregion
+      expect(calls[0]!.init.body).toBe(JSON.stringify({ name: 'Ada' }));
+      for (const name of withBody) {
+        const send = client[name as keyof typeof client] as (p: string, b: unknown) => Promise<unknown>;
+        serve({ body: {} }, { body: {} });
+        await send(API, { name: 'Ada' });
+        await send(API, JSON.stringify({ name: 'Ada' }));
+        expect(calls.map((c) => c.init.body), name).toEqual([JSON.stringify({ name: 'Ada' }), JSON.stringify(JSON.stringify({ name: 'Ada' }))]);
+      }
+    },
+  );
+
+  unit(
+    'content-type',
+    {
+      when: `the code sets \`content-type\` in \`${opt('headers')}\`.`,
+      value: `a request with a body sends \`content-type: ${JSON_TYPE}\`, which replaces a \`content-type\` of \`${opt('headers')}\`, so tinyfetch sends no other kind of body; a request with no body sends the \`content-type\` of \`${opt('headers')}\` as it is.`,
+      // An exception to apply: a header the code sets that tinyfetch replaces.
       ask: {
-        id: 'query-parameters',
-        scenario: 'The code lists users page by page and must send the page number and a search term typed by the user.',
-        question: 'How should it pass them?',
+        id: 'send-csv',
+        scenario: `The code uploads a CSV file with \`${call('post')}\`, and sets \`content-type: text/csv\` in \`${opt('headers')}\`.`,
+        question: 'Which `content-type` does the request send?',
         options: {
-          option: 'In the `query` option of the call',
-          'by-hand': 'Appended to the path as `?page=...&q=...`',
+          json: `\`${JSON_TYPE}\``,
+          csv: `\`text/csv\`, as \`${opt('headers')}\` says`,
         },
-        expect: 'option',
+        expect: 'json',
       },
+    },
+    async () => {
+      const headers = { 'content-type': 'text/plain' };
+      for (const name of withBody) {
+        serve({ body: {} });
+        await (client[name as keyof typeof client] as (p: string, b: unknown, o: RequestOptions) => Promise<unknown>)(API, 'x', { headers });
+        expect(header(0, 'content-type'), name).toBe(JSON_TYPE);
+      }
+      for (const name of withoutBody) {
+        serve({ body: {} });
+        await (client[name as keyof typeof client] as (p: string, o: RequestOptions) => Promise<unknown>)(API, { headers });
+        expect(header(0, 'content-type'), name).toBe('text/plain');
+        serve({ body: {} });
+        await (client[name as keyof typeof client] as (p: string) => Promise<unknown>)(API);
+        expect(header(0, 'content-type'), name).toBeUndefined();
+      }
+    },
+  );
+
+  unit(
+    'headers',
+    {
+      when: 'the code sets headers on a client or a request.',
+      value: `a request sends \`accept: ${JSON_TYPE}\`, then the \`${clientOpt('headers')}\` of its client, then its own: a later one replaces an earlier one of the same name, \`accept\` included.`,
+    },
+    async () => {
+      const api = tf.create({ headers: { 'x-team': 'a', 'x-client': 'c' } });
+      for (const call of Object.values(methods(API))) {
+        serve({ body: {} });
+        await call();
+        expect(header(0, 'accept')).toBe(JSON_TYPE);
+      }
+      serve({ body: {} });
+      await api.get(API, { headers: { 'x-team': 'b' } });
+      expect([header(0, 'accept'), header(0, 'x-team'), header(0, 'x-client')]).toEqual([JSON_TYPE, 'b', 'c']);
+      serve({ body: {} });
+      await tf.create({ headers: { accept: 'text/csv' } }).get(API);
+      expect(header(0, 'accept')).toBe('text/csv');
+      serve({ body: {} });
+      await tf.get(API, { headers: { accept: 'text/csv' } });
+      expect(header(0, 'accept')).toBe('text/csv');
+    },
+  );
+
+  unit(
+    'query',
+    {
+      when: `the code passes \`${opt('query')}\`.`,
+      value: `each key of \`${opt('query')}\` is set on the query string of the URL, as \`String(value)\` and encoded; a key the path already has takes the new value, and the other keys of the path stay.`,
     },
     async () => {
       serve({ body: [] });
-      // #region skill:query-in-options
-      await tf.get('https://api.example.com/users', {
-        query: { page: 2, sort: 'name' },
-      });
+      // #region skill:query
+      await tf.get('https://api.example.com/users', { query: { role: 'admin', page: 2 } });
       // #endregion
-      expect(calls[0]!.url).toBe('https://api.example.com/users?page=2&sort=name');
+      expect(calls[0]!.url).toBe('https://api.example.com/users?role=admin&page=2');
+      serve({ body: [] });
+      await tf.get(`${API}?page=1&sort=name`, { query: { page: 3, active: true, q: 'a b&c' } });
+      const url = new URL(calls[0]!.url);
+      const params: Record<string, string> = {};
+      url.searchParams.forEach((value, key) => (params[key] = value));
+      expect(params).toEqual({ page: '3', sort: 'name', active: 'true', q: 'a b&c' });
+      // Replaced: the key is there once.
+      expect(url.searchParams.getAll('page')).toEqual(['3']);
+      expect(url.search).toContain('q=a+b%26c');
     },
   );
 
   unit(
-    'body-as-object',
+    'response-value',
     {
-      when: 'a request sends data.',
-      do: 'pass the object itself as the body; tinyfetch serializes it and sets `content-type`.',
+      when: 'the code uses what a call resolves to.',
+      value: `a call resolves to the body parsed as JSON when the \`content-type\` of the response has \`${PARSED_TYPE}\` in it, to the text of the body when it does not, and to an empty string when the body is empty; \`${method('head')}\` resolves to \`undefined\`.`,
+      // A case to place: a response with no body, from a method that is not `head`.
       ask: {
-        id: 'send-an-object',
-        scenario: 'The code creates a user from a form and has the user as a plain object.',
-        question: 'What should it pass as the body of `tf.post`?',
+        id: 'delete-no-content',
+        scenario: `The code awaits \`${call('delete')}(...)\` on an API that answers 204 No Content.`,
+        question: 'What does the call resolve to?',
         options: {
-          object: 'The object itself',
-          string: 'The object passed through `JSON.stringify` first',
+          empty: 'An empty string',
+          undef: '`undefined`',
+          nothing: '`null`',
         },
-        expect: 'object',
+        expect: 'empty',
       },
     },
     async () => {
-      serve({ status: 201, body: { id: 2 } });
-      // #region skill:body-as-object
-      await tf.post('https://api.example.com/users', { name: 'Ada' });
-      // #endregion
-      expect(calls[0]!.init).toMatchObject({ method: 'POST', body: '{"name":"Ada"}', headers: { 'content-type': 'application/json' } });
+      serve({ body: { id: 1 } });
+      expect(await tf.get(API)).toEqual({ id: 1 });
+      serve({ body: { id: 1 }, type: 'application/problem+json' });
+      expect(await tf.get(API)).toEqual({ id: 1 });
+      serve({ body: 'id,name', type: 'text/csv' });
+      expect(await tf.get(API)).toBe('id,name');
+      serve({}, { type: 'text/plain' });
+      expect([await tf.delete(API), await tf.get(API)]).toEqual(['', '']);
+      serve({ body: { id: 1 } });
+      expect(await tf.head(API)).toBeUndefined();
     },
   );
 });

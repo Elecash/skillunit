@@ -18,7 +18,7 @@ import { alignLines, differences } from '../build/align.js';
 import { listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
 import { buildFromRecords } from '../build/from-records.js';
 import { readRecords, type Records } from '../build/records.js';
-import type { ProofConfig } from '../config.js';
+import { FORMAT_FILE, type ProofConfig } from '../config.js';
 import type { Origin, Problem } from '../problems.js';
 import type { UnitKind } from '../unit/contract.js';
 import { collectRegions, type Regions } from './regions.js';
@@ -421,7 +421,7 @@ function formatCopies(items: { text: string; abs: string }[], cfg: ProofConfig):
     while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
     return join(dir, `.${basename(abs, '.md')}.skillunit-build-${process.pid}.md`);
   });
-  const format = (paths: string[]) => spawnSync(cfg.format!.replaceAll('{file}', paths.map(quote).join(' ')), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
+  const format = (paths: string[]) => spawnSync(cfg.format!.replaceAll(FORMAT_FILE, paths.map(quote).join(' ')), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
   try {
     items.forEach((item, i) => writeFileSync(copies[i]!, item.text));
     if (items.length > 1 && format(copies).status === 0) return copies.map((copy) => readFileSync(copy, 'utf8'));
