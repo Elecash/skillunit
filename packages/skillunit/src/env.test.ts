@@ -3,13 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { envFiles, loadEnv } from './env.js';
-import { PROVIDER_NAMES, PROVIDERS } from './models/index.js';
-import { unit } from './vitest.js';
-
-/** The environment variables of the providers that ship with SkillUnit. */
-const KEYS = PROVIDER_NAMES.flatMap((n) => [...PROVIDERS[n].env]);
-/** `a`, `a or b`, `a, b or c`. */
-const or = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);
 
 const roots: string[] = [];
 afterAll(() => roots.forEach((r) => rmSync(r, { recursive: true, force: true })));
@@ -29,37 +22,7 @@ function layout() {
 }
 
 describe('.env files', () => {
-  unit('key-outside-the-repo', {
-      when: "the test layer needs the decision model's API key.",
-      // The variables come from the providers that ship, so a new one shows up in the skill.
-      do: `put the key of the provider in \`skillunit.yaml\`, ${or(KEYS.map((v) => `\`${v}\``))}, in the environment (a secret in CI), or in a \`.env\` file that git ignores, next to \`skillunit.yaml\` or at the root of the repository.`,
-      check: `forbid \`/(${KEYS.map((v) => v.replace(/_API_KEY$/, '')).join('|')})_API_KEY:\\s*\\S/\` in yaml`,
-      ask: [
-        {
-          id: 'key-in-config',
-          scenario: 'CI needs the TypeSafe key, and the agent is setting up the project.',
-          question: 'Where should the agent put the key?',
-          options: {
-            env: `In a \`.env\` file that git ignores locally, and as a \`${PROVIDERS.typesafe.env[0]}\` secret in CI`,
-            config: 'In `skillunit.yaml`, next to `model`',
-            'test-file': 'In the test file that declares the questions',
-          },
-          expect: 'env',
-        },
-        {
-          id: 'key-of-the-provider',
-          scenario: "The project's `skillunit.yaml` has `model: { provider: openai }`, and the agent is adding the decision model's key to CI.",
-          question: 'Which secret should the agent add?',
-          options: {
-            openai: `\`${PROVIDERS.openai.env[0]}\``,
-            typesafe: `\`${PROVIDERS.typesafe.env[0]}\``,
-            both: `Both \`${PROVIDERS.openai.env[0]}\` and \`${PROVIDERS.typesafe.env[0]}\``,
-          },
-          expect: 'openai',
-        },
-      ],
-    }, (u) => {
-    u.example('sh', 'echo "TYPESAFE_API_KEY=your-key" >> .env');
+  it('reads the file of the start folder, then those above it up to the root of the repository', () => {
     const { repo } = layout();
     expect(envFiles(join(repo, 'apps', 'app'))).toEqual([join(repo, 'apps', 'app', '.env'), join(repo, '.env')]);
     expect(envFiles(join(repo, 'apps', 'other'))).toEqual([join(repo, '.env')]);

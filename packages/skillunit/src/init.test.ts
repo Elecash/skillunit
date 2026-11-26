@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
 import { init } from './init.js';
-import { ConfigError } from './lint/types.js';
+import { ConfigError } from './problems.js';
 
 const roots: string[] = [];
 function project(): string {
@@ -21,27 +21,20 @@ describe('init', () => {
     const root = project();
     expect(init('skills/my-skill', root)).toEqual([
       'created skillunit.yaml',
-      'next: run `skillunit lint`',
-      'a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them',
+      'next: in a test, declare each file of the skill with `setup()` and each unit with `unit()`, from `skillunit/vitest`, and set `proof.run` in skillunit.yaml to the command that runs those tests',
+      'then: run `skillunit proof --write` to build ./skills/my-skill, and `skillunit check` to check it',
     ]);
     expect(existsSync(join(root, 'specs'))).toBe(false);
     expect(existsSync(join(root, 'skills', 'my-skill', 'skillunit.yaml'))).toBe(false);
     const config = loadConfig(join(root, 'skillunit.yaml'));
     expect(config.skill).toBe(join(root, 'skills', 'my-skill'));
     expect(config.configDir).toBe(root);
-    expect(config.examples?.ts).toBeUndefined();
     // Building the skill from the tests is there to turn on, commented out.
-    expect(config.source).toBeUndefined();
+    expect(config.proof).toBeUndefined();
     const text = readFileSync(join(root, 'skillunit.yaml'), 'utf8');
-    expect(text).toContain('# source: ./skill-src\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts\n');
+    expect(text).toContain('\n# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts\n');
+    expect(text).not.toContain('source');
     expect(text).not.toContain('specs');
-  });
-
-  it('turns on the type-check when the project has a tsconfig.json', () => {
-    const root = project();
-    writeFileSync(join(root, 'tsconfig.json'), '{}');
-    init('skills/my-skill', root);
-    expect(loadConfig(join(root, 'skillunit.yaml')).examples?.ts?.tsconfig).toBe(join(root, 'tsconfig.json'));
   });
 
   it('with no folder, the skill is the current folder', () => {
@@ -50,9 +43,15 @@ describe('init', () => {
     expect(readFileSync(join(root, 'skillunit.yaml'), 'utf8')).toMatch(/^skill: \. +# folder with SKILL\.md$/m);
   });
 
-  it('says so when the folder has no SKILL.md', () => {
+  it('with no SKILL.md, says so, and gives the same steps, which build it', () => {
     const root = project();
-    expect(init('skills/other', root)[1]).toBe('there is no SKILL.md in ./skills/other: set `skill` in skillunit.yaml to the folder that has it');
+    const out = init('skills/other', root);
+    expect(out).toEqual([
+      'created skillunit.yaml',
+      'there is no SKILL.md in ./skills/other yet: the steps below build it from your tests',
+      'next: in a test, declare each file of the skill with `setup()` and each unit with `unit()`, from `skillunit/vitest`, and set `proof.run` in skillunit.yaml to the command that runs those tests',
+      'then: run `skillunit proof --write` to build ./skills/other, and `skillunit check` to check it',
+    ]);
   });
 
   it('refuses to overwrite skillunit.yaml', () => {

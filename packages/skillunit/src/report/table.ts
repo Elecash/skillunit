@@ -1,34 +1,23 @@
 /**
- * The default reporter, for people. `lint` alone prints one row per file with findings, then one
- * block per failure, the warnings, and a status line. The other commands print the report by
- * unit (`units.ts`): each file of the skill, each unit in it, and under the unit the lines of
- * each layer, each failure with its details under it. Then an index of what failed, so the end
- * of the output, which is what a terminal shows, names it. Lint findings come at most
- * `PER_EXAMPLE` per example and each line once, so a skill of fragments stays readable; the
- * JSON report keeps every finding.
+ * The default reporter, for people: the report by unit (`units.ts`), each file of the skill, each
+ * unit in it, and under the unit the lines of each layer, each failure with its details under it.
+ * Then an index of what failed, so the end of the output, which is what a terminal shows, names
+ * it. The JSON report keeps every finding whole.
  */
 import { join } from 'node:path';
-import type { LintResult, Problem } from '../lint/types.js';
 import type { RunReport } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { RequestReport } from '../test/runner.js';
-import { answered, brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, undeclaredNames, where, withOrigin } from './text.js';
+import { answered, brief, buildChange, decidingNumber, proofSummary, distribution, painter, pad, padStart, plural, shown, skillFile, statusLine, where, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
-import { compact, layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
+import { layerOf, unitTree, type Line, type Mark, type UnitNode, type UnitTree } from './units.js';
 
 type Painter = ReturnType<typeof painter>;
 
 export function table(report: CheckReport, options: ReportOptions): string {
   const c = painter(options.color);
   const out: string[] = [];
-  const { lint } = report;
-  if (lint) out.push(...lintBlock(lint, options, c));
-  const failed = report.command === 'lint' ? lintFailures(report, options, c, out) : byUnit(report, options, c, out);
-
-  const codes = lint ? codeCounts(lint.problems) : '';
-  if (codes) out.push('', c.dim(`Type problems by code: ${codes}`));
-  const names = lint ? undeclaredNames(lint.summary) : null;
-  if (names) out.push(...(codes ? [] : ['']), ...names);
+  const failed = byUnit(report, options, c, out);
   if (failed.length) out.push('', c.bold(c.red('Failed')), ...failed.map((f) => `  ${f}`));
 
   out.push('', report.ok ? c.green(statusLine(report)) : c.red(statusLine(report)), '');
@@ -37,71 +26,6 @@ export function table(report: CheckReport, options: ReportOptions): string {
 
 const sign = (c: Painter, mark: Mark) =>
   mark === 'pass' ? c.green('✓') : mark === 'fail' ? c.red('✗') : mark === 'warn' ? c.yellow('~') : mark === 'none' ? c.dim('–') : c.dim('·');
-
-// ---------------------------------------------------------------- lint
-
-/** The header, one row per file with findings, and what was checked. */
-function lintBlock(lint: LintResult, options: ReportOptions, c: Painter): string[] {
-  const out = ['', `${c.bold('Lint')}  ${c.dim(shown(lint.skill, options))}`];
-  const rows = lint.files.map((file) => {
-    const mine = lint.problems.filter((p) => p.file === file);
-    const errors = mine.filter((p) => p.severity === 'error').length;
-    return { file, errors, warnings: mine.length - errors };
-  });
-  // Problems about a file that does not exist (a missing SKILL.md) get a row of their own.
-  for (const p of lint.problems) {
-    if (!rows.some((r) => r.file === p.file)) rows.push({ file: p.file, errors: p.severity === 'error' ? 1 : 0, warnings: p.severity === 'warning' ? 1 : 0 });
-  }
-  // A row for each file with a finding; clean files are only counted.
-  const found = rows.filter((r) => r.errors || r.warnings);
-  const clean = rows.length - found.length;
-  const w = Math.max(24, ...found.map((r) => r.file.length)) + 2;
-  if (found.length) out.push(c.dim(`    ${pad('FILE', w)}${padStart('ERRORS', 8)}${padStart('WARNINGS', 10)}`));
-  for (const r of found) {
-    out.push(`  ${sign(c, r.errors ? 'fail' : 'warn')} ${pad(r.file, w)}${padStart(String(r.errors), 8)}${padStart(String(r.warnings), 10)}`);
-  }
-  if (clean) out.push(`  ${sign(c, 'pass')} ${found.length ? `${plural(clean, 'other file')} clean` : `${plural(clean, 'file')}, all clean`}`);
-  const s = lint.summary;
-  const notes = [
-    plural(s.units, 'unit'),
-    s.typeChecked ? `${plural(s.typeChecked, 'example')} type-checked with TypeScript ${s.typescript}` : '',
-    s.notParsed ? `${s.notParsed} did not parse, so their types were not checked` : '',
-    s.commandChecked ? `${plural(s.commandChecked, 'example')} run through a command` : '',
-    s.noCheck ? `${s.noCheck} marked no-check` : '',
-    s.notConfigured ? `${s.notConfigured} ts/js not type-checked: set \`examples.ts\` in skillunit.yaml` : '',
-    Object.keys(s.unchecked).length
-      ? `not checked, no command set: ${Object.entries(s.unchecked)
-          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-          .map(([lang, n]) => `${n} ${lang}`)
-          .join(', ')}`
-      : '',
-    s.off.length ? `off: ${s.off.join(', ')}` : '',
-  ].filter(Boolean);
-  out.push(c.dim(`  ${notes.join(' · ')}`));
-  return out;
-}
-
-/** `lint` alone: one numbered failure per file, its first finding and the others under it, then the warnings. */
-function lintFailures(report: CheckReport, options: ReportOptions, c: Painter, out: string[]): string[] {
-  const lint = report.lint!;
-  // A message of several lines, such as a command's output, goes on under the finding, indented.
-  const line = (p: Problem) => `${where(lint.skill, p, options)}  ${p.unit ?? '-'}  ${brief(withOrigin(lint.skill, p, options)).split('\n').join('\n        ')}`;
-  const failures = byFile(lint.problems.filter((p) => p.severity === 'error'), line).map((lines) => [lines[0]!, ...lines.slice(1).map((l) => `   ${l}`)]);
-  const warnings = byFile(lint.problems.filter((p) => p.severity === 'warning'), line).flat();
-  if (failures.length) {
-    out.push('', c.bold(c.red('Failures')));
-    failures.forEach((block, i) => out.push('', `  ${i + 1}) ${block[0]}`, ...block.slice(1).map((l) => `  ${l}`)));
-  }
-  if (warnings.length) out.push('', c.bold(c.yellow('Warnings')), ...warnings.map((l) => `  ${l}`));
-  return [];
-}
-
-/** Lint findings as one block per file, compacted, with the findings left out counted. */
-function byFile(problems: Problem[], line: (p: Problem) => string): string[][] {
-  const files = new Map<string, Problem[]>();
-  for (const p of problems) files.set(p.file, [...(files.get(p.file) ?? []), p]);
-  return [...files.values()].map((list) => compact(list).flatMap(({ problem, more }) => [line(problem), ...(more ? [`  +${more} more in this example`] : [])]));
-}
 
 // ---------------------------------------------------------------- by unit
 
@@ -157,7 +81,6 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
       }
     }
   }
-  if (tree.otherFiles) out.push('', c.dim(`  ${plural(tree.otherFiles, 'other file')}, no unit`));
 
   // ---------------------------------------------------------------- the summary
   const notes: string[] = [];
@@ -234,14 +157,12 @@ function compactTree(
 
 /** A line's text after its mark, the details under it, and how the index of failures names it. */
 function describe(line: Line, report: CheckReport, options: ReportOptions, c: Painter): { text: string; details: string[]; short: string } {
-  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  const skill = (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
   switch (line.kind) {
-    case 'lint':
     case 'proof': {
       const place = where(skill, line.problem, options);
       const [first, ...rest] = brief(withOrigin(skill, line.problem, options)).split('\n');
-      const more = line.kind === 'lint' && line.more ? [c.dim(`+${line.more} more in this example`)] : [];
-      return { text: `${place}  ${first}`, details: [...rest, ...more], short: `${line.kind} ${place}` };
+      return { text: `${place}  ${first}`, details: rest, short: `proof ${place}` };
     }
     case 'origin': {
       const u = line.unit;
@@ -296,14 +217,4 @@ function testFailure(v: Verdict, report: CheckReport): string[] {
     ...(v.refused ? [`got:       nothing: the model refused to answer`] : [`got:       ${answered(v)} · ${decidingNumber(v, report)} · ${verdict}`, `           ${distribution(v)}`]),
     ...(phrasings ? [`phrasings: ${phrasings.join('  ')} (probability of "${v.expect}" for each${passed})`] : []),
   ];
-}
-
-/** `TS2304 512 · TS2322 40`: the type problems by code, the most frequent first. */
-function codeCounts(problems: Problem[]): string {
-  const counts = new Map<string, number>();
-  for (const p of problems) if (p.code) counts.set(p.code, (counts.get(p.code) ?? 0) + 1);
-  return [...counts]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-    .map(([code, n]) => `${code} ${n}`)
-    .join(' · ');
 }

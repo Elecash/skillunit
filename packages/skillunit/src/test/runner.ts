@@ -22,7 +22,7 @@ export interface RequestReport {
   with: string[];
   /** Length of the text the questions read: the part of `file` plus every `with` file. */
   chars: number;
-  /** Estimated tokens of the state plus the longest question: what the model's `perQuestionTokens` limits. */
+  /** Estimated input tokens of the whole request, every question with the instructions: what a run would bill. */
   estimatedTokens: number;
   model?: string;
   verdicts: Verdict[];
@@ -164,7 +164,7 @@ async function runRequest(group: Group, config: Config, model: DecisionModel, dr
 
     const request = buildRequest(text, tests, config.context, references);
     const estimate = estimateTokens(request);
-    report.estimatedTokens = estimate.stateAndLongestQuestion;
+    report.estimatedTokens = estimate.request;
     checkCounts(model, request);
     checkLimits(model, estimate, text, references);
 

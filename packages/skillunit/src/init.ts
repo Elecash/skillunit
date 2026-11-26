@@ -5,22 +5,16 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { CONFIG_FILE } from './config.js';
-import { ConfigError } from './lint/types.js';
+import { ConfigError } from './problems.js';
 
-function config(skill: string, tsconfig: boolean): string {
-  const lines = [
+function config(skill: string): string {
+  return `${[
     '# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme',
     `skill: ${skill}`.padEnd(32) + '# folder with SKILL.md',
     '# context: "One sentence about what the skill is for."',
-  ];
-  if (tsconfig) lines.push('examples:                       # type-check TypeScript and JavaScript examples', '  ts: { tsconfig: ./tsconfig.json }');
-  else lines.push('# examples: { ts: { tsconfig: ./tsconfig.json } }   # type-check TypeScript and JavaScript examples');
-  lines.push(
-    '# To build the skill from the folder people write and the units and questions your tests declare:',
-    '# source: ./skill-src',
-    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare units: *.skill.test.ts',
-  );
-  return `${lines.join('\n')}\n`;
+    '# To build the skill from the files and units your tests declare:',
+    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts',
+  ].join('\n')}\n`;
 }
 
 /** Writes the files in `cwd` for the skill in `dir`. Returns what to print. */
@@ -31,11 +25,13 @@ export function init(dir: string, cwd = process.cwd()): string[] {
   const skillDir = resolve(cwd, dir);
   const path = relative(cwd, skillDir).split(sep).join('/');
   const skill = path === '' ? '.' : path.startsWith('..') ? path : `./${path}`;
-  writeFileSync(configPath, config(skill, existsSync(join(cwd, 'tsconfig.json'))));
+  writeFileSync(configPath, config(skill));
 
   const out = [`created ${CONFIG_FILE}`];
-  if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill}: set \`skill\` in ${CONFIG_FILE} to the folder that has it`);
-  out.push('next: run `skillunit lint`');
-  out.push('a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them');
+  if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill} yet: the steps below build it from your tests`);
+  out.push(
+    `next: in a test, declare each file of the skill with \`setup()\` and each unit with \`unit()\`, from \`skillunit/vitest\`, and set \`proof.run\` in ${CONFIG_FILE} to the command that runs those tests`,
+    `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
+  );
   return out;
 }

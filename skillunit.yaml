@@ -1,15 +1,9 @@
 # SkillUnit checking its own skill. From the repository root:
-#   npm run skill:dry     lint, proof, and the questions load and fit; sends nothing
+#   npm run skill:dry     proof, and the questions load and fit; sends nothing
 #   npm run skill         the same, and the questions asked to TypeSafe (needs TYPESAFE_API_KEY)
-skill: ./skills/skillunit         # built: what agents install and read
-source: ./skills-src/skillunit    # the skill as people write it
-context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it lints the skill's units and examples, builds the units a test can prove from the project's tests, and asks a decision model closed questions about the skill's text."
-examples:
-  md: { command: "node tools/check-example.mjs md {file}" }
-  yaml: { command: "node tools/check-example.mjs yaml {file}" }
-  sh: { command: "sh -n {file}" }
-# `skillunit proof` runs the tests that declare the units of the skill and their questions, and
-# builds skills/skillunit from skills-src/skillunit. They are the files named `*.skill.test.ts`,
-# and three files whose units need fixtures of the tests around them; CI runs the whole suite.
+skill: ./skills/skillunit         # built from the tests: what agents install and read
+context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it builds the skill from the files and units the project's tests declare, and asks a decision model closed questions about the skill's text."
+# `skillunit proof` runs the tests that declare the files and units of the skill, the files named
+# `*.skill.test.ts`, and builds skills/skillunit from them; CI runs the whole suite.
 proof:
-  run: "cd packages/skillunit && npx vitest run skill.test src/lint/files.test.ts src/env.test.ts src/test/runner.test.ts"
+  run: "cd packages/skillunit && npx vitest run skill.test"

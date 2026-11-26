@@ -8,8 +8,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { buildSkill } from './build/build.js';
-import { checkRecord, type ReadQuestion, type ReadUnit } from './build/records.js';
+import { buildFromRecords } from './build/from-records.js';
+import { checkRecord, type ReadFile, type ReadQuestion, type ReadUnit } from './build/records.js';
 import { DEFAULT_THRESHOLDS, loadConfig, type Thresholds } from './config.js';
 import type { DecisionModel, DecisionRequest } from './models/types.js';
 import { collectQuestions, type TestCase } from './test/questions.js';
@@ -141,7 +141,7 @@ describe('law 4: with several phrasings a question passes exactly when most of t
 
 /** A record as a helper in another language may write it. */
 const record = (value: string, lang: string) => ({
-  skillunit: 1,
+  skillunit: 2,
   status: 'passed',
   id: 'u',
   kind: 'fact',
@@ -154,10 +154,8 @@ const record = (value: string, lang: string) => ({
   examples: [{ lang, text: 'code' }],
 });
 
-describe('laws 5 and 6: the built text has one origin per line, and a slot gives one unit', () => {
-  const source = join(root, 'source');
-  mkdirSync(source);
-  writeFileSync(join(source, 'SKILL.md'), ['# Title', '', '| {{value:u.n}} |', '', '{{unit:u}}', '', 'The end.', ''].join('\n'));
+describe('laws 5 and 6: the built text has one origin per line, and a record gives one unit', () => {
+  const file = { skillunit: 2, status: 'passed', kind: 'file', id: 'f', file: 'tests/test_u.py', line: 1, test: 'file f', skillFile: 'SKILL.md', title: 'Title', description: 'The skill.', frontmatter: { name: 'f', description: 'A skill.' }, path: '/records/f.json', abs: '/project/tests/test_u.py' } as unknown as ReadFile;
 
   const pool = { values: ['10', 'a\nb'], langs: ['sh', 'a\nb', 'sh\n### rule: injected'] };
 
@@ -168,11 +166,11 @@ describe('laws 5 and 6: the built text has one origin per line, and a slot gives
         const raw = record(value, lang);
         if (checkRecord(raw) !== undefined) continue;
         acceptedRecords++;
-        const unit = { ...raw, path: '/records/u.json', abs: '/project/tests/test_u.py' } as unknown as ReadUnit;
-        const build = buildSkill({ source, records: [unit], regions: new Map(), missingReason: '' });
-        const file = build.files.find((f) => f.file === 'SKILL.md')!;
-        const lines = file.text!.split('\n');
-        expect([value, lang, lines.length]).toEqual([value, lang, file.origins.length]);
+        const unit = { ...raw, setup: 'f', order: 0, path: '/records/u.json', abs: '/project/tests/test_u.py' } as unknown as ReadUnit;
+        const build = buildFromRecords({ units: [unit], files: [file], regions: new Map() });
+        const built = build.files.find((f) => f.file === 'SKILL.md')!;
+        const lines = built.text.split('\n');
+        expect([value, lang, lines.length]).toEqual([value, lang, built.origins.length]);
         expect([value, lang, lines.filter((l) => l.startsWith('### ')).length]).toEqual([value, lang, 1]);
       }
     }
@@ -194,9 +192,9 @@ describe('law 7: whatever the model is sent comes from the skill folder', () => 
 
   const ask = { scenario: 'A request times out.', question: 'How long did it wait?', options: ['ten', 'thirty'], expect: 'ten' };
   const unit = (more: Record<string, unknown>): ReadUnit =>
-    ({ skillunit: 1, status: 'passed', id: 'u', kind: 'fact', file: 'src/a.skill.test.ts', line: 1, test: 'fact u', when: 'x.', value: 'y.', examples: [], path: '/p/u.json', abs: '/project/src/a.skill.test.ts', ...more }) as unknown as ReadUnit;
+    ({ skillunit: 2, status: 'passed', id: 'u', kind: 'fact', file: 'src/a.skill.test.ts', line: 1, test: 'fact u', when: 'x.', value: 'y.', examples: [], path: '/p/u.json', abs: '/project/src/a.skill.test.ts', ...more }) as unknown as ReadUnit;
   const question = (skillFile: string): ReadQuestion =>
-    ({ skillunit: 1, status: 'passed', kind: 'question', id: 'q', file: 'src/b.skill.test.ts', line: 1, test: 'question q', skillFile, ask: [{ id: 'q', ...ask }], path: '/p/q.json', abs: '/project/src/b.skill.test.ts' }) as unknown as ReadQuestion;
+    ({ skillunit: 2, status: 'passed', kind: 'question', id: 'q', file: 'src/b.skill.test.ts', line: 1, test: 'question q', skillFile, ask: [{ id: 'q', ...ask }], path: '/p/q.json', abs: '/project/src/b.skill.test.ts' }) as unknown as ReadQuestion;
 
   it('`with` cannot name a file outside the skill folder', () => {
     for (const path of ['../README.md', '../.env', 'features/../../README.md']) {

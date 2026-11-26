@@ -31,6 +31,10 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
         '    unit("two-lines", when="the user asks.", value="10 seconds.", values={"n": "ten\\nseconds"})',
         '',
         '',
+        'def test_typed_number(unit):',
+        '    unit("typed-number", when="the user asks.", value="a 5xx status is retried.")',
+        '',
+        '',
         'def test_bad_lang(unit):',
         '    unit("bad-lang", when="the user asks.", do="run it.", examples=[{"lang": "sh\\n### rule: injected", "text": "x"}])',
         '',
@@ -43,7 +47,70 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
     expect(records.units.map((u) => [u.id, u.status, u.file, u.line])).toEqual([['default-timeout', 'passed', 'test_units.py', 1]]);
     expect(records.problems.map((p) => p.message.replace(/^[\w-]+\.[0-9a-f]{8}\.json: /, ''))).toEqual([
       'each example has a fence language in `lang`, such as `sh` or `yaml`; got "sh\\n### rule: injected"',
-      'unit `two-lines`: the value `n` has a line break; a value is one line, since `{{value:two-lines.n}}` puts it inside a line',
+      'unit `two-lines`: the value `n` has a line break; a value is one line, since a sentence holds it',
+      "unit `typed-number`: the number 5 in `Value` is none of the unit's `values`. Give the value a name in the code, build the sentence from that name, and list it in `values`",
     ]);
+  });
+
+  it('setup declares a file of the skill, and the units after it in the file belong to it, in order', () => {
+    const dir = mkdtempSync(join(root, 'setup-'));
+    writeFileSync(join(dir, 'conftest.py'), /```python\n([\s\S]*?)```/.exec(readFileSync(DOC, 'utf8'))![1]!);
+    writeFileSync(
+      join(dir, 'test_files.py'),
+      [
+        'def test_before(unit):',
+        '    unit("before", when="x.", do="y.")',
+        '',
+        '',
+        'def test_retries(setup):',
+        '    setup("retries", file="features/retries.md", title="Retries", when="Retry a request", description="It repeats a request.")',
+        '',
+        '',
+        'def test_first(unit):',
+        '    unit("first", when="x.", do="y.")',
+        '',
+        '',
+        'def test_second(unit):',
+        '    unit("second", when="x.", value="y.")',
+        '',
+      ].join('\n'),
+    );
+    const run = spawnSync('python3', ['-m', 'pytest', '-q', '-p', 'no:cacheprovider'], { cwd: dir, encoding: 'utf8' });
+    expect(run.status, run.stdout + run.stderr).toBe(0);
+    const records = readRecords(join(dir, 'tmp', 'skill-units'), dir);
+    expect(records.problems).toEqual([]);
+    expect(records.files.map((f) => [f.id, f.status === 'passed' ? f.skillFile : f.error])).toEqual([['retries', 'features/retries.md']]);
+    expect(records.units.map((u) => [u.id, u.setup, u.order])).toEqual([
+      ['before', undefined, undefined],
+      ['first', 'retries', 0],
+      ['second', 'retries', 1],
+    ]);
+  });
+
+  it('refuses a second unit() in one test, and a red test keeps the message of its assertion', () => {
+    const dir = mkdtempSync(join(root, 'red-'));
+    writeFileSync(join(dir, 'conftest.py'), /```python\n([\s\S]*?)```/.exec(readFileSync(DOC, 'utf8'))![1]!);
+    writeFileSync(
+      join(dir, 'test_red.py'),
+      [
+        'def test_twice(unit):',
+        '    unit("first", when="the user asks.", value="10 seconds.")',
+        '    unit("second", when="the user asks.", value="20 seconds.")',
+        '',
+        '',
+        'def test_red(unit):',
+        '    unit("red", when="the user asks.", value="10 seconds.")',
+        '    assert 1 + 1 == 3, "the timeout is not 10 seconds"',
+        '',
+      ].join('\n'),
+    );
+    const run = spawnSync('python3', ['-m', 'pytest', '-q', '-p', 'no:cacheprovider'], { cwd: dir, encoding: 'utf8' });
+    expect(run.status, run.stdout + run.stderr).toBe(1);
+    const records = readRecords(join(dir, 'tmp', 'skill-units'), dir);
+    expect(records.problems).toEqual([]);
+    const failed = Object.fromEntries(records.units.map((u) => [u.id, u.status === 'failed' ? u.error : u.status]));
+    expect(Object.keys(failed).sort()).toEqual(['first', 'red']);
+    expect(failed.first).toMatch(/^RuntimeError: unit\(\) is called once per test; first is already declared here/);
+    expect(failed.red).toMatch(/^AssertionError: the timeout is not 10 seconds/);
   });
 });

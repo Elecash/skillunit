@@ -6,12 +6,8 @@ afterAll(() => App.removeAll());
 
 /** What SkillUnit reported, in the form the scenarios list it. */
 function observe(report: Record<string, any>): Required<Omit<Expected, 'mayFail' | 'oneFails'>> & { testErrors: string[] } {
-  const problems: any[] = report.lint?.problems ?? [];
-  const show = (p: any) => [p.rule, `skill/${p.file}`, p.unit ?? '-', /TS\d+/.exec(p.message)?.[0]].filter(Boolean).join(' ');
   const verdicts: any[] = (report.test?.requests ?? []).flatMap((r: any) => r.verdicts);
   return {
-    lint: problems.filter((p) => p.severity === 'error').map(show).sort(),
-    lintWarnings: problems.filter((p) => p.severity === 'warning').map(show).sort(),
     proof: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'error').map((p: any) => p.unit ?? p.file).sort(),
     proofWarnings: (report.proof?.problems ?? []).filter((p: any) => p.severity === 'warning').map((p: any) => p.unit ?? p.file).sort(),
     failing: report.test?.dryRun ? [] : verdicts.filter((v) => !v.pass).map((v) => v.id).sort(),
@@ -37,20 +33,18 @@ describe('tinyfetch scenarios', () => {
       expect(seen.testErrors).toEqual([]);
       if (real && want.oneFails) expect(seen.failing.some((id) => want.oneFails!.includes(id)), `one of ${want.oneFails.join(', ')} fails`).toBe(true);
       expect({
-        lint: seen.lint,
-        lintWarnings: seen.lintWarnings,
         proof: seen.proof,
         proofWarnings: seen.proofWarnings,
         // A test in `mayFail` may fail or pass; any other failure, or a pass in `failing`, is a finding.
         failing: seen.failing.filter((id) => !allowed.has(id) || (want.failing ?? []).includes(id)),
       }).toEqual({
-        lint: [...(want.lint ?? [])].sort(),
-        lintWarnings: [...(want.lintWarnings ?? [])].sort(),
         proof: [...(want.proof ?? [])].sort(),
         proofWarnings: [...(want.proofWarnings ?? [])].sort(),
         failing: real ? [...(want.failing ?? [])].sort() : [],
       });
-      const clean = !want.lint?.length && !want.proof?.length && !want.failing?.length && !(real && want.oneFails?.length);
+      // Every test that failed was checked above to be one the scenario allows, so `check` fails
+      // exactly when one did, or when proof reports something.
+      const clean = !want.proof?.length && !(real && seen.failing.length);
       expect(run.code).toBe(clean ? 0 : 1);
     });
   }

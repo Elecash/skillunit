@@ -1,352 +1,251 @@
-# Style guide
+# Writing the tests of a skill
 
-How to write a skill that people can read, agents can follow and SkillUnit can test.
+A skill that SkillUnit builds comes from tests. Each file of the skill is declared with
+`setup()`, each instruction with `unit()`, and each question for the decision model with `ask`.
+This guide says what to put in those tests: which units to write, what their bodies check, when
+a unit has no body, and when it gets a question. [Proof](proof.md) has the API, and
+[Questions](questions.md) has the format of a question.
 
-## Files
+Each rule here came from writing two skills again from nothing, tinyfetch's and SkillUnit's own.
+When a rule says what went wrong without it, that is where it was found.
 
-- **Small files, one topic each.** SKILL.md is the entry point: what the library is, the
-  decisions every task meets, and a "Where to look" table that names the file for each task.
-  Every other topic gets its own file, named after it (see "The index").
-- **Split when a file covers more than one task.** If an agent doing one task only needs half
-  the file, it is two files. Above roughly 300 lines, look for the split.
-- **Do not split below one task.** An agent should not need five lookups to write one form.
-  The "Where to look" table must make the right file obvious.
+## The list comes from the code
 
-Why small files: an agent loads only what the task needs, SkillUnit can send the whole file
-with its tests within the decision model's limit, and when a file changes only its tests run.
+Before any unit, read the source of the code and list what an agent that writes code with it
+needs to know and can get wrong. Each row of the list becomes a unit, or is left out with a
+reason: "an agent runs `--help` itself", "the types document it".
 
-## The index
+Do not start from a skill or a README that is already there. A unit copied from old text says
+what the old text said. tinyfetch's old skill said "`baseUrl` is the prefix of every path", and
+its test passed, because it tried the one form of slashes that works: with `new URL(path, base)`,
+`https://api.example.com/v1` and `/users` give `https://api.example.com/users`.
 
-A skill is a tree an agent walks by task, not a document it reads whole:
+**Every public name is in a unit or left out on purpose:** exports, methods, options, settings,
+commands. Where the code can list them, the sentence is built from the list, so a name added to
+the code changes the skill:
+
+- the runtime has the values a module exports: `Object.keys(module)`;
+- the compiler has the types too: `exportNames()` from `skillunit/typescript`;
+- only the type has the keys of an options type: an object typed against the type does it.
+
+```ts
+// A key added to `ClientOptions` fails the type-check of this test until it is described here.
+const does: Record<keyof ClientOptions, string> = {
+  baseUrl: 'goes before every path that is not a whole URL',
+  headers: 'are sent with every request of the client',
+  timeout: "is the timeout of a request that sets none of its own",
+};
+u.value(Object.entries(does).map(([key, what]) => `\`${key}\` ${what}.`).join(' '));
+```
+
+## A file of the skill
+
+- **One test file per file of the skill**, with its `setup()` first and its units after it, in
+  the order the file shows them. Each unit belongs to the last `setup()` before it in its test
+  file, so a second `setup()` in a file takes every unit after it.
+- **Name the test files so `proof.run` runs them alone**, such as `*.skill.test.ts` with
+  `npx vitest run skill.test`. Every command runs them, and the whole suite is slower.
+- **`SKILL.md` is the index.** Its `setup()` has the `frontmatter` and no `when`. The `when` of
+  every other file is its row in the table of `SKILL.md`: the task that sends an agent to it.
+- **Small files, one task each.** An agent reads only what its task needs, and the decision
+  model reads one file per request. When an agent doing one task needs half a file, the file is
+  two. When it needs five files for one task, they are one.
+
+## A unit and its body
+
+A unit has a body that asserts what its sentence says. `do` makes a rule, `value` a fact, and
+`decide` with `paths` a decision; [Proof](proof.md#a-unit-in-a-test) has every key.
+
+```ts
+unit(
+  'retry-delay',
+  {
+    when: `a request with \`${opt('retry')}\` fails and is sent again.`,
+    value: `before the first new attempt tinyfetch waits \`${opt('retryDelay')}\`, ${DEFAULT_RETRY_DELAY} ms by default, and before each next one ${RETRY_TIMES}x the wait before it.`,
+    values: { delay: DEFAULT_RETRY_DELAY, times: RETRY_TIMES },
+  },
+  async () => {
+    vi.useFakeTimers();
+    serve({ status: 503 }, { status: 503 }, { body: 'ok' });
+    const pending = tf.get(API, { retry: 2 });
+    await vi.advanceTimersByTimeAsync(DEFAULT_RETRY_DELAY);
+    expect(calls).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(DEFAULT_RETRY_DELAY * RETRY_TIMES);
+    expect(calls).toHaveLength(3);
+    expect(await pending).toBe('ok');
+  },
+);
+```
+
+**A sentence says no more than its body checks.** "Every", "any", "always" and "never" need a
+body that goes through every case, or a sentence that names the cases the body tried. The body
+of tinyfetch's `base-url` now tries the four forms: a base with and without `/` at its end, and
+a path with and without `/` at its start.
+
+**A sentence can be built from what the body observes.** Which statuses are retried, what each
+method resolves to: the body tries each case and builds the sentence with `u.value()`, so a
+change to the code changes the sentence. The proof then fails on the difference, and someone
+reads it in the pull request.
+
+**An example is a region with code of the library only.** The lines between `#region
+skill:<id>` and `#endregion` are copied into the skill as they are. Set up the fake server
+before the region, and assert after it:
+
+```ts
+serve({ body: { name: 'Ada' } });
+// #region skill:await-every-request
+const user = await tf.get<{ name: string }>('https://api.example.com/users/1');
+console.log(user.name);
+// #endregion
+expect(log).toHaveBeenCalledWith('Ada');
+```
+
+**A block that is not code of the tests comes from the body**, with `u.example(lang, text)`: a
+shell command, a JSON config, an output. Build it from values of the code, and assert on them:
+
+```ts
+unit('install-the-server', { when: 'the server is not installed.', do: 'run it with `npx`.' }, (u) => {
+  const config = { servers: { example: { command: 'npx', args: ['-y', pkg.name] } } };
+  expect(pkg.bin).toBeDefined(); // `npx` can run the package
+  u.example('bash', `npx -y ${pkg.name}`);
+  u.example('json', JSON.stringify(config, null, 2));
+});
+```
+
+`u.example()` is no assertion. A body that only calls it builds its unit, and the report counts
+the unit as declared, not proved.
+
+## No value or name typed twice
+
+**A value.** Every value that defines behaviour has a name in the code: a constant, a property, a
+member of an enum. The code uses the name, the assertion uses it, and the sentence is built from
+it and lists it in `values`. When the code has the value only as a literal, give it a name before
+writing the unit.
+
+tinyfetch's skill once said the wait between retries is "doubled". The code had
+`retryDelay * 2 ** n`, the test asserted `2 * DEFAULT_RETRY_DELAY`, and the sentence had the
+word: one value, written three times by hand. When the code went to `3 ** n`, the test went red,
+someone edited the assertion, and `check` passed with "doubled" still in the skill. With
+`RETRY_TIMES` in all three, changing it changes the sentence, and the proof fails until
+`skillunit proof --write`.
+
+`unit()` checks the part a tool can see: a number in the text of a unit with a body must be one
+of its `values` ([the number rule](proof.md#no-value-typed-twice)). A word such as "doubled" it
+cannot see.
+
+**A name.** Where a sentence names something of the code (an option, a method, an export, an
+error, a type), the name comes from the code:
+
+| The name of | From | Such as |
+| --- | --- | --- |
+| a key of a type: an option, a method, a field | `key<T>(name)`, which takes only a key of `T` | `` `${key<RequestOptions>('retry')}` `` |
+| a value a module exports | `Object.keys(module)`, or `exportNames()` | the list of exports |
+| a type a file exports | `exportNames()` from `skillunit/typescript` | `Client`, `RequestOptions` |
+| a class or a function | its `name` | `` `${HttpError.name}` `` |
+
+With `retryDelay` renamed to `backoff` in tinyfetch's code and in the keys of its tests, as an
+IDE renames it, the tests passed, and after `proof --write` the skill listed `backoff` among the
+options and still said "waits `retryDelay`". With the name from `key<RequestOptions>()`, the
+rename fails the type-check of the test at that sentence. So run the type-check on the test files
+too, where CI runs it: a test run that strips the types, as Vitest does, does not check them.
+
+The name of a parameter stays typed, as in "pass the value itself as `body`": arguments go by
+position, so renaming a parameter changes nothing an agent writes.
+
+## The change that proves a unit
+
+A unit is done when a change to the code that makes its sentence false turns something red with
+no test edited. For each unit, make the smallest such change, run the tests and
+`skillunit check --dry-run`, write down what went red, and undo the change. A unit where nothing
+goes red is not done.
+
+| Unit | Change | What went red |
+| --- | --- | --- |
+| `retry-delay` | the first new attempt waits the second wait | the test of `retry-delay` |
+| `headers` | the client's headers win over the request's | the test of `headers` |
+| `exports` | one name more exported | the text of `exports`, in the proof |
+
+The table finds what review misses. In SkillUnit's own skill, two bodies passed and proved
+nothing until their change turned nothing red: one tried a tie under the threshold, which fails
+anyway, and one could not tell whether `tsconfig.json` was read. It also catches
+`expect(true).toBe(true)`, which the count of assertions takes for a real one.
+
+## A unit with no body: a gap and its reason
+
+A unit with no body is something an agent needs and no test of this code can state: what a server
+does with a repeated request, how long an upload may take, which of two designs to choose. Say
+why in a comment above it. Where part of it can be tested, that part is a unit with a body, and
+the advice stands on it:
+
+```ts
+// A gap: whether the server can take a request twice is not in tinyfetch; `retry-any-method`
+// is the part a test states, and this advice stands on it.
+unit('retry-idempotent-only', {
+  when: `the code adds \`${opt('retry')}\` to a request.`,
+  do: 'pass `retry` only to GET, HEAD, PUT and DELETE; leave it off POST and PATCH.',
+  evenWhen: 'the network drops now and then; tinyfetch sends a POST again like any other request.',
+  ask: { /* … */ },
+});
+```
+
+A gap is for what cannot be tested, not for what is slow to test. A body that needs a fake
+server the project does not have yet is a body to write.
+
+## When a unit gets a question
+
+A question is for a rule or a decision where an agent would plausibly choose wrong, and its wrong
+options are the answers an agent gives without the unit. A unit with a test gets a question only
+when its sentence leaves the reader something to work out: two values to combine, an exception to
+apply. A fact that states one value from the code gets none.
+
+**The scenario pulls toward the wrong answer.** The user asks for what the rule forbids, or the
+shortcut is in plain sight. A plain scenario lets common sense pass the question, and then it
+passes without its unit too. tinyfetch's `long-upload` needed its unit only once the user in the
+scenario asked for no time limit.
+
+**Do not ask the reader to add up**, or to conclude from a list that what it leaves out does not
+exist. Asked for the total of three waits that grow, the reader multiplied. Shown "these options
+and no other", it would not say there is no connect timeout. What the skill must say is absent,
+a fact says in so many words, in `unknown`.
+
+## The copy check
+
+A question passes with its unit and fails without it. To tell, copy the skill folder, delete the
+text of the unit in the copy and keep its heading, and ask the questions about the copy:
+
+```sh
+npx skillunit test --skill /tmp/my-skill-copy --no-run
+```
+
+Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
+threshold can flip from one run to the next, so only a clear failure without the unit counts.
+
+A question that passes without its unit goes, or the unit changes; never a threshold. When the
+unit's text changes so that a question passes, note what the agent now reads that it did not.
+When the question was the only reason for a unit with no body, the unit goes with it: the rest of
+the skill, or common sense, already gives the agent that advice.
+
+On SkillUnit's own skill, the copy check took three gaps out. Two had questions that passed
+without them, since other units already said the same; the third had one that failed even with
+its unit, and its advice was in another unit too. [Questions](questions.md#checking-that-a-question-is-real)
+says where to look when a question stays green.
+
+## What the build writes
+
+The build lays out each file the same way, and nothing in it is written by hand:
 
 ```
-skill/
-  SKILL.md               what the library is, the decisions every task meets, the index
-  widgets/calendar.md    one file per thing
-  features/i18n.md       one file per feature
-  hosts/react.md
-```
-
-To translate a calendar, the agent reads `widgets/calendar.md`, then `features/i18n.md`.
-
-- `SKILL.md` has an index table, from a task or a thing to its file. Every file is reachable
-  from it; lint reports a file that no link or path leads to. A relative path to the file counts
-  as well as a link: in a code span, in plain text, or in a fence with no language or `text`,
-  such as a list of files, one per line. A path in a fence of a language is code, and does not
-  count. A bare file name, `strings.md`, counts when no other file of the skill has that name;
-  when two do, write the path. A folder with its own `SKILL.md` is a skill of its own, reached
-  from that `SKILL.md`.
-- A rule about one thing lives in that thing's file. A rule that crosses two (how i18n applies
-  to the calendar) lives in the more specific file, and the other links to it.
-- Lint warns about a file above about 300 lines.
-
-## Layout of a file
-
-```
-# <Library> — <topic>
-
-One to three lines: what this file covers.
-
-Setup:
-<a fence with the imports every example in this file assumes>
-
-## <Reference section>
-Explanations, signatures, option tables, URLs and examples.
-
-## <Another reference section>
-...
-
+---                                (SKILL.md only: the frontmatter of its setup())
+# <title>
+<description>
+<the region skill:<setup id>, if there is one>
+## Where to look                   (SKILL.md only: a row per other file, from its `when`)
 ## Rules
-Every unit of this file, and nothing else.
+### <kind>: <id>                   (each unit, in the order its test file declares it)
+When: … · Do: … / Value: … / Decide: … · Even when: … · Unknown: …
 ```
 
-**Prose explains, rules decide.** The reference sections may describe how things work, but
-every instruction the agent must follow is a unit in `## Rules`. Concretely:
-
-1. Prose never states an instruction that is not also a unit.
-2. Prose never qualifies a rule ("except when…"). An exception goes inside its unit, under
-   `Even when`. A rule written far from its exception is the one agents get wrong.
-3. Prose refers to a rule by id: "see `fetch-before-css`".
-4. A rule refers to prose by section name, never by position: "from 'Three layers'", not
-   "below".
-
-## Units
-
-A unit is a heading and labels. The agent reads every label but `Check`, which only lint reads
-and which comes last.
-
-Every label is its own paragraph, with a blank line before and after it. GitHub then shows one
-label per line, and a formatter leaves the unit as it is.
-
-````
-### rule: retry-idempotent-only
-
-When: a request may be retried.
-
-Do: enable `retry` only for GET, HEAD, PUT and DELETE.
-
-Right:
-
-```ts
-await tf.get("https://api.example.com/users", { retry: 3 });
-```
-
-Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-````
-
-Three kinds. Labels always in this order; omit the optional ones you do not need.
-
-| Kind | Labels | Use it for |
-|---|---|---|
-| `rule` | When, Do, Even when, Right, Check | a constraint on what the agent writes |
-| `decision` | When, Decide (+ one `- **path** — condition` per path), Even when, Check | choosing between paths |
-| `fact` | When, Value, Unknown, Check | a value the agent must state exactly |
-
-Required: `When`, plus `Do` (rule), `Decide` (decision) or `Value` (fact).
-
-A unit is its instruction and one example. The other labels are there for the case that needs
-them, not to fill in.
-
-**Structure is flat.** A label and its text are one paragraph; a long line may wrap. Only `Right` and the paths of `Decide`
-may be lists, and lists go one level deep, never more. If a rule needs two `Do`, it is two
-rules, or a `decision`.
-
-### Writing each label
-
-- **When**: the situation as the agent meets it, not the topic. "Writing CSS for a form", not
-  "Styling".
-- **Do**: one action, with the exact API names.
-- **Even when**: the situations where the rule still holds although it looks like it should
-  not (autonomous runs, "one option seems obvious").
-- **Right**: the smallest example that does it correctly, or a list of them. Each must pass
-  every `Check` and type-check with the file's `Setup`.
-- **Value / Unknown** (fact): the value, and what to say about cases it does not cover, so the
-  agent does not invent.
-- **Check**: `` forbid `/regex/` in <langs> ``, when the wrong pattern can be matched. The
-  regex is written in a code span. The linter runs it over every fenced block in those
-  languages and over every inline code span of the skill. The flags `g` and `y` are not
-  allowed. Any kind of unit may have a `Check`.
-
-### Naming
-
-- Ids are kebab-case, unique across the skill, and name the instruction, not the topic:
-  `retry-idempotent-only`, not `retries`.
-
-## Units declared in code
-
-In a skill built with [proof](proof.md), every unit is declared in code and the source holds a
-`{{unit:<id>}}` slot where each one goes. The built skill has the units in the format above, so
-lint and the decision model read them as in any skill. A unit heading written in the source is an
-error.
-
-**A unit goes in the test that checks what it says.** A default, which failures are retried,
-what a failed request throws, a call that returns what the rule says it returns: the test that
-checks it declares the unit with `unit(id, spec, body)`.
-
-**A unit no test can check is declared with no body.** Advice and claims about something outside
-the library, such as "raise `timeout` for an upload", "create one client per API" or what a
-server does with a repeated POST, are declared with `unit(id, spec)`. The report calls such a
-unit declared, never proved. Put these declarations in files named `*.skill.test.ts`, which
-`proof.run` runs.
-
-**The questions about a unit go with it.** The `ask` of a unit holds the
-[questions](questions.md) for the decision model about it, and `ask()` those about the prose of a
-file. An option that repeats a value of the code is built from it, as the sentence is.
-
-**Build the sentence from the code where the code has the value.**
-
-```ts
-value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${DEFAULT_TIMEOUT}\`), for every method.`,
-```
-
-A value typed into the sentence is a second copy, kept by hand, that no test compares with the
-first. A value built from the constant changes with it, and the change shows up in the skill. A
-sentence about behaviour, such as which statuses are retried, can be built from what the body
-observes, case by case, with `u.value()`. Whatever stays literal, the body asserts.
-
-**Where slots go.** A `{{unit:<id>}}` goes where the unit belongs in the built skill: alone on
-its line, under `## Rules`, in the file about its topic. A table or a sentence of the reference part
-that repeats a default uses `{{value:<id>.<name>}}`, and the test lists the value in `values`, so
-the table and the unit cannot disagree.
-
-## Formatters
-
-A skill file has to read well on GitHub and survive a Markdown formatter. One label per
-paragraph does most of the work:
-
-- In Markdown, consecutive lines are one paragraph. Labels written on consecutive lines show
-  on GitHub as a single run: "When: … Do: … Right:".
-- A label written right under a list item belongs to that item. Prettier indents it and a
-  renderer shows it inside the item.
-- Prettier leaves a unit written one label per paragraph unchanged with `proseWrap` set to
-  `preserve` or `never`. With `always` it only wraps long lines, and a label's text runs to
-  the end of its paragraph.
-
-The linter still reads labels on consecutive lines and warns about them. That form is only
-safe with `proseWrap: preserve`.
-
-Two more habits:
-
-- **The regex of a `Check` goes in a code span.** Outside one, Markdown reads `*` and `_` as
-  emphasis, a formatter rewrites them, and the regex then matches something else.
-- **Code in fences may be rewritten**: Prettier turns `'` into `"`. Write `Check` regexes that
-  accept both quotes (`['"]`), or set `embeddedLanguageFormatting: off` for the skill folder.
-
-## Examples
-
-- Every code example in the skill follows every unit. The linter enforces it with `Check`.
-- Agents copy examples before they read rules. An example that breaks a rule wins over the rule.
-- Keep anti-patterns out of the skill. An agent copies the code it sees.
-- Every example type-checks against the current API, on its own or with the file's `Setup`.
-  A name that is not defined is a lint error, not a snippet the linter forgives.
-- A block that shows a signature or a shape, not code to copy, does not type-check. Put
-  signatures in a table or in inline code, or mark the fence `no-check`.
-
-### Setup
-
-The imports and declarations every example of a file assumes are written once:
-
-````
-Setup:
-
-```ts
-import { tf } from "tinyfetch";
-```
-````
-
-- `Setup` goes after the intro lines and before the first example, never inside `## Rules`.
-- One `Setup` per file and language. The agent reads it once and knows where each name comes
-  from. The linter puts it in front of every example of that language before type-checking.
-- A file with no `Setup` of its own for a language uses the one of the nearest `SKILL.md`
-  above it that has one for that language, up to the skill folder. A nested skill, a folder
-  with a `SKILL.md` of its own, so uses the root's `Setup` until it writes its own. Write the
-  imports most files need once, in the root `SKILL.md`. A file or a `SKILL.md` with its own
-  `Setup` uses only that one, so it repeats what it needs from the one above. This works in a
-  skill that is not written in units too.
-- An example that needs more (another import, a declared value) carries it inside its own
-  block. A complete example, one meant to be copied whole, may import and create again what
-  `Setup` declares: a name an example declares at its top level is taken from the example, and
-  lint leaves the `Setup`'s declaration of that name out for that example. So a skill in prose
-  can have `import { Resend } from 'resend'` and `declare const resend: Resend` in `Setup`
-  for its fragments, next to examples that import `Resend` and create `resend` themselves.
-- A fragment that cannot type-check on purpose gets `no-check` after the language on its
-  fence (`ts no-check`). Use it rarely: an unchecked example is one that can go stale. Lint
-  warns about any other bare word there, so a typo such as `nocheck` does not leave the block
-  checked by surprise; `key=value` and `{...}`, which other tools read, are left alone.
-- JSX goes in a `tsx` or `jsx` fence. In a `ts` fence it does not parse, and lint says so.
-- A `declare module` or `declare global` in an example is checked apart from the other
-  examples, so it changes no type outside its own block.
-
-#### When a `Setup` is not enough
-
-- **Code of another library under the same name.** A migration guide shows the old client as
-  `redis` too, and the `Setup` of `SKILL.md` types `redis` as the new one, so lint checks the
-  old code against the new types and reports findings that are not mistakes (nine in
-  Upstash's two migration files). Give that file a `Setup` of its own, which then is the one
-  its examples use, or mark the "before" blocks `no-check`.
-- **Types that come from generated code.** `createFileRoute('/posts')` in TanStack Router and
-  `prisma.user` in Prisma type-check only against code a generator writes, and a `Setup`
-  cannot supply it. In a project that has the generated code, point `examples.ts.tsconfig` at
-  a tsconfig that includes it, and import it in the `Setup`. A library's own skill repository
-  has no generated code: check in a small fixture that the tsconfig includes, or mark those
-  blocks `no-check`.
-
-### Short examples
-
-Docs leave things out of their examples, and an example in a skill still has to type-check.
-Three ways to keep it short and complete:
-
-- Put what every example of the file assumes in `Setup`, stand-in values included, declared
-  without a body: `declare const user: User;` or `declare function render(user: User): void;`.
-  The example then uses `user` as if the code around it had made one.
-- Leave a part out with a comment, such as `// handle the other cases` inside a `catch`. A
-  comment parses; three dots do not, and lint reports the block.
-- Show only the call the rule is about, not the function around it.
-
-`no-check` stays the last resort, for a fragment none of these can make compile.
-
-## Tests
-
-SkillUnit's test layer asks a decision model closed questions about the skill, which the tests
-declare with their units ([questions](questions.md)). How a question is asked decides what its
-answer can tell.
-
-**Write a choice test unless the decision has exactly two outcomes.** SkillUnit adds `none` to
-every choice test, so a model that finds nothing in the skill picks `none` and the test fails. A
-yes/no test has no such answer. When the skill is silent, SkillUnit asks the model to give yes
-and no the same probability, which fails the test whichever answer it expects. Not every model
-does: asked "should the agent log each retry?" about tinyfetch's retries, which say nothing on
-logging, Jev answered no with P(yes) of about 0.15. A test that expects `no` passes there, though
-the skill never says no.
-
-**Ask a yes/no question about one action of the agent.** The skill says yes or no to an action.
-It rarely says yes or no to a question about itself.
-
-| Instead of | Ask |
-| --- | --- |
-| Does the skill ask for a client here? | Should the agent create a client with `create` for this request? |
-| Is `retry` mentioned for PUT? | May the agent pass `retry` to that call? |
-
-A question about the text makes the model decide first what counts as the skill "asking" or
-"mentioning". Models decide that differently, so the same test can pass on one and fail on
-another.
-
-**Turn a question about a choice into a choice test.** "May the agent add an option meaning
-`the skill does not say`?" is really "what should the agent do with that option?", with *add it*
-and *leave it out* as the options. Asked that way, the answer has a `none` to fall back on and
-names what the agent does.
-
-## Example file
-
-A complete file, from [tinyfetch](https://github.com/Elecash/skillunit/blob/main/apps/tinyfetch/skill/features/retries.md):
-
-````md
-# tinyfetch — retries
-
-tinyfetch can repeat a request that failed. Which failures it repeats, and how long it waits, are in the rules below.
-
-Setup:
-
-```ts
-import { tf } from "tinyfetch";
-```
-
-## Options
-
-| Option       | Type        | Meaning                                              |
-| ------------ | ----------- | ---------------------------------------------------- |
-| `retry`      | number      | extra attempts after the first one                   |
-| `retryDelay` | number (ms) | wait before the first new attempt, doubled each time |
-
-```ts
-await tf.get("https://api.example.com/users", { retry: 3, retryDelay: 500 });
-```
-
-## Rules
-
-### fact: retry-defaults
-
-When: a request sets no `retry`, or no `retryDelay`.
-
-Value: `retry` is 0, so a failed request is not repeated; `retryDelay` is 300 ms before the first new attempt, doubled before each next one.
-
-### fact: what-is-retried
-
-When: a request with `retry` fails.
-
-Value: a network error and a 5xx status are retried; a 4xx status and a timeout never are.
-
-### rule: retry-idempotent-only
-
-When: a request may be retried.
-
-Do: enable `retry` only for GET, HEAD, PUT and DELETE.
-
-Right:
-
-```ts
-await tf.get("https://api.example.com/users", { retry: 3 });
-```
-
-Check: forbid `/\.(post|patch)\([^)]*retry/` in ts
-````
+Each label is a paragraph of its own. A rule's examples go under `Right:`, a fact's under its
+`Value`, and a decision's under the path their region names. To change a line, change the test it
+comes from and run `skillunit proof --write`: an edit by hand to the skill folder fails the next
+proof.

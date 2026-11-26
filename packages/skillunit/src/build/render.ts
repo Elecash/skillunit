@@ -1,5 +1,5 @@
 /**
- * A unit declared in a test, as the skill holds it: the labelled format that lint and the model
+ * A unit declared in a test, as the skill holds it: the labelled format the decision model
  * tests read.
  *
  * ```md
@@ -12,7 +12,7 @@
  * Unknown: tinyfetch has no separate connect timeout; say so instead of inventing one.
  * ```
  *
- * Labels go in the order of `LABELS`. The blocks of a rule go under `Right`, those of a fact under
+ * Labels go in the order of the code below. The blocks of a rule go under `Right`, those of a fact under
  * its `Value`, those of a decision under the path their region names: the regions first, in the
  * order of the test files, then the blocks of `u.example`.
  */
@@ -43,7 +43,7 @@ export function fenceLang(file: string): string {
   return LANG_OF[ext] ?? (ext || 'text');
 }
 
-/** One label paragraph: wrapped lines and runs of spaces read as one space, as the parser reads them. */
+/** One label paragraph: wrapped lines and runs of spaces become one space. */
 const flat = (text: string) => text.replace(/\s+/g, ' ').trim();
 
 interface Block {
@@ -112,7 +112,6 @@ export function renderUnit(record: PassedUnit & { abs: string }, regions: Region
     });
     label('Even when', record.evenWhen);
   }
-  label('Check', record.check);
   return { lines, problems };
 }
 

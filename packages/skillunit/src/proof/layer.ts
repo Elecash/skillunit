@@ -1,33 +1,32 @@
 /**
- * `skillunit proof`: builds the skill from `source` and the units the tests declare, and compares
- * the build with the `skill` folder, or with `write` writes it there.
+ * `skillunit proof`: builds the skill from the files, units and questions the tests declare, and
+ * compares the build with the `skill` folder, or with `write` writes it there.
  *
  * 1. empty the `proof.units` folder of its records, when `proof.run` is set and `noRun` is not;
  * 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, whatever it exits with:
  *    a failing test is what the proof is there to report;
- * 3. read the units, fill the source, run `proof.format` on each built Markdown file;
+ * 3. read the records, build each file a `setup()` declares, run `proof.format` on them, all in one run;
  * 4. compare with the `skill` folder, the first line of each block that differs, or write it.
  *
  * Every finding about a line of the skill says where that line comes from: the test that declares
- * its unit, or the file of the source.
+ * its unit or its file.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { alignLines, differences } from '../build/align.js';
-import { buildSkill, listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
-import { readRecords } from '../build/records.js';
-import type { ProofConfig } from '../config.js';
-import { output, quote } from '../lint/commands.js';
-import type { Origin, Problem } from '../lint/types.js';
+import { listFiles, type Build, type BuiltFile, type LineOrigin } from '../build/build.js';
+import { buildFromRecords } from '../build/from-records.js';
+import { readRecords, type Records } from '../build/records.js';
+import { FORMAT_FILE, type ProofConfig } from '../config.js';
+import type { Origin, Problem } from '../problems.js';
 import type { UnitKind } from '../unit/contract.js';
-import { collectRegions } from './regions.js';
+import { collectRegions, type Regions } from './regions.js';
+import { output, quote } from './shell.js';
 
 export interface ProofOptions {
   /** Folder of the built skill. */
   skill: string;
-  /** Folder the skill is built from. */
-  source: string;
   config: ProofConfig;
   /** The settings file, for findings about the settings. */
   configFile?: string;
@@ -40,23 +39,23 @@ export interface ProofOptions {
 /** What ran the tests: the command, with how long it took and what it exited with, or why nothing did. */
 export type RunReport = { command: string; status: number | null; ms: number } | { skipped: 'no-run' | 'not-set' };
 
-export type UnitProofState = 'passed' | 'failed' | 'missing';
+export type UnitProofState = 'passed' | 'failed';
 
 export interface UnitProof {
   id: string;
-  /** Null for a slot whose test left no unit. */
+  /** Null for a unit whose test failed. */
   kind: UnitKind | null;
   /** `test`: a test proves it; `declared`: it was declared with no body, so no test does. */
   from: 'test' | 'declared';
-  /** `passed`: built from its declaration; `failed`: its test failed; `missing`: nothing left it. */
+  /** `passed`: built from its declaration; `failed`: its test failed. */
   state: UnitProofState;
   /** The file of the skill the unit is built into, from the skill folder, and the line of its heading there (1 when it is not there). */
   file: string;
   line: number;
-  /** The slot, from the skill folder. */
-  source: { file: string; line: number };
+  /** The `setup()` of its file, from the skill folder. */
+  setup: { file: string; line: number };
   /** Where its test declares it, from the skill folder. */
-  test?: { file: string; line: number };
+  test: { file: string; line: number };
   /** The message of its failed test. */
   error?: string;
 }
@@ -64,7 +63,7 @@ export interface UnitProof {
 export interface FileProof {
   /** From the skill folder. */
   file: string;
-  /** `same`; `differs` or `missing` in the skill folder; `written` by `write`; `extra`: no file of the source builds it; `broken`: the build of it failed. */
+  /** `same`; `differs` or `missing` in the skill folder; `written` by `write`; `extra`: no `setup()` declares it; `broken`: the build of it failed. */
   state: 'same' | 'differs' | 'missing' | 'written' | 'extra' | 'broken';
 }
 
@@ -74,8 +73,6 @@ export interface ProofResult {
   ok: boolean;
   /** Absolute path of the skill folder. */
   skill: string;
-  /** Absolute path of the source. */
-  source: string;
   write: boolean;
   run: RunReport;
   units: UnitProof[];
@@ -87,22 +84,18 @@ export interface ProofResult {
     proved: number;
     /** Units built from a declaration with no body: no test proves them. */
     declared: number;
-    /** Slots whose test failed. */
+    /** Units whose test failed. */
     failed: number;
-    /** Slots no test left a unit for. */
-    missing: number;
-    /** `{{value:…}}` in the source. */
-    values: number;
     files: number;
     /** Files of the skill folder that differ from the build, or that it lacks. */
     differ: number;
     written: number;
-    /** Files of the skill folder no file of the source builds. */
+    /** Files of the skill folder no `setup()` declares. */
     extra: number;
   };
 }
 
-/** What `check` reports when the settings have no `source`. */
+/** What `check` reports when the settings have no `proof`. */
 export interface ProofSkipped {
   configured: false;
   ok: true;
@@ -157,71 +150,58 @@ export function proof(options: ProofOptions): ProofResult {
   return runProof(options).result;
 }
 
-/** The proof, and where each line of the skill folder comes from, for lint and the model tests. */
+/** The proof, and where each line of the skill folder comes from. */
 export function runProof(options: ProofOptions): { result: ProofResult; origin: OriginLookup } {
   const skillDir = resolve(options.skill);
-  const sourceDir = resolve(options.source);
   const cfg = options.config;
   const fromSkill = (abs: string) => relative(skillDir, abs).split('\\').join('/') || '.';
   const fromProject = (abs: string) => relative(cfg.cwd, abs).split('\\').join('/') || '.';
   const problems: Problem[] = [];
-  const add = (file: string, line: number, message: string, more: Partial<Problem> = {}) => problems.push({ file, line, severity: 'error', rule: 'proof', message, ...more });
+  const add = (file: string, line: number, message: string, more: Partial<Problem> = {}) => problems.push({ file, line, severity: 'error', message, ...more });
   const settings = settingsPlace(options.configFile, skillDir);
-  const units = fromProject(cfg.units);
 
   // ---------------------------------------------------------------- 1, 2: the tests
   const { run, ended, tail } = runTests(cfg, options.noRun === true);
 
   // ---------------------------------------------------------------- 3: the build
   const records = readRecords(cfg.units, cfg.cwd);
-  for (const p of records.problems) add(fromSkill(p.path), 1, p.message);
+  for (const p of records.problems) {
+    add(fromSkill(p.path), 1, p.message, p.test ? { origin: { kind: 'test', file: fromSkill(p.test.file), line: p.test.line, ...(p.test.unit ? { unit: p.test.unit } : {}) }, ...(p.test.unit ? { unit: p.test.unit } : {}) } : {});
+  }
   // A run that did not exit with 0 fails the proof, whatever units it left: a failing test is a
-  // failure, whether or not it declares a unit. A unit whose test failed is reported on its slot too.
-  const ranAndFailed = ended !== null;
+  // failure, whether or not it declares a unit. A unit whose test failed is reported on its test too.
   const failure = runFailure(cfg, { run, ended, tail }, records.units.length + records.questions.length > 0);
   if (failure) add(settings.file, settings.line('run'), failure);
-  const missingReason =
-    'skipped' in run
-      ? run.skipped === 'no-run'
-        ? `\`--no-run\` used the units already in \`${units}\`, and none is this one: run the tests first, or leave out \`--no-run\``
-        : `\`proof.run\` is not set, so the units are those already in \`${units}\`: run the tests first, or set \`proof.run\``
-      : ranAndFailed && !records.units.length
-        ? 'the tests did not run; see `proof.run`'
-        : 'its test was skipped or deleted, or did not run';
 
-  const sourceFiles = expand(cfg.sources, cfg.cwd).map((abs) => ({ file: abs, text: readFileSync(abs, 'utf8') }));
-  const regions = collectRegions(sourceFiles, fromProject);
+  const regions = readRegions(records, fromProject);
   for (const p of regions.problems) add(fromSkill(p.file), p.line, p.message);
 
-  const build = buildSkill({ source: sourceDir, records: records.units, regions: regions.regions, missingReason, shown: fromProject });
+  const build = buildFromRecords({ units: records.units, files: records.files, regions: regions.regions, shown: fromProject });
   for (const p of build.problems) add(fromSkill(p.file), p.line, p.message, p.unit ? { unit: p.unit } : {});
-
 
   // ---------------------------------------------------------------- 3: format
   const formatted = new Map<string, string>();
-  for (const f of build.files) {
-    if (f.text === undefined || f.broken) continue;
-    let text = f.text;
-    if (cfg.format) {
-      const result = formatCopy(text, join(skillDir, f.file), cfg);
-      if (typeof result === 'string') text = result;
-      else add(settings.file, settings.line('format'), `\`proof.format\` failed on the build of ${f.file}${result.output ? `:\n${result.output}` : ''}`);
-    }
-    formatted.set(f.file, text);
-  }
+  const markdown = build.files.filter((f) => !f.broken);
+  const results = cfg.format ? formatCopies(markdown.map((f) => ({ text: f.text, abs: join(skillDir, f.file) })), cfg) : [];
+  markdown.forEach((f, i) => {
+    const result = results[i];
+    if (result !== undefined && typeof result !== 'string') add(settings.file, settings.line('format'), `\`proof.format\` failed on the build of ${f.file}${result.output ? `:\n${result.output}` : ''}`);
+    formatted.set(f.file, typeof result === 'string' ? result : f.text);
+  });
 
   const origin = lookup(build, skillDir, fromSkill);
 
   // ---------------------------------------------------------------- 4: compare, or write
   const files: FileProof[] = [];
   const builtNames = new Set(build.files.map((f) => f.file));
+  const builtIds = new Set(build.units.map((u) => u.id));
   for (const f of build.files) {
     if (f.broken) {
       files.push({ file: f.file, state: 'broken' });
       continue;
     }
     const abs = join(skillDir, f.file);
-    const want = f.bytes ?? Buffer.from(formatted.get(f.file)!, 'utf8');
+    const want = Buffer.from(formatted.get(f.file)!, 'utf8');
     const have = existsSync(abs) ? readFileSync(abs) : null;
     if (have && have.equals(want)) {
       files.push({ file: f.file, state: 'same' });
@@ -236,31 +216,56 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     if (!have) {
       files.push({ file: f.file, state: 'missing' });
       const first = f.origins[0];
-      add(f.file, 1, `the skill folder has no \`${f.file}\`, which \`source\` builds. Run \`skillunit proof --write\``, first ? { origin: toOrigin(first, fromSkill) } : {});
+      add(f.file, 1, `the skill folder has no \`${f.file}\`, which a \`setup()\` declares. Run \`skillunit proof --write\``, first ? { origin: toOrigin(first, fromSkill) } : {});
       continue;
     }
     files.push({ file: f.file, state: 'differs' });
-    if (f.bytes) {
-      add(f.file, 1, `this file is not the one in \`source\`, which it is copied from: edit ${fromProject(join(sourceDir, f.file))}, then run \`skillunit proof --write\``, { origin: { kind: 'source', file: fromSkill(join(sourceDir, f.file)), line: 1 } });
-      continue;
-    }
     // One finding per block that differs, so a value in a table and the unit that states it are
     // both named. Where each line comes from is in `origin`, which every reporter shows.
-    const found = differences(formatted.get(f.file)!.split(/\r?\n/), have.toString('utf8').split(/\r?\n/));
+    const builtLines = formatted.get(f.file)!.split(/\r?\n/);
+    const haveText = have.toString('utf8');
+    const found = differences(builtLines, haveText.split(/\r?\n/));
     if (!found.length) found.push({ line: 1, expected: 'other line ends', actual: 'these' });
+    // The origins index the build before the formatter.
+    let unformatted: number[] | undefined;
+    const builtOrigin = (index: number) => {
+      unformatted ??= alignLines(f.text.split(/\r?\n/), builtLines);
+      const o = f.origins[Math.min(unformatted[index] ?? index, f.origins.length - 1)];
+      return o ? toOrigin(o, fromSkill) : undefined;
+    };
+    const haveLines = haveText.split(/\r?\n/);
     for (const d of found.slice(0, MAX_DIFFERENCES)) {
-      const from = origin(f.file, d.line);
+      const line = Math.min(d.line, lineCount(haveText));
+      // Lines only the skill has that hold a unit the build has nowhere: its test is gone. They
+      // belong to no unit of the build, so they are named by their own heading.
+      const stale = d.expected === undefined ? staleUnit(haveLines, d.line, d.actualEnd ?? d.line, builtIds) : undefined;
+      if (stale) {
+        add(f.file, stale.line, `the skill has the unit \`${stale.id}\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill`, {
+          unit: stale.id,
+          lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
+        });
+        continue;
+      }
+      // A line the build has belongs to the unit the build puts it in; a line only the skill has,
+      // to the line of the build it stands for.
+      const from = d.expectedLine !== undefined ? builtOrigin(d.expectedLine - 1) : origin(f.file, line);
       const unit = from?.kind === 'test' ? from.unit : undefined;
+      const [build, skill] = shownPair(d.expected, d.actual);
       // Whether the code moved or someone edited the skill folder, `--write` comes first: it is
       // all a change to the code needs, and the second sentence covers an edit by hand.
-      add(f.file, d.line, `this line is not what the build gives: the build has ${shownLine(d.expected, 'nothing here')}, the skill has ${shownLine(d.actual, 'nothing here')}. ${WRITE_ADVICE}`, { ...(from ? { origin: from } : {}), ...(unit ? { unit } : {}) });
+      add(f.file, line, `this line is not what the build gives: the build has ${build}, the skill has ${skill}. ${WRITE_ADVICE}`, {
+        ...(from ? { origin: from } : {}),
+        ...(unit ? { unit } : {}),
+        lines: { build: d.expected ?? null, skill: d.actual ?? null },
+      });
     }
     if (found.length > MAX_DIFFERENCES) add(f.file, found[MAX_DIFFERENCES]!.line, `and ${found.length - MAX_DIFFERENCES} more blocks that differ from the build. Run \`skillunit proof --write\``);
   }
-  for (const name of existsSync(skillDir) ? listFiles(skillDir) : []) {
+  for (const name of existsSync(skillDir) ? listFiles(skillDir, { dotMarkdown: true }) : []) {
     if (builtNames.has(name)) continue;
     files.push({ file: name, state: 'extra' });
-    add(name, 1, `no file of \`source\` builds \`${name}\`: move it to ${fromProject(join(sourceDir, name))}, or remove it from the skill folder${options.write ? '. `--write` leaves it there' : ''}`);
+    const left = options.write ? '. `--write` leaves it there' : '';
+    add(name, 1, `no \`setup()\` declares \`${name}\`: declare it in a test, or remove it from the skill folder${left}`);
   }
   files.sort((a, b) => a.file.localeCompare(b.file));
 
@@ -279,8 +284,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       state: u.state,
       file: u.file,
       line,
-      source: { file: fromSkill(u.source.file), line: u.source.line },
-      ...(u.test ? { test: { file: fromSkill(u.test.file), line: u.test.line } } : {}),
+      setup: { file: fromSkill(u.setup.file), line: u.setup.line },
+      test: { file: fromSkill(u.test.file), line: u.test.line },
       ...(u.error !== undefined ? { error: u.error } : {}),
     };
   });
@@ -291,7 +296,6 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     configured: true,
     ok: !problems.some((p) => p.severity === 'error'),
     skill: skillDir,
-    source: sourceDir,
     write: options.write === true,
     run,
     units: unitResults,
@@ -302,8 +306,6 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       proved: unitResults.filter((u) => u.state === 'passed' && u.from === 'test').length,
       declared: unitResults.filter((u) => u.state === 'passed' && u.from === 'declared').length,
       failed: count('failed'),
-      missing: count('missing'),
-      values: build.values,
       files: build.files.length,
       differ: files.filter((f) => f.state === 'differs' || f.state === 'missing').length,
       written: files.filter((f) => f.state === 'written').length,
@@ -313,18 +315,11 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   return { result, origin };
 }
 
-/**
- * Where each line of the skill folder comes from, without running the tests or the formatter:
- * the source filled with the units already in `proof.units`. For `skillunit lint` and
- * `skillunit test`, which read the skill folder as it is.
- */
-export function traceSkill(options: Pick<ProofOptions, 'skill' | 'source' | 'config'>): OriginLookup {
-  const skillDir = resolve(options.skill);
-  const cfg = options.config;
-  const records = readRecords(cfg.units, cfg.cwd);
-  const sourceFiles = expand(cfg.sources, cfg.cwd).map((abs) => ({ file: abs, text: readFileSync(abs, 'utf8') }));
-  const build = buildSkill({ source: resolve(options.source), records: records.units, regions: collectRegions(sourceFiles).regions, missingReason: '' });
-  return lookup(build, skillDir, (abs) => relative(skillDir, abs).split('\\').join('/'));
+/** The regions of the test files the records name. */
+function readRegions(records: Records, shown?: (abs: string) => string): Regions {
+  const named = [...records.units, ...records.questions, ...records.files].map((r) => r.abs).filter((abs) => statSync(abs, { throwIfNoEntry: false })?.isFile());
+  const files = [...new Set(named)].sort();
+  return collectRegions(files.map((abs) => ({ file: abs, text: readFileSync(abs, 'utf8') })), shown);
 }
 
 /** The origin of a line of the skill folder: the line of the build it stands for, through the formatter and edits by hand. */
@@ -333,7 +328,7 @@ function lookup(build: Build, skillDir: string, fromSkill: (abs: string) => stri
   const maps = new Map<string, number[] | null>();
   return (file, line) => {
     const f = files.get(file);
-    if (!f || f.text === undefined || !f.origins.length) return undefined;
+    if (!f || !f.origins.length) return undefined;
     let map = maps.get(file);
     if (map === undefined) {
       const abs = join(skillDir, file);
@@ -347,7 +342,7 @@ function lookup(build: Build, skillDir: string, fromSkill: (abs: string) => stri
 }
 
 function toOrigin(o: LineOrigin, fromSkill: (abs: string) => string): Origin {
-  return o.kind === 'test' ? { kind: 'test', file: fromSkill(o.file), line: o.line, unit: o.unit } : { kind: 'source', file: fromSkill(o.file), line: o.line };
+  return { kind: 'test', file: fromSkill(o.file), line: o.line, unit: o.unit };
 }
 
 /** Takes out the records of an earlier run: only `.json` files, so a wrong `proof.units` costs no other file. */
@@ -373,38 +368,79 @@ const WRITE_ADVICE = 'Run `skillunit proof --write` to update the skill. To chan
 /** Blocks that differ reported per file; the rest are counted. */
 const MAX_DIFFERENCES = 10;
 
-function shownLine(line: string | undefined, none = 'nothing more'): string {
+/** The characters of a line a message shows. */
+const SHOWN = 100;
+/** How many characters before the first difference a cut line keeps. */
+const BEFORE = 30;
+
+function shownLine(line: string | undefined, none = 'nothing more', start = 0): string {
   if (line === undefined) return none;
   if (!line.trim()) return 'an empty line';
-  const cut = line.length > 100 ? `${line.slice(0, 99)}…` : line;
+  const end = start + SHOWN;
+  const cut = line.length <= SHOWN ? line : `${start > 0 ? '…' : ''}${line.slice(start, end)}${line.length > end ? '…' : ''}`;
   return `\`${cut.replace(/`/g, "'")}\``;
 }
 
-/** Formats `text` as the file at `abs` would be: on a hidden copy in the nearest folder that exists. */
-function formatCopy(text: string, abs: string, cfg: ProofConfig): string | { output: string } {
-  let dir = dirname(abs);
-  while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
-  const copy = join(dir, `.${basename(abs, '.md')}.skillunit-build-${process.pid}.md`);
-  try {
-    writeFileSync(copy, text);
-    const run = spawnSync(cfg.format!.replaceAll('{file}', quote(copy)), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
-    if (run.status === 0) return readFileSync(copy, 'utf8');
-    return { output: output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [copy], abs) || (run.error?.message ?? `exit ${run.status}`) };
-  } finally {
-    rmSync(copy, { force: true });
-  }
+/**
+ * The two sides of a difference as a message shows them. When one is longer than a message
+ * shows, both are cut around the first character where they differ, so the difference is in
+ * the message; `…` marks the side that was cut.
+ */
+function shownPair(build: string | undefined, skill: string | undefined): [string, string] {
+  if (build === undefined || skill === undefined || (build.length <= SHOWN && skill.length <= SHOWN)) return [shownLine(build, 'nothing here'), shownLine(skill, 'nothing here')];
+  let at = 0;
+  while (at < build.length && at < skill.length && build[at] === skill[at]) at++;
+  const start = Math.max(0, at - BEFORE);
+  return [shownLine(build, 'nothing here', start), shownLine(skill, 'nothing here', start)];
 }
 
-/** Files that match any of `globs` from `cwd`, absolute and sorted, `node_modules` left out. */
-export function expand(globs: string[], cwd: string): string[] {
-  if (!globs.length) return [];
-  const found: string[] = globSync(globs, { cwd, exclude: (name: string) => name === 'node_modules' || name.endsWith('/node_modules') });
-  return [...new Set(found.map((f) => resolve(cwd, f)))].filter((f) => statSync(f, { throwIfNoEntry: false })?.isFile()).sort();
+const UNIT_HEADING = /^#{1,6}\s+(?:rule|decision|fact):\s*(\S+?)\s*#*\s*$/;
+
+/** The first unit heading in lines `from` up to `to` (from 1) whose id the build has nowhere. */
+function staleUnit(lines: string[], from: number, to: number, built: Set<string>): { line: number; id: string } | undefined {
+  for (let i = from - 1; i < Math.min(to - 1, lines.length); i++) {
+    const id = UNIT_HEADING.exec(lines[i]!)?.[1];
+    if (id !== undefined && !built.has(id)) return { line: i + 1, id };
+  }
+  return undefined;
+}
+
+/** The lines of a file: a line end at the end starts no line. */
+function lineCount(text: string): number {
+  return Math.max(1, text.split(/\r?\n/).length - (/\r?\n$/.test(text) ? 1 : 0));
+}
+
+/**
+ * Formats each `text` as the file at its `abs` would be, on a hidden copy in the nearest folder
+ * that exists. `proof.format` runs once, with every copy in place of `{file}`; when that run
+ * fails, once per copy, so the error names the file it failed on and the others are formatted.
+ */
+function formatCopies(items: { text: string; abs: string }[], cfg: ProofConfig): (string | { output: string })[] {
+  const copies = items.map(({ abs }) => {
+    let dir = dirname(abs);
+    while (!existsSync(dir) && dirname(dir) !== dir) dir = dirname(dir);
+    return join(dir, `.${basename(abs, '.md')}.skillunit-build-${process.pid}.md`);
+  });
+  const format = (paths: string[]) => spawnSync(cfg.format!.replaceAll(FORMAT_FILE, paths.map(quote).join(' ')), { shell: true, cwd: cfg.cwd, encoding: 'utf8' });
+  try {
+    items.forEach((item, i) => writeFileSync(copies[i]!, item.text));
+    if (items.length > 1 && format(copies).status === 0) return copies.map((copy) => readFileSync(copy, 'utf8'));
+    return items.map((item, i) => {
+      const copy = copies[i]!;
+      // The run of every copy may have formatted this one, or left it half done.
+      writeFileSync(copy, item.text);
+      const run = format([copy]);
+      if (run.status === 0) return readFileSync(copy, 'utf8');
+      return { output: output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [copy], item.abs) || (run.error?.message ?? `exit ${run.status}`) };
+    });
+  } finally {
+    for (const copy of copies) rmSync(copy, { force: true });
+  }
 }
 
 interface SettingsPlace {
   file: string;
-  /** The line of `proof.<key>` in the settings, or of `proof:`, or of `source:`, or 1. */
+  /** The line of `proof.<key>` in the settings, or of `proof:`, or 1. */
   line: (key?: string) => number;
 }
 
@@ -420,6 +456,6 @@ function settingsPlace(configFile: string | undefined, skillDir: string): Settin
   const find = (re: RegExp) => lines.findIndex((l) => re.test(l)) + 1;
   return {
     file: relative(skillDir, configFile).split('\\').join('/'),
-    line: (key) => (key ? find(new RegExp(`^\\s+${key}\\s*:`)) : 0) || find(/^proof\s*:/) || find(/^source\s*:/) || 1,
+    line: (key) => (key ? find(new RegExp(`^\\s+${key}\\s*:`)) : 0) || find(/^proof\s*:/) || 1,
   };
 }

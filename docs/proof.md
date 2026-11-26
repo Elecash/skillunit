@@ -1,10 +1,9 @@
 # Proof
 
-Lint checks that the examples of a skill compile, and does not read what a sentence says. A
-skill can pass it and still say the default timeout is 10 seconds after the code changed it to 5.
-Proof closes that gap by moving the sentence next to the code that makes it true: a unit that a
-test can prove is declared in that test, and the skill is built from the tests and a source
-folder people write.
+The skill is built from the project's tests. Each file of the skill is declared with `setup()`,
+each instruction with `unit()`, around the test that checks what it says. `skillunit proof`
+runs those tests, builds the skill from what they declare, and compares the build with the skill
+folder, which is committed.
 
 ```ts
 import { unit } from 'skillunit/vitest';
@@ -12,8 +11,9 @@ import { unit } from 'skillunit/vitest';
 unit(
   'default-timeout',
   {
-    when: 'the user asks how long a request waits by default.',
-    value: `${DEFAULT_TIMEOUT / 1000} seconds (\`timeout: ${DEFAULT_TIMEOUT}\`), for every method.`,
+    when: 'a request sets no `timeout`, and its client sets none.',
+    value: `the request waits ${DEFAULT_TIMEOUT / 1000} seconds, whatever its method.`,
+    values: { seconds: DEFAULT_TIMEOUT / 1000 },
   },
   async () => {
     // the test: its setup, what it does, its assertions
@@ -24,6 +24,40 @@ unit(
 The `Value` is built from `DEFAULT_TIMEOUT`. When someone changes the constant, the test still
 passes, the built skill says 5 seconds, and `skillunit check` fails until the skill in the
 repository says so too. The difference shows up in the same pull request as the change.
+
+How to choose the units and what their bodies check is in the [style guide](style-guide.md).
+
+## A file of the skill
+
+`setup(id, spec)` declares a file of the skill. The units and questions after it in its test file
+belong to that file, in the order they are declared.
+
+```ts
+import { setup } from 'skillunit/vitest';
+
+setup('timeouts', {
+  file: 'features/timeouts.md',
+  title: 'tinyfetch — timeouts and cancelling',
+  when: 'Time out or cancel a request',
+  description: 'How long a request waits for the server, and how to stop it sooner.',
+});
+```
+
+| Key | | Becomes |
+| --- | --- | --- |
+| `file` | required | the path of the Markdown file in the skill folder, inside it |
+| `title` | required | `# <title>` |
+| `description` | required | the line under the title |
+| `when` | every file but `SKILL.md` | its row in the table of `SKILL.md`: the task that sends an agent to it |
+| `frontmatter: { name, description }` | `SKILL.md` only | the frontmatter of the skill; `name` is kebab-case |
+
+Each text is one line with no number, since a file has no `values`: a sentence that states a value
+is a unit. `SKILL.md` gets a "Where to look" table with a row for every other file, from its
+`when`. The region `skill:<setup id>`, anywhere in the test file, is the code under the
+description, such as the import every example of the file assumes.
+
+A unit with no `setup()` before it in its test file belongs to no file, and fails the build. A
+build with files and no `SKILL.md` fails too.
 
 ## A unit in a test
 
@@ -41,23 +75,21 @@ The keys of the spec give the kind of the unit and its labels:
 | `decide`, `paths: [{ path, when }]` | a decision | `Decide:` and one `- **path** — when` item per path |
 | `unknown` | a fact | `Unknown:` |
 | `evenWhen` | a rule or a decision | `Even when:` |
-| `check` | any kind | `Check:` |
-| `values: { name: value }` | any kind | values the prose of the skill uses, as `{{value:<id>.<name>}}`: text on one line, a finite number or a boolean |
-| `examples: [{ lang, text }]` | a rule or a fact | blocks shown under `Right`, or under the `Value`; `lang` is a fence language: letters, digits, `_`, `+`, `.` and `-` |
+| `values: { name: value }` | any kind | the numbers its text states, by name: text on one line, a finite number or a boolean. A name is letters, digits and hyphens |
 | `ask` | any kind | the [questions](questions.md) for the decision model about the unit |
 
-`do` makes a rule, `value` a fact, `decide` or `paths` a decision. A spec with two of them, an id
-that is not kebab-case, a key the kind does not take, or a question with a mistake fails its test
-with a message that says what to fix.
+`do` makes a rule, `value` a fact, `decide` or `paths` a decision. [The kinds of unit](units.md) has each of them with an example. A spec with two of them, an id
+that is not kebab-case, a key the kind does not take, an unknown key, or a question with a mistake
+fails its test with a message that says what to fix. Ids of files and units share one space, and
+each is declared once across the tests.
 
 The body gets a context, and the runner's own context after it:
 
 - `u.value(text)` sets the `Value` of a fact from what the body observed;
-- `u.example(lang, text)` adds a block the body produced: an output, a config, a table of
-  outcomes.
+- `u.example(lang, text)` adds a block the body produced: a command, a config, an output.
 
 ```ts
-unit('what-is-retried', { when: 'a request with `retry` fails.' }, async (u) => {
+unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
   const retried: string[] = [];
   const never: string[] = [];
   for (const [name, reply] of cases) {
@@ -70,12 +102,12 @@ unit('what-is-retried', { when: 'a request with `retry` fails.' }, async (u) => 
 ```
 
 Example code comes from the body's own lines, between a line containing `#region skill:<id>` and
-the next line containing `#endregion`, with the indentation they share removed. The markers are
-comments in the test's language, and the fence of the block takes the language of the test
-file. For a decision, the example of a path is the region `skill:<id>.<path>`. A unit shows its
-regions first, in the order of the test files, then the blocks of `examples`, then those of
-`u.example`, in the order of the calls. A rule's blocks go under `Right`, a fact's under its
-`Value`.
+the next line containing `#endregion`, with the indentation they share removed. SkillUnit reads
+the regions of the test file each record names. The markers are comments in the test's language,
+and the fence of the block takes the language of the test file. For a decision, the example of a
+path is the region `skill:<id>.<path>`. A unit shows its regions first, in the order of the test
+files, then the blocks of `u.example`, in the order of the calls. A rule's blocks go under
+`Right`, a fact's under its `Value`. Each region id is in one place only.
 
 ```ts
 unit(
@@ -100,16 +132,99 @@ When the body passes, the helper writes the unit as JSON into the `proof.units` 
 nearest `skillunit.yaml` above the working directory. When it throws, the helper writes a record
 with the id and the error's message, and throws again. A skipped test writes nothing.
 
+### What a body is counted as
+
+`skillunit/vitest` counts the assertions of Vitest's `expect`, `expect.soft` included, and of
+the `expect` of the test context when the body uses it, from the start of the body to its end:
+an assertion in a `beforeEach` does not count.
+
+| The body | The unit |
+| --- | --- |
+| makes an assertion, with or without `u.example()` | proved by a test |
+| calls `u.value()`, with or without an assertion | proved by a test: a change shows in the built skill |
+| calls `u.example()`, makes no assertion and calls no `u.value()` | built, and counted as declared: no test proves it |
+| does none of the three | its test fails, and the unit is not built |
+
+A body that does none of the three leaves a record that says so:
+
+```text
+unit `response-body`: the body made no assertion, so no test proves this unit. Assert in the body
+what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves
+```
+
+### Another runner
+
 `skillunit/vitest` binds Vitest's `it`. For another runner, `skillunit/unit` exports
-`createUnit(it, options)`, which gives `unit` and `ask`. `options.write(record, key)` replaces
-the function that writes the file, for a runner that cannot write files itself, such as one in a
-browser.
+`createUnit(it, options)`, which gives `unit`, `ask` and `setup`. `options.write(record, key)`
+replaces the function that writes the file, for a runner that cannot write files itself, such as
+one in a browser. `options.assertions(ctx)` returns how many assertions the test has made so far;
+with it, a body is counted as the table above says. Without it nothing is counted, so a project
+that asserts with `node:assert` under Vitest, which Vitest does not count, makes its own helper
+with `createUnit(it)` and no `assertions`.
 
 ```ts
 import { it } from 'node:test';
 import { createUnit } from 'skillunit/unit';
 
-export const { unit, ask } = createUnit(it);
+export const { unit, ask, setup } = createUnit(it);
+```
+
+### No value typed twice
+
+- Every value that defines behaviour has a name in the code: a constant, a property, a member of
+  an enum.
+- The code uses that name, the assertion of the test uses it, and the sentence of the unit is
+  built from it.
+- A unit with a test has no number typed into its sentence, and no word that stands for one,
+  such as "doubled", "twice" or "half".
+- When the code has the value only as a literal, give it a name in the code before writing the
+  unit.
+
+`unit()` checks the part of this a tool can see. In a unit with a body, every number in `when`,
+`do`, `value`, `decide`, `evenWhen`, `unknown`, the `when` of each path, and the `Value` the body
+sets with `u.value()`, must be one of the unit's `values`: a value that is that number, or text
+that has it as a number of its own. A number is digits, with `_` groups and a decimal part, not
+right after a letter, a digit, `_` or `.`, so `300 ms`, `10_000`, `2x` and `5xx` have one and
+`utf8` and `sha256` do not; `10_000` and `10000` are the same number. Any other number fails the
+test of the unit, which leaves a failed record:
+
+```text
+unit `retry-defaults`: the number 2 in `Value` is none of the unit's `values`. Give the value a
+name in the code, build the sentence from that name, and list it in `values`
+```
+
+There is no exception for a URL, a version, a port or a date: each would let a number of the code
+through. A number that is meant, such as the one in a host name, costs one line and is on record
+as meant:
+
+```ts
+const SITE = '500miles.com';
+unit('report-site', { when: 'the code sends a report.', do: `send it to \`${SITE}\`.`, values: { site: SITE } }, () => {
+  expect(reportUrl()).toContain(SITE);
+});
+```
+
+A unit with no body is not checked: advice may give a number the code does not have. SkillUnit
+holds a record written by a test in another language to the same check when it reads it.
+
+### Names from the code
+
+A name a sentence gives in code comes from the code too, so a rename fails a test or changes the
+skill:
+
+- `key<T>(name)`, from `skillunit/vitest` or `skillunit/unit`, returns `name` and accepts only a
+  key of `T`: `key<RequestOptions>('retry')`. A key renamed in the code fails the type-check of
+  every test that still names it.
+- `exportNames(entry)`, from `skillunit/typescript`, gives the names a TypeScript file exports,
+  `values` and `types` apart, as the compiler sees them. A class exported with `export type` is a
+  type, and `export *` brings the names of its module. It takes a path or a `file:` URL, resolves
+  modules with the `tsconfig.json` above the file, and loads the project's own `typescript`,
+  which `skillunit/vitest` and `skillunit/unit` never load.
+
+```ts
+import { exportNames } from 'skillunit/typescript';
+
+const { values, types } = exportNames(new URL('../index.ts', import.meta.url));
 ```
 
 ## A unit no test proves
@@ -118,67 +233,28 @@ Advice, and a claim about something outside the library, have nothing to assert.
 declared with the same `unit()` and no body:
 
 ```ts
+// A gap: how long a server may take is not in tinyfetch; `timeout-off` states what turning the
+// timeout off does, and this advice stands on it.
 unit('never-disable-timeout', {
   when: 'a request may take long, such as an upload or a report.',
-  do: 'raise `timeout` to a number of milliseconds that fits the request, and never set it to `0`.',
-  check: 'forbid `/timeout:\\s*0\\b/` in ts',
+  do: 'raise its `timeout` to a number of milliseconds that fits the request, and never set `timeout: 0`.',
   ask: {
-    scenario: 'The code uploads a file that can take two minutes.',
-    question: 'What does the agent do about the timeout?',
-    options: { raise: `Set \`timeout\` above ${DEFAULT_TIMEOUT}`, off: 'Set `timeout: 0`' },
+    scenario: 'The user asks that an upload never time out, since it can take several minutes.',
+    question: 'What should the agent set on that call?',
+    options: { raise: '`timeout: 600_000`, ten minutes', off: '`timeout: 0`, so it never times out' },
     expect: 'raise',
   },
 });
 ```
 
 It still registers a test with the runner, so `skip`, `only` and a loop work as for any unit,
-and its record says it has no body. A fact with no body gives its `value` in the spec. Its
-examples come from a `#region skill:<id>` anywhere in the file that declares it, which the type
-check of the tests covers, or from `examples` for a block in another language, such as a shell
-command:
-
-```ts
-unit('init-first', {
-  when: 'a project has a skill but no `skillunit.yaml`.',
-  do: 'run `npx skillunit init <skill folder>` from the project root.',
-  examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }],
-});
-```
+and its record says it has no body. A fact with no body gives its `value` in the spec. A unit with
+no body shows no block, since only a body calls `u.example()`; a body that only calls
+`u.example()` is how advice shows one, and its unit is counted as declared too.
 
 The report never calls such a unit proved. Under each unit, proof shows
-`proved by a test, src/tinyfetch.test.ts:84` or `declared, no test, src/tinyfetch.skill.test.ts:120`,
-and its summary counts both: `12 units · 9 proved by a test · 3 declared without one`.
-
-## The source and its slots
-
-`source` in `skillunit.yaml` is the folder people write. `skill` is the folder agents read, and
-`skillunit proof --write` builds it. Both are committed.
-
-The source has the same files as the skill. A Markdown file holds the prose, the reference tables
-and the examples that belong to no unit, and:
-
-- `{{unit:<id>}}`, alone on a line, where a unit goes;
-- `{{value:<id>.<name>}}`, anywhere, a fenced block included, a value of a unit.
-
-Every unit is declared in code. A unit heading in the source, such as `### rule: …`, is an
-error: "units are declared with `unit()`; put `{{unit:<id>}}` here".
-
-````md
-## Options
-
-| Option | Type | Default | Meaning |
-| --- | --- | --- | --- |
-| `timeout` | number (ms) | `{{value:default-timeout.ms}}` | abort the request after this long |
-
-## Rules
-
-{{unit:default-timeout}}
-
-{{unit:never-disable-timeout}}
-````
-
-Every other file is copied as it is. The prefixes `unit:` and `value:` are there so that a skill
-about a template language can show `{{ user.name }}`.
+`proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:162`,
+and its summary counts both: `24 units · 22 proved by a test · 2 declared without one`.
 
 ## Building and checking
 
@@ -187,31 +263,30 @@ about a template language can show `{{ user.name }}`.
 1. empty the `proof.units` folder of its records;
 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, and go on whatever it
    exits with, so a failing test is reported on the unit it declares;
-3. read the units, fill the source, and run `proof.format` on each built Markdown file;
+3. read the records, build each file a `setup()` declares, and run `proof.format` once on the
+   built Markdown files;
 4. compare the result with the `skill` folder, and fail on each block of lines that differs.
-   A block is reported on its first line that differs in more than layout, so a table whose
-   columns the formatter padded again is reported on the row whose value changed.
 
 `skillunit proof --write` writes the `skill` folder instead of comparing. `--no-run` skips steps
-1 and 2 and uses the units that are there, for a pipeline that ran the tests in an earlier step.
-Without `proof.run`, the units in the folder are used, as with `--no-run`.
+1 and 2 and uses the records that are there, for a pipeline that ran the tests in an earlier
+step. Without `proof.run`, the records in the folder are used, as with `--no-run`.
 
 It is an error when:
 
-- a `{{unit:…}}` has no unit. The message says why when it can: the message of the failed test,
-  or that no test left it, because it was skipped or deleted or the tests did not run;
-- a `{{value:…}}` has no value;
-- a test declares a unit and no file of the source has its slot;
-- two tests declare the same id;
-- the source has a unit heading;
-- a slot appears twice;
-- the `skill` folder holds a file the source does not build. `--write` reports it and does not
-  delete it;
+- a test that declares a unit failed. The finding is on the unit, with the message of its test;
+- two tests declare the same id, or a file and a unit have the same id;
+- a unit belongs to no `setup()`, or to one that left no record;
+- no `setup()` declares `SKILL.md`;
+- a region belongs to no unit and no file, or its id is in two places;
+- a file the build gives is not in the skill folder;
+- the skill folder has a unit that no test declares, because its test was skipped or deleted, or
+  did not run. `--write` takes it out;
+- the skill folder holds a Markdown file that no `setup()` declares. `--write` reports it and
+  leaves it there;
 - `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, and says the
   command, how it ended and the last lines of its output, where the runner names the test that
-  failed. When the run left no unit at all, it says that too, in the same error. A test that
-  declares a unit and fails is reported twice: on its unit, with the assertion's message, and
-  by the run;
+  failed. When the run left no record at all, it says that too. A test that declares a unit and
+  fails is reported twice: on its unit, with the assertion's message, and by the run;
 - a line of the skill folder is not what the build gives. The message says to run
   `skillunit proof --write`, which is all a change to the code needs, and that the skill folder is
   built, so a change to its text is made where the line comes from.
@@ -221,26 +296,26 @@ A file whose build failed is neither compared nor written, so its one problem is
 ## Where a line comes from
 
 Every finding about a line of the built skill says where that line comes from: the test file and
-line of the unit, or the file and line of the source. Someone who edits `skill/` by hand is told
-which file to edit instead.
+line of the unit, or of the `setup()` of its file. Someone who edits `skill/` by hand is told
+which test to edit instead.
 
 ```text
-proof  ✗ skill/features/timeouts.md:42  this line is not what the build gives: the build has
-         `Value: 5 seconds ('timeout: 5_000'), for every method.`, the skill has
-         `Value: 10 seconds ('timeout: 10_000'), for every method.`. Run `skillunit proof --write`
-         to update the skill. To change this text, change where it comes from: the skill folder
-         is built.
-         from the test of `default-timeout`, src/tinyfetch.test.ts:268
+proof  ✗ skill/features/timeouts.md:15  this line is not what the build gives: the build has
+         `Value: the request waits 10 seconds ('timeout: 10_000'), whatever its method, then…`,
+         the skill has `Value: the request waits 12 seconds ('timeout: 10_000'), whatever its…`.
+         Run `skillunit proof --write` to update the skill. To change this text, change where it
+         comes from: the skill folder is built.
+         from the test of `default-timeout`, src/skill/timeouts.test.ts:28
 ```
 
-Lint and the model tests read the `skill` folder, and their findings carry the same origin. A
-failed question names the file and line that declare it.
+The questions read the skill folder, and a failed question names the file and line that declare
+it.
 
 ## Which tests `proof.run` runs
 
 `skillunit proof`, `skillunit check` and `skillunit test` all need the records, so all three run
-`proof.run`. It should run the files that declare units and nothing else. Measured on SkillUnit's
-own skill at 0.3.0, where `proof.run` was the package's whole suite:
+`proof.run`. It should run the files that declare the skill and nothing else. Measured on
+SkillUnit's own skill at 0.3.0, where `proof.run` was the package's whole suite:
 
 | What runs | Tests | Time |
 | --- | --- | --- |
@@ -249,74 +324,86 @@ own skill at 0.3.0, where `proof.run` was the package's whole suite:
 
 Name those files `*.skill.test.ts` and point `proof.run` at the name: `npx vitest run skill.test`.
 A file name keeps the command current, since a new file of units is run as soon as it has the
-name. On this repository, after the units moved to such files, `check --dry-run` on the own skill
-went from 13.5 s to 1.5 s, and its `proof.run` from 12.8 s to 0.6 s.
+name.
 
 The project's CI still runs the whole suite. A unit declared in a file the command does not run
-is not lost without notice: its slot has no unit, and proof says so.
-
-`--no-run` uses the records that are there, for a pipeline that ran the tests in an earlier step.
+is not lost without notice: the skill folder has it and no test declares it, and proof says so.
 
 ## Settings
 
 ```yaml
 skill: ./skill          # built, committed, what agents read
-source: ./skill-src     # written by people: prose, tables and slots
 proof:
-  run: "npx vitest run skill.test"      # the tests that declare units
-  units: ./tmp/skill-units              # where tests leave units (the default)
-  sources: ["src/**/*.test.ts"]         # test files to read regions from
+  run: "npx vitest run skill.test"      # the tests that declare the skill
+  units: ./tmp/skill-units              # where tests leave their records (the default)
   format: "npx --no-install prettier --write {file}"
 ```
 
-Paths and globs start from the folder of `skillunit.yaml`, and the globs leave out
-`node_modules`. Without `source` there is no proof layer and no questions: lint works on a skill
-written by hand, and `check` says the proof is not configured.
+Paths start from the folder of `skillunit.yaml`. Without `proof` there is no proof layer and no
+questions: `check` says the proof is not configured.
 
 `format` is for a project whose formatter rewrites Markdown, as Prettier rewrites tables and the
 code in fenced blocks. Each built file is formatted on a copy next to where it goes, so the
 formatter finds the project's settings, and the skill folder is compared with what it leaves.
+The command runs once, with every copy in place of `{file}`, so it must take several files, as
+`prettier --write` does. When that run fails, it runs once per file, and the error names the file
+it failed on.
 
 ## The JSON contract
 
-A test in another language declares a unit by writing the same file: one JSON object, under any
-name that ends in `.json`, in the `proof.units` folder. `file` is the test file from the folder
-of `skillunit.yaml`, and `line` the line of the declaration.
+A test in another language declares the skill by writing the same files: one JSON object each,
+under any name that ends in `.json`, in the `proof.units` folder. `file` is the test file from the
+folder of `skillunit.yaml`, and `line` the line of the declaration. The contract is at version 2.
+
+A file of the skill, declared with `setup()`:
 
 ```json
 {
-  "skillunit": 1,
+  "skillunit": 2,
+  "status": "passed",
+  "kind": "file",
+  "id": "timeouts",
+  "file": "src/skill/timeouts.test.ts",
+  "line": 17,
+  "test": "file timeouts: tinyfetch — timeouts and cancelling",
+  "skillFile": "features/timeouts.md",
+  "title": "tinyfetch — timeouts and cancelling",
+  "description": "How long a request waits for the server, and how to stop it sooner.",
+  "when": "Time out or cancel a request"
+}
+```
+
+A unit, with the id of the `setup()` it belongs to in `setup` and its place among the units of
+that file, from 0, in `order`:
+
+```json
+{
+  "skillunit": 2,
   "status": "passed",
   "id": "default-timeout",
   "kind": "fact",
-  "file": "src/tinyfetch.test.ts",
-  "line": 215,
-  "test": "fact default-timeout: 10 seconds (`timeout: 10000`), for every method.",
-  "when": "the user asks how long a request waits by default.",
-  "value": "10 seconds (`timeout: 10000`), for every method.",
-  "unknown": "tinyfetch has no separate connect timeout; say so instead of inventing one.",
-  "values": { "seconds": 10 },
-  "ask": [
-    {
-      "id": "default-timeout",
-      "scenario": "The user asks how long a request waits when the code sets nothing.",
-      "question": "What should the agent answer?",
-      "options": { "right": "10 seconds", "longer": "30 seconds" },
-      "expect": "right"
-    }
-  ],
+  "file": "src/skill/timeouts.test.ts",
+  "line": 28,
+  "test": "fact default-timeout: the request waits 10 seconds (`timeout: 10_000`), whatever its method, …",
+  "setup": "timeouts",
+  "order": 0,
+  "when": "a request sets no `timeout`, and its client sets none.",
+  "value": "the request waits 10 seconds (`timeout: 10_000`), whatever its method, then rejects with a `TimeoutError` whose `timeout` is that number of milliseconds.",
+  "values": { "seconds": 10, "ms": "10_000" },
   "examples": []
 }
 ```
 
 A failed test writes the same `skillunit`, `id`, `file`, `line` and `test`, with
 `"status": "failed"` and the error's message in `error`. `examples` is a list of
-`{ "lang": …, "text": … }`, the blocks of `examples` and of `u.example`. As with `unit()`, a value
-is a single line and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`):
-SkillUnit refuses a record that breaks either, since a line break there would add lines to the
-built file that no unit declares. A unit declared with no body has `"body": false`. `ask` holds
-the questions as the spec gives them, one or a list, with or without `id`; SkillUnit fills in the
-default ids and checks them when it reads the record. The other keys are those of the spec above.
+`{ "lang": …, "text": … }`, the blocks of `u.example`. As with `unit()`, a value is a single line
+and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`): SkillUnit refuses a
+record that breaks either, since a line break there would add lines to the built file that no unit
+declares. The finding about a record that is refused is on the record, and its origin is the test
+the record names in `file` and `line`, when it has them. A unit no test proves has
+`"body": false`. `ask` holds the questions as the spec gives them, one or a list, with or without
+`id`; SkillUnit fills in the default ids and checks them when it reads the record. The other keys
+are those of the spec above.
 
 A question about prose, declared with `ask()`, leaves a record of its own: `"kind": "question"`,
 its id, the built file it is about in `skillFile`, from the skill folder and inside it, and itself
@@ -324,26 +411,29 @@ in `ask`.
 
 ```json
 {
-  "skillunit": 1,
+  "skillunit": 2,
   "status": "passed",
   "kind": "question",
   "id": "which-file-for-retries",
-  "file": "src/tinyfetch.skill.test.ts",
-  "line": 135,
+  "file": "src/skill/index.test.ts",
+  "line": 35,
   "test": "question which-file-for-retries: Which file of the skill should it read?",
   "skillFile": "SKILL.md",
+  "setup": "tinyfetch",
   "ask": [{ "id": "which-file-for-retries", "scenario": "…", "question": "…", "options": { "retries": "features/retries.md", "errors": "features/errors.md" }, "expect": "retries" }]
 }
 ```
 
-In Python, a fixture in `conftest.py` can write it. SkillUnit ships no Python helper; this one is
-a starting point:
+In Python, a fixture in `conftest.py` can write them. SkillUnit ships no Python helper; this one
+is a starting point:
 
 ```python
 import hashlib, json, pathlib
 import pytest
 
 UNITS = pathlib.Path(__file__).parent / "tmp" / "skill-units"
+# The file of the skill each test file declares last with `setup`, and the place of its next unit.
+CURRENT = {}
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -354,27 +444,59 @@ def pytest_runtest_makereport(item, call):
         item.skill_report = report
 
 
+def write(request, record):
+    UNITS.mkdir(parents=True, exist_ok=True)
+    name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
+    (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
+
+
+@pytest.fixture
+def setup(request):
+    """Declares a file of the skill: the units of the tests after this one in the file belong to it."""
+
+    def declare(id, file, **keys):
+        path, line, _ = request.node.location
+        CURRENT[path] = {"setup": id, "order": 0}
+        write(request, {"skillunit": 2, "status": "passed", "kind": "file", "id": id, "file": path, "line": line + 1, "test": request.node.nodeid, "skillFile": file, **keys})
+
+    return declare
+
+
 @pytest.fixture
 def unit(request):
-    """Declares the unit this test proves; call it first, with the keys of the contract."""
+    """Declares the unit this test proves; call it once, first, with the keys of the contract."""
     spec = {}
-    yield lambda id, **keys: spec.update(id=id, **keys)
+
+    def declare(id, **keys):
+        if spec:
+            raise RuntimeError(f"unit() is called once per test; {spec['id']} is already declared here")
+        spec.update(id=id, **keys)
+
+    yield declare
     report = getattr(request.node, "skill_report", None)
     if not spec or report is None or report.skipped:
         return
     file, line, _ = request.node.location
-    record = {"skillunit": 1, "id": spec.pop("id"), "file": file, "line": line + 1, "test": request.node.nodeid}
+    record = {"skillunit": 2, "id": spec.pop("id"), "file": file, "line": line + 1, "test": request.node.nodeid}
+    owner = CURRENT.get(file)
+    if owner:
+        record.update(setup=owner["setup"], order=owner["order"])
+        owner["order"] += 1
     if report.passed:
         kind = "rule" if "do" in spec else "decision" if "paths" in spec else "fact"
         record.update(status="passed", kind=kind, examples=spec.pop("examples", []), **spec)
     else:
-        record.update(status="failed", error=str(report.longrepr).splitlines()[-1])
-    UNITS.mkdir(parents=True, exist_ok=True)
-    name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
-    (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
+        crash = getattr(report.longrepr, "reprcrash", None)
+        record.update(status="failed", error=crash.message if crash else str(report.longrepr))
+    write(request, record)
 ```
 
 ```python
+def test_timeouts(setup):
+    # The file of the skill that the units of the tests below belong to.
+    setup("timeouts", file="features/timeouts.md", title="tinyfetch — timeouts", when="Time out a request", description="Every request has a timeout.")
+
+
 def test_default_timeout(unit):
     unit(
         "default-timeout",
@@ -402,17 +524,30 @@ def test_never_disable_timeout(unit):
 ```
 
 `request.node.location` gives the file from pytest's root folder, so this assumes `skillunit.yaml`
-sits there. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies
+sits there. `setup` declares a file of the skill; the units of the tests after it in the same test file belong to it, in the order pytest runs them. A test calls `unit` once: a second call fails the test and says so. A failed test's
+record keeps the assertion's message, as pytest reports it. A parametrized test writes one record
+per case, all with the same id, and SkillUnit refuses an id declared twice; a unit built from
+several cases goes in one test that loops over them. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies
 `ask` and `body` into the record as they are given, so SkillUnit checks the questions when it reads
 the record, not when pytest runs the test.
 
 ## What it does not do
 
-- A literal in a description that its body does not check can be false. `do: 'retry only GET'`
-  passes with a body that asserts nothing about methods. Build the sentence from the code where
-  the code has the value, and assert the rest.
-- A body that asserts nothing still leaves its unit. Proof knows the test ran and passed, and
-  not what it checked.
+- A word that stands for a number, such as "doubled" or "half", passes the number rule, and so
+  does a `values` entry typed by hand, `values: { times: 2 }`, where the code has the value under
+  a name. Both are the rule of [no value typed twice](#no-value-typed-twice), which only a reader
+  checks.
+- Other words of a sentence that its body does not check can be false. `do: 'retry only GET'`
+  passes with a body that asserts nothing about methods.
+- The rule of assertions catches a body emptied by mistake: a body that makes no assertion and
+  calls no `u.value()` fails its test, and one that only calls `u.example()` leaves a unit
+  counted as declared, not proved. It does not catch `expect(true).toBe(true)`, which counts as
+  an assertion. What catches it is a change to the code that makes the sentence false: when
+  nothing goes red, the body proves nothing.
+- The count of assertions comes from the runner. `skillunit/vitest` counts Vitest's `expect`; a
+  helper made with `createUnit` and no `assertions`, and the pytest fixture above, count nothing,
+  so a body there that asserts nothing still leaves its unit. A body that counts as asserting can
+  still assert something other than what its sentence says.
 - A body that builds its sentence from what it observes does not go red when the behaviour
   changes. `what-is-retried` above passes whatever is retried; the signal is the difference in
   the skill, which someone has to read in the pull request.

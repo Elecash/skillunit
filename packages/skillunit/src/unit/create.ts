@@ -10,13 +10,17 @@
  *
  * `ask(id, spec)`: a question about the prose of a built file, which belongs to no unit.
  *
+ * `setup(id, spec)`: a file of the skill, its title, its row in the index and its line. Each unit
+ * and question belongs to the last `setup()` declared before it in its test file, and its record
+ * says so.
+ *
  * Questions are checked when they are declared and written in the records. The runner asks the
  * model nothing: SkillUnit asks them after the build.
  *
  * This module imports nothing from Node at load time: a runner that cannot write files passes
  * its own `write`, and the default one is loaded only when a unit is written.
  */
-import { checkAsk, checkQuestions, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedQuestion, type PassedUnit, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
+import { checkAsk, checkNumbers, checkQuestions, checkSetup, checkSpec, FENCE_LANG, QUESTION_ID, UNIT_CONTRACT, UNIT_ID, UnitSpecError, type AskedQuestion, type AskSpec, type PassedFile, type PassedQuestion, type PassedUnit, type SetupSpec, type UnitExample, type UnitKind, type UnitRecord, type UnitSpec } from './contract.js';
 
 /** What the body of a unit gets, besides the runner's own context. */
 export interface UnitContext {
@@ -55,6 +59,13 @@ export interface CreateUnitOptions<Ctx> {
   isSkip?: (error: unknown) => boolean;
   /** A failure the runner recorded without throwing, such as a soft assertion, after the body returned. */
   failure?: (ctx: Ctx) => string | undefined;
+  /**
+   * How many assertions the test has made so far, when the runner counts them. With it, a body
+   * that returns having made none and called no `u.value()` fails its test, unless it called
+   * `u.example()`: then its unit is built and counted as declared, since no test proves it.
+   * Without it, nothing is counted.
+   */
+  assertions?: (ctx: Ctx) => number | undefined;
 }
 
 export type UnitFn<Ctx> = (id: string, spec: UnitSpec, body?: UnitBody<Ctx>, ...rest: any[]) => void;
@@ -65,6 +76,10 @@ export type AskFn = (id: string, spec: AskSpec, ...rest: any[]) => void;
 
 export type Ask = AskFn & { skip: AskFn; only: AskFn };
 
+export type SetupFn = (id: string, spec: SetupSpec, ...rest: any[]) => void;
+
+export type Setup = SetupFn & { skip: SetupFn; only: SetupFn };
+
 /** Files of this helper, whose frames the stack of a call to `unit` starts with. */
 const OWN = new Set<string>();
 export function ownFile(url: string): void {
@@ -72,12 +87,23 @@ export function ownFile(url: string): void {
 }
 ownFile(import.meta.url);
 
-export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnitOptions<Ctx> = {}): { unit: Unit<Ctx>; ask: Ask } {
+export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnitOptions<Ctx> = {}): { unit: Unit<Ctx>; ask: Ask; setup: Setup } {
   const write = options.write ?? defaultWrite;
   /** Declarations of each id at each place, so a loop that declares one id twice gets two keys. */
   const seen = new Map<string, number>();
   /** The id of each question declared so far, and what declared it. */
   const asked = new Map<string, string>();
+  /** The `setup()` declared last in each test file, with the next place among its units. */
+  const current = new Map<string, { id: string; file: string; order: number }>();
+  /** Ids of files and of units share one space: a region `skill:<id>` names either. */
+  const fileIds = new Map<string, string>();
+  const unitIds = new Map<string, string>();
+  /** The file of the skill a unit or a question declared at `place` belongs to, and its place there. */
+  const placed = (place: UnitPlace | undefined, unit: boolean) => {
+    const owner = place ? current.get(place.file) : undefined;
+    if (!owner) return {};
+    return unit ? { setup: owner.id, order: owner.order++ } : { setup: owner.id };
+  };
 
   /** A key for one declaration: the same across runs, and different for two declarations. */
   const keyOf = (prefix: string, id: unknown, place: UnitPlace | undefined) => {
@@ -113,19 +139,23 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
         }
         if (spec.ask !== undefined) questions = checkQuestions(id, spec.ask);
         claim(questions ?? [], `unit \`${id}\``, `the unit \`${id}\` (${where(place)})`);
+        const file = fileIds.get(id);
+        if (file) throw new UnitSpecError(`unit \`${id}\`: the id is that of ${file}; files of the skill and units share one space of ids`);
+        unitIds.set(id, `the unit \`${id}\` (${where(place)})`);
       } catch (e) {
         problem = e;
       }
       const title = kind ? `${kind} ${id}: ${sentence(kind, spec)}` : `unit ${String(id)}`;
       const key = keyOf('', id, place);
+      const belongs = placed(place, true);
 
       register(
         title,
         async (ctx: Ctx) => {
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
-          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
           const failed = async (error: unknown) => {
-            // An id that is not one cannot be named by a slot; nothing would read the record.
+            // An id that is not one cannot be built into the skill; nothing would read the record.
             if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', error: messageOf(error) }, key);
           };
           if (problem) {
@@ -133,13 +163,23 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
             throw problem;
           }
           let value = spec.value;
-          const examples: UnitExample[] = (spec.examples ?? []).map((x) => ({ lang: x.lang, text: x.text }));
+          const examples: UnitExample[] = [];
+          /** No test proves the unit: it has no body, or its body only showed blocks. */
+          let declared = !body;
           if (body) {
+            /**
+             * The body built the sentence from what it observed, so its drift shows in the built
+             * skill. A block of `u.example` does not count: a body that only shows blocks leaves a
+             * unit no test proves.
+             */
+            let built = false;
+            const before = options.assertions?.(ctx);
             const u: UnitContext = {
               value(text) {
                 if (kind !== 'fact') throw new Error(`unit \`${id}\`: \`u.value\` sets the Value of a fact, and this is a ${kind}`);
                 if (typeof text !== 'string' || !text.trim()) throw new Error(`unit \`${id}\`: \`u.value\` takes text that is not empty`);
                 value = text;
+                built = true;
               },
               example(lang, text) {
                 if (kind === 'decision') throw new Error(`unit \`${id}\`: a decision shows its examples in its paths, from the regions \`skill:${id}.<path>\`; \`u.example\` is for a rule or a fact`);
@@ -153,6 +193,17 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               if (kind === 'fact' && value === undefined) {
                 throw new Error(`unit \`${id}\`: the fact has no Value; give \`value\` in its spec or call \`u.value(text)\` in its body`);
               }
+              checkNumbers(id, { ...spec, value });
+              const after = options.assertions?.(ctx);
+              if (!built && before !== undefined && after !== undefined && after <= before) {
+                if (!examples.length) {
+                  throw new Error(
+                    `unit \`${id}\`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: \`unit(id, spec)\` is a unit no test proves`,
+                  );
+                }
+                // A body that only shows blocks checks nothing: its unit is built, and no test proves it.
+                declared = true;
+              }
             } catch (e) {
               if (options.isSkip?.(e)) throw e;
               await failed(e);
@@ -164,7 +215,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
               return;
             }
           }
-          const record: PassedUnit = { ...head, status: 'passed', kind: kind!, ...(body ? {} : { body: false as const }), ...copySpec(spec, questions), examples };
+          const record: PassedUnit = { ...head, status: 'passed', kind: kind!, ...(declared ? { body: false as const } : {}), ...copySpec(spec, questions), examples };
           if (value !== undefined) record.value = value;
           await write(record, key);
         },
@@ -178,20 +229,23 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
       const place = callerPlace(new Error().stack);
       let checked: ReturnType<typeof checkAsk> | undefined;
       let problem: unknown;
+      const owner = place ? current.get(place.file) : undefined;
       try {
-        checked = checkAsk(id, spec);
+        // A question with no `file` is about the file of the skill its `setup()` declares.
+        checked = checkAsk(id, owner && spec && typeof spec === 'object' && spec.file === undefined ? { ...spec, file: owner.file } : spec);
         claim([checked.question], `ask \`${id}\``, `\`ask('${id}')\` (${where(place)})`);
       } catch (e) {
         problem = e;
       }
       const title = checked ? `question ${id}: ${checked.question.question}` : `question ${String(id)}`;
       const key = keyOf('ask:', id, place);
+      const belongs = placed(place, false);
 
       register(
         title,
         async (ctx: Ctx) => {
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
-          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
           if (problem) {
             if (typeof id === 'string' && QUESTION_ID.test(id)) await write({ ...head, status: 'failed', kind: 'question', error: messageOf(problem) }, key);
             throw problem;
@@ -203,9 +257,49 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
       );
     };
 
+  const declareSetup = (register: RunnerIt<Ctx> | undefined, how: string): SetupFn =>
+    function setup(id, spec, ...rest) {
+      if (!register) throw new Error(`setup${how}: the runner's \`it\` has no \`${how.slice(1)}\``);
+      const place = callerPlace(new Error().stack);
+      let checked: SetupSpec | undefined;
+      let problem: unknown;
+      try {
+        checked = checkSetup(id, spec);
+        const unit = unitIds.get(id);
+        if (unit) throw new UnitSpecError(`setup \`${id}\`: the id is that of ${unit}; files of the skill and units share one space of ids`);
+        const other = fileIds.get(id);
+        if (other) throw new UnitSpecError(`setup \`${id}\`: ${other} has this id; give one of them another`);
+        fileIds.set(id, `the file \`${checked.file}\` (${where(place)})`);
+      } catch (e) {
+        problem = e;
+      }
+      // The units and questions declared after it in this test file belong to it, even when its
+      // spec has a mistake: they are then reported with the file, not as belonging to none.
+      if (place && typeof id === 'string') current.set(place.file, { id, file: checked?.file ?? '', order: 0 });
+      const title = checked ? `file ${id}: ${checked.title}` : `file ${String(id)}`;
+      const key = keyOf('setup:', id, place);
+
+      register(
+        title,
+        async (ctx: Ctx) => {
+          const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
+          const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title } as const;
+          if (problem) {
+            if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', kind: 'file', error: messageOf(problem) }, key);
+            throw problem;
+          }
+          const { file: skillFile, ...rest } = checked!;
+          const record: PassedFile = { ...head, status: 'passed', kind: 'file', skillFile, ...rest };
+          await write(record, key);
+        },
+        ...rest,
+      );
+    };
+
   const unit = Object.assign(declareUnit(it, ''), { skip: declareUnit(it.skip?.bind(it), '.skip'), only: declareUnit(it.only?.bind(it), '.only') });
   const ask = Object.assign(declareAsk(it, ''), { skip: declareAsk(it.skip?.bind(it), '.skip'), only: declareAsk(it.only?.bind(it), '.only') });
-  return { unit, ask };
+  const setup = Object.assign(declareSetup(it, ''), { skip: declareSetup(it.skip?.bind(it), '.skip'), only: declareSetup(it.only?.bind(it), '.only') });
+  return { unit, ask, setup };
 }
 
 /** The sentence a test is titled with: what the unit says. */
@@ -214,14 +308,13 @@ function sentence(kind: UnitKind, spec: UnitSpec): string {
 }
 
 /** The keys of the spec, in the contract's order, without the ones it leaves out. */
-function copySpec(spec: UnitSpec, questions: AskedQuestion[] | undefined): Pick<PassedUnit, 'when' | 'do' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'check' | 'values' | 'ask'> {
+function copySpec(spec: UnitSpec, questions: AskedQuestion[] | undefined): Pick<PassedUnit, 'when' | 'do' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'values' | 'ask'> {
   const out: ReturnType<typeof copySpec> = { when: spec.when };
   if (spec.do !== undefined) out.do = spec.do;
   if (spec.decide !== undefined) out.decide = spec.decide;
   if (spec.paths !== undefined) out.paths = spec.paths.map((p) => ({ path: p.path, when: p.when }));
   if (spec.unknown !== undefined) out.unknown = spec.unknown;
   if (spec.evenWhen !== undefined) out.evenWhen = spec.evenWhen;
-  if (spec.check !== undefined) out.check = spec.check;
   if (spec.values !== undefined) out.values = { ...spec.values };
   if (questions) out.ask = questions;
   return out;

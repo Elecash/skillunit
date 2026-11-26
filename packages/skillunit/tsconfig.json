@@ -1,4 +1,11 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "skillunit/vitest": ["./src/vitest.ts"],
+      "skillunit/unit": ["./src/unit/index.ts"],
+      "skillunit/typescript": ["./src/typescript.ts"]
+    }
+  },
   "include": ["src"]
 }

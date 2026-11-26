@@ -1,6 +1,6 @@
 # CI
 
-`skillunit check` runs lint, proof and test, and exits 1 when one fails. In GitHub Actions:
+`skillunit check` runs proof and test, and exits 1 when one fails. In GitHub Actions:
 
 ```yaml
 # .github/workflows/skill.yml
@@ -25,7 +25,7 @@ jobs:
 
 - The default shallow clone is enough. Only `check --changed` reads git history: with it, add
   `with: { fetch-depth: 0 }` to the checkout step.
-- With `source` and `proof.run` in `skillunit.yaml`, `check` runs the tests that declare units
+- With `proof.run` in `skillunit.yaml`, `check` runs the tests that declare the skill
   itself and goes on when they fail, so a failing test is reported on the unit it declares, then
   fails: a run that did not exit with 0 is an error, with the end of its output. Point
   `proof.run` at those tests only, such as `npx vitest run skill.test`, and let the project's own
@@ -37,7 +37,7 @@ jobs:
 - `--reporter github` turns each finding into an annotation on its line in the pull request.
 - Set the key of the provider in `skillunit.yaml` as a repository secret: `TYPESAFE_API_KEY` for
   `typesafe`, `OPENAI_API_KEY` for `openai`. Only that one is needed.
-- The dry run needs no key. It runs lint and proof in full, and checks that every question can
+- The dry run needs no key. It runs the proof in full, and checks that every question can
   be asked and fits, so a renamed heading, a question whose `expect` names no option, or a unit
   missing from the skill fails it before the model is asked.
 
@@ -56,24 +56,24 @@ or the question does.
 ## What a run costs
 
 The questions about one file of the skill go in one request to the decision model, whatever
-their number, and the request carries the text under test once. Measured on 2026-11-25:
+their number, and the request carries the text under test once. Measured on 2026-11-26:
 
 | Skill | Requests | Questions | `typesafe`: input / output tokens | `openai`: input / output tokens |
 | --- | --- | --- | --- | --- |
-| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 6 | 16 | about 8,600 / 830 | about 7,900 / 0 |
-| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 8 | 58 | about 30,200 / 2,900 | about 30,400 / 0 |
+| [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch) | 5 | 9 | about 6,400 / 470 | about 5,500 / 0 |
+| [SkillUnit's own skill](https://github.com/Elecash/skillunit/tree/main/skills/skillunit) | 5 | 13 | about 11,700 / 630 | about 11,100 / 0 |
 
 Output tokens are free on both. At the prices of November 2026:
 
 | Provider | Price per million input tokens | A run of tinyfetch | A run of SkillUnit's own skill |
 | --- | --- | --- | --- |
-| `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0004 | about $0.0013 |
-| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0008 | about $0.0030 |
+| `typesafe`, Jev 1.14 ([models page](https://docs.typesafe.ai/models), 2026-11-21) | $0.042 | about $0.0003 | about $0.0005 |
+| `openai`, `gpt-6-luna` ([guide](https://developers.openai.com/api/docs/guides/decisions), 2026-11-23) | $0.10 | about $0.0006 | about $0.0011 |
 
 OpenAI caches the start of a request that holds 1,024 tokens or more of skill text. A request
 sent again within 30 minutes then pays 10% for that part, and the first request pays 25% more
-for writing it. Most requests carry less text than that, so caching changes a run's cost by a
-few percent at most.
+for writing it. The figures above leave caching out.
 
-Lint and proof make no request. `--changed` sends only the questions about the files a change
-touches.
+The proof makes no request. `--changed` sends only the questions about the files of the
+skill that differ from the merge base with the target branch, so a pull request that leaves the
+skill alone sends none.

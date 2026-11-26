@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { UnitRecord, UnitSpec } from './contract.js';
+import { checkNumbers, numbersIn, type UnitRecord, type UnitSpec } from './contract.js';
 import { callerPlace, createUnit, pathOf, type RunnerIt, type UnitBody } from './create.js';
 
 interface Registered {
@@ -17,7 +17,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
   const fake = add('') as RunnerIt<{ n: number }>;
   if (options.skip !== false) fake.skip = add('skip');
   if (options.only !== false) fake.only = add('only');
-  const { unit, ask } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
+  const { unit, ask, setup } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
   /** Runs every test that is not skipped; returns each one's error message, or `ok`. */
   const run = async () => {
     const out: string[] = [];
@@ -31,7 +31,7 @@ function runner(options: { skip?: boolean; only?: boolean } = {}) {
     }
     return out;
   };
-  return { unit, ask, tests, records, run };
+  return { unit, ask, setup, tests, records, run };
 }
 
 const noop: UnitBody<unknown> = () => {};
@@ -39,7 +39,7 @@ const noop: UnitBody<unknown> = () => {};
 describe('each kind, from the keys of the spec', () => {
   it('a rule from `do`, a fact from `value`, a decision from `decide` and `paths`', async () => {
     const r = runner();
-    r.unit('check-status', { when: 'a request failed.', do: 'test the error with `isHttpError` first.', evenWhen: 'the status is known.', check: 'forbid `/\\.status\\b/` in ts' }, noop);
+    r.unit('check-status', { when: 'a request failed.', do: 'test the error with `isHttpError` first.', evenWhen: 'the status is known.' }, noop);
     r.unit('default-timeout', { when: 'the user asks how long a request waits.', value: '10 seconds.', unknown: 'say there is no connect timeout.', values: { seconds: 10, exact: true, unit: 's' } }, noop);
     r.unit('cache-or-not', { when: 'a response repeats.', decide: 'pick one path.', paths: [{ path: 'cache', when: 'the response is the same.' }, { path: 'none', when: 'it changes.' }] }, noop);
     expect(r.tests.map((t) => t.name)).toEqual([
@@ -50,7 +50,7 @@ describe('each kind, from the keys of the spec', () => {
     expect(await r.run()).toEqual(['ok', 'ok', 'ok']);
     const [rule, fact, decision] = r.records.map((x) => x.record);
     expect(rule).toEqual({
-      skillunit: 1,
+      skillunit: 2,
       id: 'check-status',
       file: expect.stringMatching(/create\.test\.ts$/),
       line: expect.any(Number),
@@ -60,7 +60,6 @@ describe('each kind, from the keys of the spec', () => {
       when: 'a request failed.',
       do: 'test the error with `isHttpError` first.',
       evenWhen: 'the status is known.',
-      check: 'forbid `/\\.status\\b/` in ts',
       examples: [],
     });
     expect(fact).toMatchObject({ kind: 'fact', value: '10 seconds.', unknown: 'say there is no connect timeout.', values: { seconds: 10, exact: true, unit: 's' } });
@@ -88,11 +87,11 @@ describe('each kind, from the keys of the spec', () => {
 describe('what the body gives', () => {
   it('sets the value of a fact, over the one of the spec', async () => {
     const r = runner();
-    r.unit('what-is-retried', { when: 'the user asks which failures are retried.' }, (u) => u.value('network errors and 5xx.'));
+    r.unit('what-is-retried', { when: 'the user asks which failures are retried.' }, (u) => u.value('network errors and server errors.'));
     r.unit('retry-delay', { when: 'no delay is set.', value: 'from the spec.' }, (u) => u.value('from the body.'));
     expect(r.tests.map((t) => t.name)).toEqual(['fact what-is-retried: the user asks which failures are retried.', 'fact retry-delay: from the spec.']);
     expect(await r.run()).toEqual(['ok', 'ok']);
-    expect(r.records.map((x) => (x.record as { value?: string }).value)).toEqual(['network errors and 5xx.', 'from the body.']);
+    expect(r.records.map((x) => (x.record as { value?: string }).value)).toEqual(['network errors and server errors.', 'from the body.']);
   });
 
   it('adds blocks, in the order of the calls', async () => {
@@ -122,7 +121,7 @@ describe('what the body gives', () => {
     r.unit('retry-delay', { when: 'x.', value: 'y.' }, () => Promise.reject('a string'));
     expect(await r.run()).toEqual(['expected 5000 to be 10000', undefined]);
     expect(r.records.map((x) => x.record)).toEqual([
-      { skillunit: 1, id: 'default-timeout', file: expect.any(String), line: expect.any(Number), test: 'fact default-timeout: 10 seconds.', status: 'failed', error: 'expected 5000 to be 10000' },
+      { skillunit: 2, id: 'default-timeout', file: expect.any(String), line: expect.any(Number), test: 'fact default-timeout: 10 seconds.', status: 'failed', error: 'expected 5000 to be 10000' },
       expect.objectContaining({ id: 'retry-delay', status: 'failed', error: 'a string' }),
     ]);
   });
@@ -143,6 +142,111 @@ describe('what the body gives', () => {
   });
 });
 
+describe('a number typed into the text of a unit with a body', () => {
+  it('finds a number: digits with `_` groups and a decimal part, not right after a letter, a digit, `_` or `.`', () => {
+    expect(numbersIn('waits 300 ms, `10_000` in all, 0.5 of it, 2x, a 5xx status')).toEqual(['300', '10_000', '0.5', '2', '5']);
+    expect(numbersIn('utf8, h2 and sha256')).toEqual([]);
+    expect(numbersIn('HTTP/2 and version 1.2.3')).toEqual(['2', '1.2']);
+    expect(numbersIn('set `timeout: 0`')).toEqual(['0']);
+  });
+
+  it('a number one of `values` is passes: a number, or text that has it, equal once `_` is taken out', () => {
+    expect(() => checkNumbers('a', { when: 'x.', value: '300 ms, 10_000 in all.', values: { delay: 300, total: 10000 } })).not.toThrow();
+    expect(() => checkNumbers('a', { when: 'x.', value: '10000 ms.', values: { ms: '10_000' } })).not.toThrow();
+    expect(() => checkNumbers('a', { when: 'x.', do: 'send the report to `500miles.com`.', values: { site: '500miles.com' } })).not.toThrow();
+  });
+
+  it('any other number fails, and the message names it, its label, and what to do', () => {
+    const typed = (spec: UnitSpec) => () => checkNumbers('retry-defaults', spec);
+    const advice = 'Give the value a name in the code, build the sentence from that name, and list it in `values`';
+    expect(typed({ when: 'x.', value: 'a status outside 200–299 throws.' })).toThrow(`unit \`retry-defaults\`: the number 200 in \`Value\` is none of the unit's \`values\`. ${advice}`);
+    expect(typed({ when: 'x.', value: '500 ms.', values: { total: '1500' } })).toThrow('the number 500 in `Value`');
+    expect(typed({ when: 'over HTTP/2.', do: 'y.' })).toThrow('the number 2 in `When`');
+    expect(typed({ when: 'x.', do: 'y.', evenWhen: 'it is `1.2.3`.' })).toThrow('the number 1.2 in `Even when`');
+    expect(typed({ when: 'x.', value: 'y.', unknown: 'say 7.' })).toThrow('the number 7 in `Unknown`');
+    expect(typed({ when: 'x.', decide: 'pick 1.', paths: [{ path: 'a', when: 'b.' }] })).toThrow('the number 1 in `Decide`');
+    expect(typed({ when: 'x.', paths: [{ path: 'cache', when: 'it repeats 3 times.' }] })).toThrow('the number 3 in the path `cache`');
+    expect(typed({ when: 'x.', do: 'set `timeout: 0`.', values: { on: true } })).toThrow('the number 0 in `Do`');
+  });
+
+  it('unit(): a body that passes with a typed number fails its test and leaves a failed record; `u.value` is held to it too', async () => {
+    const r = runner();
+    r.unit('what-a-failed-request-throws', { when: 'a call fails.', value: 'a status outside 200–299 throws.' }, noop);
+    r.unit('what-is-retried', { when: 'a call fails.' }, (u) => u.value('a 5xx status is retried.'));
+    r.unit('retry-delay', { when: 'x.', values: { ms: 300 } }, (u) => u.value('300 ms.'));
+    const out = await r.run();
+    expect(out[0]).toMatch(/^unit `what-a-failed-request-throws`: the number 200 in `Value` is none of the unit's `values`/);
+    expect(out[1]).toMatch(/^unit `what-is-retried`: the number 5 in `Value`/);
+    expect(out[2]).toBe('ok');
+    expect(r.records.map((x) => x.record.status)).toEqual(['failed', 'failed', 'passed']);
+  });
+
+  it('a unit with no body is not checked: advice may give a number the code does not have', async () => {
+    const r = runner();
+    r.unit('never-disable-timeout', { when: 'an upload.', do: 'set `timeout: 120_000`.' });
+    expect(await r.run()).toEqual(['ok']);
+  });
+});
+
+describe('a body that asserts nothing', () => {
+  /** A runner whose assertions are counted by `assert`, as a runner's `expect` counts them. */
+  const counted = () => {
+    let count = 0;
+    const tests: Registered[] = [];
+    const records: UnitRecord[] = [];
+    const fake = ((name: string, fn: Registered['fn']) => void tests.push({ name, fn, how: '', rest: [] })) as RunnerIt<{ n: number }>;
+    const { unit } = createUnit(fake, { write: (record) => void records.push(record), assertions: () => count });
+    const assert = () => void count++;
+    const run = async () => {
+      const out: string[] = [];
+      for (const t of tests) {
+        try {
+          await t.fn({ n: 1 });
+          out.push('ok');
+        } catch (e) {
+          out.push((e as Error).message);
+        }
+      }
+      return out;
+    };
+    return { unit, assert, records, run };
+  };
+
+  it('fails, with the reason, when the runner counts assertions and the body made none', async () => {
+    const r = counted();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    r.unit('asserts', { when: 'x.', do: 'y.' }, () => r.assert());
+    r.unit('sets-value', { when: 'x.' }, (u) => u.value('seen.'));
+    r.unit('adds-example', { when: 'x.', value: 'y.' }, (u) => u.example('text', 'z'));
+    r.unit('checks-its-example', { when: 'x.', value: 'y.' }, (u) => (r.assert(), u.example('text', 'z')));
+    r.unit('declared', { when: 'x.', do: 'y.' });
+    expect(await r.run()).toEqual([
+      'unit `empty`: the body made no assertion, so no test proves this unit. Assert in the body what the unit says, or declare it with no body: `unit(id, spec)` is a unit no test proves',
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+      'ok',
+    ]);
+    expect(r.records.map((x) => x.status)).toEqual(['failed', 'passed', 'passed', 'passed', 'passed', 'passed']);
+    // A body that only shows blocks proves nothing: its unit is declared, with its blocks.
+    expect(r.records.map((x) => (x as { body?: false }).body)).toEqual([undefined, undefined, undefined, false, undefined, false]);
+  });
+
+  it('counts only what the body asserted: assertions made before it, by a hook, do not count', async () => {
+    const r = counted();
+    r.assert();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    expect((await r.run())[0]).toMatch(/^unit `empty`: the body made no assertion/);
+  });
+
+  it('a helper made without `assertions` accepts an empty body', async () => {
+    const r = runner();
+    r.unit('empty', { when: 'x.', do: 'y.' }, noop);
+    expect(await r.run()).toEqual(['ok']);
+  });
+});
+
 describe('a spec with a mistake', () => {
   const fails = async (id: string, spec: unknown) => {
     const r = runner();
@@ -158,7 +262,7 @@ describe('a spec with a mistake', () => {
     expect(both.records).toEqual([expect.objectContaining({ id: 'default-timeout', status: 'failed', error: both.message })]);
   });
 
-  it('an id that is not kebab-case fails, and leaves no record, since no slot can name it', async () => {
+  it('an id that is not kebab-case fails, and leaves no record, since the build could not use it', async () => {
     for (const id of ['defaultTimeout', 'default timeout', 'default.timeout', '']) {
       const r = await fails(id, { when: 'x.', do: 'y.' });
       expect(r.message).toMatch(/the id must be kebab-case/);
@@ -170,7 +274,9 @@ describe('a spec with a mistake', () => {
     const message = async (spec: unknown) => (await fails('a-unit', spec)).message;
     expect(await message(null)).toBe('unit `a-unit`: the spec must be an object, such as `{ when: …, do: … }`');
     expect(await message({ do: 'y.' })).toBe('unit `a-unit`: `when` is missing: every unit says when it applies');
-    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, check, values, ask, examples)');
+    expect(await message({ when: 'x.', Do: 'y.' })).toBe('unit `a-unit`: unknown key `Do` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)');
+    // `check` is not a key of a unit.
+    expect(await message({ when: 'x.', do: 'y.', check: 'forbid `/x/` in ts' } as never)).toBe('unit `a-unit`: unknown key `check` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)');
     expect(await message({ when: '', do: 'y.' })).toBe('unit `a-unit`: `when` must be text that is not empty');
     expect(await message({ when: 'x.', do: 'one.\n\ntwo.' })).toBe('unit `a-unit`: `do` has a blank line; a label is one paragraph');
     expect(await message({ when: 'x.', do: 'y.', paths: [] })).toMatch(/`do` and `decide` are two kinds/);
@@ -185,7 +291,64 @@ describe('a spec with a mistake', () => {
     expect(await message({ when: 'x.', value: 'y.', values: { 'a.b': 1 } })).toBe('unit `a-unit`: the value name `a.b` must be letters, digits and hyphens, such as `max-retries`');
     expect(await message({ when: 'x.', value: 'y.', values: { n: Infinity } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got null');
     expect(await message({ when: 'x.', value: 'y.', values: { n: { a: 1 } } })).toBe('unit `a-unit`: the value `n` must be text, a finite number or a boolean; got {"a":1}');
-    expect(await message({ when: 'x.', value: 'y.', values: { n: 'ten\nseconds' } })).toBe('unit `a-unit`: the value `n` has a line break; a value is one line, since `{{value:a-unit.n}}` puts it inside a line');
+    expect(await message({ when: 'x.', value: 'y.', values: { n: 'ten\nseconds' } })).toBe('unit `a-unit`: the value `n` has a line break; a value is one line, since a sentence holds it');
+  });
+});
+
+describe('a file of the skill, with setup()', () => {
+  const retries = { file: 'features/retries.md', title: 'tinyfetch — retries', when: 'Retry a request that failed', description: 'tinyfetch can repeat a request that failed.' };
+
+  it('leaves a record of kind `file`, and the units and questions after it belong to it, in order', async () => {
+    const r = runner();
+    r.unit('before', { when: 'x.', do: 'y.' }, noop);
+    r.setup('retries', retries);
+    r.unit('retry-defaults', { when: 'x.', value: 'y.' }, noop);
+    r.ask('when-to-retry', { scenario: 's.', question: 'q?', expect: 'yes' });
+    r.unit('retry-idempotent-only', { when: 'x.', do: 'y.' });
+    expect(r.tests.map((t) => t.name)).toEqual(['rule before: y.', 'file retries: tinyfetch — retries', 'fact retry-defaults: y.', 'question when-to-retry: q?', 'rule retry-idempotent-only: y.']);
+    expect(await r.run()).toEqual(['ok', 'ok', 'ok', 'ok', 'ok']);
+    const [before, file, defaults, question, idempotent] = r.records.map((x) => x.record);
+    expect(before).not.toHaveProperty('setup');
+    expect(file).toMatchObject({ skillunit: 2, status: 'passed', kind: 'file', id: 'retries', skillFile: 'features/retries.md', title: 'tinyfetch — retries', when: 'Retry a request that failed', description: 'tinyfetch can repeat a request that failed.' });
+    expect(file).not.toHaveProperty('setup');
+    expect(defaults).toMatchObject({ setup: 'retries', order: 0 });
+    expect(idempotent).toMatchObject({ setup: 'retries', order: 1, body: false });
+    // A question with no `file` is about the file its `setup()` declares.
+    expect(question).toMatchObject({ kind: 'question', setup: 'retries', skillFile: 'features/retries.md' });
+  });
+
+  it('SKILL.md gives the frontmatter and has no row in the index', async () => {
+    const r = runner();
+    r.setup('tinyfetch', { file: 'SKILL.md', title: 'tinyfetch', description: 'A small HTTP client.', frontmatter: { name: 'tinyfetch', description: 'Make HTTP requests with tinyfetch.' } });
+    expect(await r.run()).toEqual(['ok']);
+    expect(r.records[0]!.record).toMatchObject({ kind: 'file', skillFile: 'SKILL.md', frontmatter: { name: 'tinyfetch', description: 'Make HTTP requests with tinyfetch.' } });
+  });
+
+  it('says what is wrong with a spec, and fails its test', async () => {
+    const message = async (id: string, spec: unknown) => {
+      const r = runner();
+      r.setup(id, spec as never);
+      return (await r.run())[0];
+    };
+    expect(await message('Retries', retries)).toBe('setup `Retries`: the id must be kebab-case, lowercase words joined by hyphens, such as `retries`');
+    expect(await message('retries', { ...retries, file: '../x.md' })).toBe('setup `retries`: `file` is ../x.md, which is outside the skill folder');
+    expect(await message('retries', { ...retries, file: 'retries.txt' })).toBe('setup `retries`: `file` must be the path of a Markdown file in the skill folder, such as `features/retries.md`');
+    expect(await message('retries', { ...retries, title: 'Retries, 3 at most' })).toBe(
+      'setup `retries`: the number 3 in `title`: a file of the skill has no `values`, so its text has no number. A sentence that states a value is a unit, whose test builds it from the code',
+    );
+    expect(await message('retries', { ...retries, description: 'Two\nlines.' })).toBe('setup `retries`: `description` is one line');
+    expect(await message('retries', { ...retries, when: undefined })).toBe('setup `retries`: `when` must be text that is not empty');
+    expect(await message('retries', { ...retries, frontmatter: { name: 'x', description: 'y' } })).toBe('setup `retries`: `frontmatter` goes in the `setup()` of `SKILL.md` only');
+    expect(await message('retries', { ...retries, order: 2 })).toBe('setup `retries`: unknown key `order` (allowed: file, title, when, description, frontmatter)');
+    expect(await message('skill', { file: 'SKILL.md', title: 'T', description: 'D.', when: 'x' })).toBe('setup `skill`: `SKILL.md` is the index, so it has no row in it and no `when`');
+    expect(await message('skill', { file: 'SKILL.md', title: 'T', description: 'D.' })).toBe('setup `skill`: `SKILL.md` needs `frontmatter: { name, description }`, the name of the skill and when to use it');
+  });
+
+  it('a file and a unit cannot have the same id', async () => {
+    const r = runner();
+    r.setup('retries', retries);
+    r.unit('retries', { when: 'x.', do: 'y.' }, noop);
+    expect((await r.run())[1]).toMatch(/^unit `retries`: the id is that of the file `features\/retries\.md` .*; files of the skill and units share one space of ids$/);
   });
 });
 
@@ -194,7 +357,7 @@ describe('questions for the decision model', () => {
 
   it('one question takes the id of its unit, and goes in the record', async () => {
     const r = runner();
-    r.unit('default-timeout', { when: 'x.', value: '10 seconds.', ask: question }, noop);
+    r.unit('default-timeout', { when: 'x.', value: '10 seconds.', values: { seconds: 10 }, ask: question }, noop);
     expect(await r.run()).toEqual(['ok']);
     expect(r.records[0]!.record).toMatchObject({ status: 'passed', ask: [{ id: 'default-timeout', ...question }] });
   });
@@ -271,7 +434,7 @@ describe('questions for the decision model', () => {
 describe('a unit with no body', () => {
   it('passes, and its record says it has no body', async () => {
     const r = runner();
-    r.unit('never-disable-timeout', { when: 'a request may take long.', do: 'raise `timeout`, never set it to `0`.', check: 'forbid `/timeout:\\s*0\\b/` in ts' });
+    r.unit('never-disable-timeout', { when: 'a request may take long.', do: 'raise `timeout`, never set it to `0`.' });
     r.unit('connect-timeout', { when: 'the user asks for a connect timeout.', value: 'there is none.' });
     expect(r.tests.map((t) => t.name)).toEqual(['rule never-disable-timeout: raise `timeout`, never set it to `0`.', 'fact connect-timeout: there is none.']);
     expect(await r.run()).toEqual(['ok', 'ok']);
@@ -300,29 +463,10 @@ describe('a unit with no body', () => {
     expect(r.records[0]!.record).toMatchObject({ body: false, ask: [{ id: 'never-disable-timeout', ...ask }] });
   });
 
-  it('shows examples in any language from `examples`, before those of `u.example`', async () => {
+  it('takes no `examples` in a spec: a block comes from the body, with `u.example`', async () => {
     const r = runner();
-    r.unit('init-first', { when: 'x.', do: 'y.', examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }] });
-    r.unit('outcomes', { when: 'x.', value: 'y.', examples: [{ lang: 'yaml', text: 'a: 1\n' }] }, (u) => u.example('text', 'from the body'));
-    expect(await r.run()).toEqual(['ok', 'ok']);
-    expect(r.records.map((x) => (x.record as { examples: unknown[] }).examples)).toEqual([
-      [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }],
-      [{ lang: 'yaml', text: 'a: 1\n' }, { lang: 'text', text: 'from the body' }],
-    ]);
-  });
-
-  it('`examples` with a mistake, or on a decision, fails', async () => {
-    const r = runner();
-    r.unit('a-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'two words', text: 'z' }] });
-    r.unit('b-rule', { when: 'x.', do: 'y.', examples: [{ lang: 'sh' }] } as never);
-    r.unit('c-rule', { when: 'x.', do: 'y.', examples: { lang: 'sh', text: 'z' } } as never);
-    r.unit('a-decision', { when: 'x.', paths: [{ path: 'one', when: 'y.' }], examples: [{ lang: 'sh', text: 'z' }] });
-    expect(await r.run()).toEqual([
-      'unit `a-rule`: each example has a fence language in `lang`, such as `sh` or `yaml`; got "two words"',
-      'unit `b-rule`: the `sh` example needs its text in `text`',
-      "unit `c-rule`: `examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`",
-      'unit `a-decision`: a decision shows its examples in its paths, from the regions `skill:a-decision.<path>`; `examples` is for a rule or a fact',
-    ]);
+    r.unit('init-first', { when: 'x.', do: 'y.', examples: [{ lang: 'sh', text: 'npx skillunit init skills/my-skill' }] } as never);
+    expect(await r.run()).toEqual(['unit `init-first`: unknown key `examples` (allowed: when, do, value, decide, paths, unknown, evenWhen, values, ask)']);
   });
 
   it('a fact with no body needs `value`, and a third argument that is not a function fails', async () => {
@@ -346,7 +490,7 @@ describe('ask()', () => {
     expect(r.tests.map((t) => t.name)).toEqual(['question which-file-for-retries: Which file does the agent read?']);
     expect(await r.run()).toEqual(['ok']);
     expect(r.records[0]!.record).toEqual({
-      skillunit: 1,
+      skillunit: 2,
       id: 'which-file-for-retries',
       file: expect.stringMatching(/create\.test\.ts$/),
       line: expect.any(Number),

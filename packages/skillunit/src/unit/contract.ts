@@ -35,7 +35,8 @@
  * `ask` holds the questions for the decision model, in the form `unit()` takes them: one question
  * or a list, with or without `id`. SkillUnit checks them again when it reads the record.
  *
- * A unit declared with no body, which no test proves, has `"body": false`.
+ * A unit no test proves has `"body": false`: it was declared with no body, or its body made no
+ * assertion and only showed blocks with `u.example`, which are then in `examples`.
  *
  * A question about the prose of a file, declared with `ask()`, leaves `"kind": "question"`, its
  * own `id`, the built file it is about in `skillFile`, and itself in `ask`:
@@ -63,7 +64,7 @@
  */
 
 /** Bumped when a field changes meaning or disappears. */
-export const UNIT_CONTRACT = 1;
+export const UNIT_CONTRACT = 2;
 
 export type UnitKind = 'rule' | 'decision' | 'fact';
 
@@ -89,17 +90,10 @@ export interface UnitSpec {
   unknown?: string;
   /** A rule or a decision: the case where it still applies. */
   evenWhen?: string;
-  /** Any kind: ``forbid `/regex/` in <languages>``. */
-  check?: string;
-  /** Named values the prose of the skill may use, as `{{value:<id>.<name>}}`. */
+  /** Named values the text of the unit states: each number in it is one of them. */
   values?: Record<string, UnitScalar>;
   /** Questions for the decision model about this unit: one, or a list. */
   ask?: UnitQuestion | UnitQuestion[];
-  /**
-   * A rule or a fact: blocks to show, such as a command or a config. They come before the blocks
-   * of `u.example`, and are how a unit with no body shows an example in a language its file is not.
-   */
-  examples?: UnitExample[];
 }
 
 /**
@@ -152,10 +146,18 @@ interface RecordBase {
   test: string;
 }
 
-export interface PassedUnit extends RecordBase {
+/** Where a unit or a question goes: the file of the skill, by the id of its `setup()`, and its place there. */
+interface Placed {
+  /** The id of the `setup()` declared last before it in its test file. Absent with none. */
+  setup?: string;
+  /** Its place among the units of that file, from 0, in the order they are declared. */
+  order?: number;
+}
+
+export interface PassedUnit extends RecordBase, Placed {
   status: 'passed';
   kind: UnitKind;
-  /** `false` when the unit was declared with no body: no test proves it. */
+  /** `false` when no test proves the unit: declared with no body, or a body that only showed blocks. */
   body?: false;
   when: string;
   do?: string;
@@ -164,23 +166,22 @@ export interface PassedUnit extends RecordBase {
   paths?: UnitPath[];
   unknown?: string;
   evenWhen?: string;
-  check?: string;
   values?: Record<string, UnitScalar>;
   ask?: AskedQuestion[];
-  /** The blocks of `u.example`, in the order of the calls. */
+  /** The blocks of `u.example`, in the order of the calls: a command, a config, an output. A unit with no body has none. */
   examples: UnitExample[];
 }
 
-export interface FailedUnit extends RecordBase {
+export interface FailedUnit extends RecordBase, Placed {
   status: 'failed';
-  /** Set when the record is of a question declared with `ask()`. */
-  kind?: 'question';
+  /** Set when the record is of a question declared with `ask()`, or of a file declared with `setup()`. */
+  kind?: 'question' | 'file';
   /** The message of what the body or the spec threw. */
   error: string;
 }
 
 /** What `ask()` leaves. */
-export interface PassedQuestion extends RecordBase {
+export interface PassedQuestion extends RecordBase, Placed {
   status: 'passed';
   kind: 'question';
   /** The built file the question is about, from the skill folder. */
@@ -188,9 +189,30 @@ export interface PassedQuestion extends RecordBase {
   ask: AskedQuestion[];
 }
 
-export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion;
+/** What `setup(id, spec)` takes: a file of the skill, its heading, its row in the index and its line. */
+export interface SetupSpec {
+  /** The path of the file in the skill folder, such as `features/retries.md`. */
+  file: string;
+  /** Its heading: `# <title>`. */
+  title: string;
+  /** Its row in the index of `SKILL.md`: the task that sends the agent to it. `SKILL.md` has none. */
+  when?: string;
+  /** One line under the title: what the file is about. */
+  description: string;
+  /** `SKILL.md` only: the frontmatter of the skill. */
+  frontmatter?: { name: string; description: string };
+}
 
-/** A unit id: kebab-case, as lint wants it. */
+/** What `setup()` leaves: `file` is the test file, as in every record, and `skillFile` the path in the skill. */
+export interface PassedFile extends RecordBase, Omit<SetupSpec, 'file'> {
+  status: 'passed';
+  kind: 'file';
+  skillFile: string;
+}
+
+export type UnitRecord = PassedUnit | FailedUnit | PassedQuestion | PassedFile;
+
+/** A unit id: kebab-case. */
 export const UNIT_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 /** The name of a path of a decision, or of a value. */
 export const UNIT_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/i;
@@ -200,10 +222,10 @@ export const QUESTION_ID = /^[a-z0-9]+(?:[-.][a-z0-9]+)*$/;
 /** The option SkillUnit adds to every question with options. A question may expect it, not list it. */
 export const NONE = 'none';
 
-const KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'check', 'values', 'ask', 'examples'] as const;
-/** A fence language: what `u.example` and `examples` take. */
+export const SPEC_KEYS = ['when', 'do', 'value', 'decide', 'paths', 'unknown', 'evenWhen', 'values', 'ask'] as const;
+/** A fence language: what `u.example` takes, and the `lang` of each block in `examples` of a record. */
 export const FENCE_LANG = /^[A-Za-z0-9_+.-]+$/;
-const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
+export const QUESTION_KEYS = ['id', 'scenario', 'question', 'options', 'expect', 'with', 'section'] as const;
 /** The file a question about prose reads when it names none. */
 export const DEFAULT_SKILL_FILE = 'SKILL.md';
 
@@ -224,10 +246,10 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
   }
   if (!spec || typeof spec !== 'object' || Array.isArray(spec)) fail('the spec must be an object, such as `{ when: …, do: … }`');
   const s = spec as Record<string, unknown>;
-  const extra = Object.keys(s).find((k) => !(KEYS as readonly string[]).includes(k));
-  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${KEYS.join(', ')})`);
+  const extra = Object.keys(s).find((k) => !(SPEC_KEYS as readonly string[]).includes(k));
+  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${SPEC_KEYS.join(', ')})`);
 
-  for (const key of ['when', 'do', 'value', 'decide', 'unknown', 'evenWhen', 'check'] as const) {
+  for (const key of ['when', 'do', 'value', 'decide', 'unknown', 'evenWhen'] as const) {
     const v = s[key];
     if (v === undefined) continue;
     if (typeof v !== 'string' || !v.trim()) fail(`\`${key}\` must be text that is not empty`);
@@ -265,21 +287,104 @@ export function checkSpec(id: unknown, spec: unknown): UnitKind {
       if (!['string', 'number', 'boolean'].includes(typeof v) || (typeof v === 'number' && !Number.isFinite(v))) {
         fail(`the value \`${name}\` must be text, a finite number or a boolean; got ${JSON.stringify(v) ?? String(v)}`);
       }
-      if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since \`{{value:${id as string}.${name}}}\` puts it inside a line`);
-    }
-  }
-  if (s.examples !== undefined) {
-    if (kind === 'decision') fail(`a decision shows its examples in its paths, from the regions \`skill:${id as string}.<path>\`; \`examples\` is for a rule or a fact`);
-    if (!Array.isArray(s.examples)) fail("`examples` must be a list of `{ lang, text }`, such as `[{ lang: 'sh', text: 'npx skillunit init' }]`");
-    for (const x of s.examples as unknown[]) {
-      const { lang, text, ...rest } = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>;
-      if (typeof lang !== 'string' || !FENCE_LANG.test(lang)) fail(`each example has a fence language in \`lang\`, such as \`sh\` or \`yaml\`; got ${JSON.stringify(lang)}`);
-      if (typeof text !== 'string') fail(`the \`${lang as string}\` example needs its text in \`text\``);
-      if (Object.keys(rest).length) fail(`an example has an unknown key \`${Object.keys(rest)[0]}\` (allowed: lang, text)`);
+      if (typeof v === 'string' && /[\r\n]/.test(v)) fail(`the value \`${name}\` has a line break; a value is one line, since a sentence holds it`);
     }
   }
   if (s.ask !== undefined) checkQuestions(id as string, s.ask);
   return kind;
+}
+
+/** The file of a skill that holds its frontmatter and its index. */
+export const SKILL_INDEX = 'SKILL.md';
+
+export const SETUP_KEYS = ['file', 'title', 'when', 'description', 'frontmatter'] as const;
+
+/**
+ * The spec of `setup(id, spec)`, after checking it: one line for each text, and no number in any,
+ * since a file of the skill has no `values`. Throws a `UnitSpecError` that says what to fix.
+ */
+export function checkSetup(id: unknown, spec: unknown): SetupSpec {
+  const fail = (message: string): never => {
+    throw new UnitSpecError(`setup ${typeof id === 'string' ? `\`${id}\`` : String(id)}: ${message}`);
+  };
+  if (typeof id !== 'string' || !UNIT_ID.test(id)) fail('the id must be kebab-case, lowercase words joined by hyphens, such as `retries`');
+  if (!spec || typeof spec !== 'object' || Array.isArray(spec)) fail('the spec must be an object, such as `{ file, title, when, description }`');
+  const s = spec as Record<string, unknown>;
+  const extra = Object.keys(s).find((k) => !(SETUP_KEYS as readonly string[]).includes(k));
+  if (extra !== undefined) fail(`unknown key \`${extra}\` (allowed: ${SETUP_KEYS.join(', ')})`);
+  if (typeof s.file !== 'string' || !s.file.trim() || !/\.md$/i.test(s.file)) fail('`file` must be the path of a Markdown file in the skill folder, such as `features/retries.md`');
+  const file = (s.file as string).split('\\').join('/');
+  if (leavesFolder(file)) fail(`\`file\` is ${file}, which is outside the skill folder`);
+  const index = file === SKILL_INDEX;
+  const line = (key: string, value: unknown) => {
+    if (typeof value !== 'string' || !value.trim()) fail(`\`${key}\` must be text that is not empty`);
+    if (/[\r\n]/.test(value as string)) fail(`\`${key}\` is one line`);
+    const n = numbersIn(value as string)[0];
+    if (n !== undefined) fail(`the number ${n} in \`${key}\`: a file of the skill has no \`values\`, so its text has no number. A sentence that states a value is a unit, whose test builds it from the code`);
+    return value as string;
+  };
+  const out: SetupSpec = { file, title: line('title', s.title), description: line('description', s.description) };
+  if (index) {
+    if (s.when !== undefined) fail(`\`${SKILL_INDEX}\` is the index, so it has no row in it and no \`when\``);
+    const fm = s.frontmatter;
+    if (!fm || typeof fm !== 'object' || Array.isArray(fm)) fail(`\`${SKILL_INDEX}\` needs \`frontmatter: { name, description }\`, the name of the skill and when to use it`);
+    const { name, description, ...rest } = fm as Record<string, unknown>;
+    if (Object.keys(rest).length) fail(`\`frontmatter\` has an unknown key \`${Object.keys(rest)[0]}\` (allowed: name, description)`);
+    if (typeof name !== 'string' || !UNIT_ID.test(name)) fail('`frontmatter.name` must be the name of the skill in kebab-case, such as `tinyfetch`');
+    out.frontmatter = { name: name as string, description: line('frontmatter.description', description) };
+  } else {
+    if (s.frontmatter !== undefined) fail(`\`frontmatter\` goes in the \`setup()\` of \`${SKILL_INDEX}\` only`);
+    out.when = line('when', s.when);
+  }
+  return out;
+}
+
+/**
+ * A number in the text of a unit: digits, with `_` groups and an optional decimal part, not right
+ * after a letter, a digit, `_` or `.`. So `300 ms`, `10_000`, `0.5`, `2x` and `5xx` have one,
+ * and `utf8`, `h2` and `sha256` do not.
+ */
+const NUMBER = /(?<![\p{L}\d_.])\d+(?:_\d+)*(?:\.\d+)?/gu;
+
+/** The numbers of `text`, as written, in order. */
+export function numbersIn(text: string): string[] {
+  return text.match(NUMBER) ?? [];
+}
+
+/** Two numbers are the same when they are equal once `_` is taken out. */
+const numeric = (written: string) => Number(written.replaceAll('_', ''));
+
+/** The text of a unit the number rule reads, by its label. */
+type NumberedText = Pick<UnitSpec, 'when' | 'do' | 'value' | 'decide' | 'paths' | 'unknown' | 'evenWhen' | 'values'>;
+
+/**
+ * Throws a `UnitSpecError` when the text of a unit has a number that none of its `values` is:
+ * a value that is that number, or text that has it as a number of its own. For a unit with a
+ * body, with the `Value` the body set: a number typed into the sentence is one no test checks.
+ */
+export function checkNumbers(id: string, spec: NumberedText): void {
+  const allowed = new Set<number>();
+  for (const v of Object.values(spec.values ?? {})) {
+    if (typeof v === 'number') allowed.add(v);
+    else if (typeof v === 'string') for (const n of numbersIn(v)) allowed.add(numeric(n));
+  }
+  const labels: [string, string | undefined][] = [
+    ['`When`', spec.when],
+    ['`Do`', spec.do],
+    ['`Value`', spec.value],
+    ['`Decide`', spec.decide],
+    ...(spec.paths ?? []).map((p): [string, string] => [`the path \`${p.path}\``, p.when]),
+    ['`Unknown`', spec.unknown],
+    ['`Even when`', spec.evenWhen],
+  ];
+  for (const [label, text] of labels) {
+    if (typeof text !== 'string') continue;
+    const typed = numbersIn(text).find((n) => !allowed.has(numeric(n)));
+    if (typed === undefined) continue;
+    throw new UnitSpecError(
+      `unit \`${id}\`: the number ${typed} in ${label} is none of the unit's \`values\`. Give the value a name in the code, build the sentence from that name, and list it in \`values\``,
+    );
+  }
 }
 
 /**

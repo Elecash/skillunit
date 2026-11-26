@@ -1,49 +1,26 @@
 # tinyfetch — clients
 
-Make many requests to one API through a client that holds its base URL and headers.
-
-Setup:
+What a client made with `create` shares between its requests.
 
 ```ts
 import { create } from "tinyfetch";
 ```
 
-## Options
-
-| Option    | Type        | Meaning                                                 |
-| --------- | ----------- | ------------------------------------------------------- |
-| `baseUrl` | string      | prefix of every path                                    |
-| `headers` | object      | headers sent with every request                         |
-| `timeout` | number (ms) | timeout of every request, unless a request sets its own |
-
-```ts
-const api = create({
-  baseUrl: "https://api.example.com/v1/",
-  headers: {
-    authorization: "Bearer token",
-    "content-type": "application/json",
-  },
-});
-const orders = await api.get<{ id: number }[]>("orders");
-console.log(orders.length);
-```
-
 ## Rules
 
-### decision: one-client-per-api
+### fact: client-options
 
-When: the code makes several requests to the same API.
+When: the code makes a client with `create`.
 
-Decide: whether to create a client.
+Value: `create(options)` makes a client whose requests share the options `baseUrl`, `headers` and `timeout`; `tf` is a client made with none, and `tf.create` is `create`.
 
-- **shared** — the requests share a base URL or headers: create one client with `create` and reuse it.
+### fact: base-url
 
-  ```ts
-  const api = create({ baseUrl: "https://api.example.com/v1/" });
-  await api.get("users");
-  await api.get("orders");
-  ```
+When: the code sets `baseUrl`, or calls a client with a path.
 
-- **direct** — one request, or requests to unrelated hosts: call `tf` with full URLs.
+Value: a path that is not a whole URL goes after `baseUrl`, with one `/` between them, whether or not `baseUrl` ends with `/` and whether or not the path starts with one; a whole URL, such as `https://other.example.com/x`, is sent as it is; a client with no `baseUrl`, `tf` among them, sends `/users` to `http://localhost/users`.
 
-Even when: the requests sit in different files: export the client from one module and import it.
+```ts
+const api = create({ baseUrl: "https://api.example.com/v1" });
+await api.get("/users");
+```

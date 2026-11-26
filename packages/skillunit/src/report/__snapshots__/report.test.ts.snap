@@ -1,20 +1,18 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
 exports[`reporters > github: every layer with every kind of finding 1`] = `
-"::error file=skills/demo/features/retries.md,line=24,title=SkillUnit lint%3A retry-idempotent-only::breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
-::warning file=skills/demo/features/retries.md,line=3,title=SkillUnit lint::312 lines; above about 300, look for a split into files of one task each
-::error file=src/skill.skill.test.ts,line=20,title=SkillUnit test%3A which-file::the question \`which-file\` is about features/gone.md, which is not a file in the skill folder
+"::error file=src/skill.skill.test.ts,line=20,title=SkillUnit test%3A which-file::the question \`which-file\` is about features/gone.md, which is not a file in the skill folder
 ::warning file=src/retry.skill.test.ts,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
 ::error file=src/retry.skill.test.ts,line=19,title=SkillUnit test%3A exact-command::expected exact, got exact (probability 0.44, threshold 0.50): exact 44%25, none 40%25, loose 16%25%0Ascenario: The user asks to retry a POST.
 ::error file=src/retry.skill.test.ts,line=30,title=SkillUnit test%3A user-asks-for-mutations::expected explain, got none (probability 0.66, threshold 0.50): none 66%25, explain 34%25, tool 0%25%0Ascenario: The user asks to retry a POST.
 ::error file=src/skill.skill.test.ts,line=8,title=SkillUnit test::could not ask the questions about SKILL.md: no heading "Gone" in SKILL.md
-FAILED  lint 1 error, 1 warning · test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
+FAILED  test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
 "
 `;
 
 exports[`reporters > json: every layer with every kind of finding 1`] = `
 "{
-  "schema": 6,
+  "schema": 7,
   "command": "check",
   "ok": false,
   "units": [
@@ -43,46 +41,6 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "line": 40
     }
   ],
-  "lint": {
-    "skill": "/repo/skills/demo",
-    "files": [
-      "SKILL.md",
-      "features/retries.md"
-    ],
-    "ok": false,
-    "problems": [
-      {
-        "file": "features/retries.md",
-        "line": 24,
-        "unit": "retry-idempotent-only",
-        "severity": "error",
-        "rule": "check",
-        "message": "breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)"
-      },
-      {
-        "file": "features/retries.md",
-        "line": 3,
-        "severity": "warning",
-        "rule": "index",
-        "message": "312 lines; above about 300, look for a split into files of one task each"
-      }
-    ],
-    "summary": {
-      "files": 2,
-      "units": 3,
-      "typescript": "5.6.3",
-      "typeChecked": 6,
-      "notParsed": 0,
-      "off": [],
-      "commandChecked": 0,
-      "unchecked": {
-        "sh": 2
-      },
-      "noCheck": 1,
-      "notConfigured": 0,
-      "undeclared": []
-    }
-  },
   "test": {
     "ok": false,
     "skill": "/repo/skills/demo",
@@ -254,14 +212,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
 
 exports[`reporters > junit: every layer with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="SkillUnit" tests="8" failures="3" errors="2">
-  <testsuite name="lint" tests="2" failures="1" errors="0">
-    <testcase name="skills/demo/SKILL.md" classname="lint"/>
-    <testcase name="skills/demo/features/retries.md" classname="lint">
-      <failure message="skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post(&apos;/users&apos;, {}, { retry\` matches its \`Check\` (features/retries.md:35)">skills/demo/features/retries.md:24  retry-idempotent-only  breaks \`retry-idempotent-only\`: \`post(&apos;/users&apos;, {}, { retry\` matches its \`Check\` (features/retries.md:35)</failure>
-      <system-out>warning: skills/demo/features/retries.md:3  -  312 lines; above about 300, look for a split into files of one task each</system-out>
-    </testcase>
-  </testsuite>
+<testsuites name="SkillUnit" tests="6" failures="2" errors="2">
   <testsuite name="test questions" tests="1" failures="0" errors="1">
     <testcase name="which-file" classname="src/skill.skill.test.ts:20">
       <error message="the question \`which-file\` is about features/gone.md, which is not a file in the skill folder">the question \`which-file\` is about features/gone.md, which is not a file in the skill folder</error>
@@ -300,10 +251,6 @@ question: What does the skill say?</failure>
 
 exports[`reporters > table and github: a clean check 1`] = `
 "
-Lint  skills/demo
-  ✓ 2 files, all clean
-  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
-
 Units  test jev-1.14.0
 
   skills/demo/SKILL.md
@@ -322,13 +269,13 @@ Units  test jev-1.14.0
 
   2 tests · 1 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
 
-OK  lint ok · test 2/2 passed (1 borderline)
+OK  test 2/2 passed (1 borderline)
 "
 `;
 
 exports[`reporters > table and github: a clean check 2`] = `
 "::warning file=src/retry.skill.test.ts,line=12,title=SkillUnit test%3A get-retry is borderline::passed near its threshold, so a later run may fail it: expected yes, got yes (P(yes) 0.76, needs ≥ 0.70): yes 76%25, no 24%25
-OK  lint ok · test 2/2 passed (1 borderline)
+OK  test 2/2 passed (1 borderline)
 "
 `;
 
@@ -360,12 +307,6 @@ OK  test dry run ok, 4 tests ready
 
 exports[`reporters > table: colour on a terminal 1`] = `
 "
-[1mLint[0m  [2mskills/demo[0m
-[2m    FILE                        ERRORS  WARNINGS[0m
-  [31m✗[0m features/retries.md              1         1
-  [32m✓[0m 1 other file clean
-[2m  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh[0m
-
 [1mUnits[0m  [2mtest jev-1.14.0[0m
 
   [1mskills/demo/SKILL.md[0m
@@ -375,7 +316,6 @@ exports[`reporters > table: colour on a terminal 1`] = `
       test   [2m–[0m
 
   [1mskills/demo/features/retries.md[0m
-    lint   [33m~[0m skills/demo/features/retries.md:3  312 lines; above about 300, look for a split into files of one task each
     test   [33m~[0m src/retry.skill.test.ts:12  get-retry  yes P(yes) 0.76
              P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it
     test   [31m✗[0m src/retry.skill.test.ts:30  user-asks-for-mutations  none 0.66
@@ -385,8 +325,7 @@ exports[`reporters > table: colour on a terminal 1`] = `
              got:       none · probability 0.66, threshold 0.50 · wrong answer
                         none 66% · explain 34% · tool 0%
              phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
-    [31mretry-idempotent-only[0m  [2mrule[0m
-      lint   [31m✗[0m skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+    [32mretry-idempotent-only[0m  [2mrule[0m
       test   [32m✓[0m src/retry.skill.test.ts:3  post-retry  stop 0.92
     [31mretry-delay[0m  [2mfact[0m
       test   [31m✗[0m src/retry.skill.test.ts:19  exact-command  exact 0.44
@@ -406,23 +345,16 @@ exports[`reporters > table: colour on a terminal 1`] = `
 
 [1m[31mFailed[0m[0m
   skills/demo/features/retries.md › src/retry.skill.test.ts:30  user-asks-for-mutations
-  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
   skills/demo/features/retries.md › retry-delay › src/retry.skill.test.ts:19  exact-command
   src/skill.skill.test.ts:20  which-file
   skills/demo/SKILL.md § Gone  could not run
 
-[31mFAILED  lint 1 error, 1 warning · test 2/4 passed (1 request could not run, 1 problem, 2 borderline)[0m
+[31mFAILED  test 2/4 passed (1 request could not run, 1 problem, 2 borderline)[0m
 "
 `;
 
 exports[`reporters > table: every layer with every kind of finding 1`] = `
 "
-Lint  skills/demo
-    FILE                        ERRORS  WARNINGS
-  ✗ features/retries.md              1         1
-  ✓ 1 other file clean
-  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
-
 Units  test jev-1.14.0
 
   skills/demo/SKILL.md
@@ -432,7 +364,6 @@ Units  test jev-1.14.0
       test   –
 
   skills/demo/features/retries.md
-    lint   ~ skills/demo/features/retries.md:3  312 lines; above about 300, look for a split into files of one task each
     test   ~ src/retry.skill.test.ts:12  get-retry  yes P(yes) 0.76
              P(yes) 0.76, needs ≥ 0.70 · borderline: the next run may fail it
     test   ✗ src/retry.skill.test.ts:30  user-asks-for-mutations  none 0.66
@@ -443,7 +374,6 @@ Units  test jev-1.14.0
                         none 66% · explain 34% · tool 0%
              phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
     retry-idempotent-only  rule
-      lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
       test   ✓ src/retry.skill.test.ts:3  post-retry  stop 0.92
     retry-delay  fact
       test   ✗ src/retry.skill.test.ts:19  exact-command  exact 0.44
@@ -463,23 +393,16 @@ Elsewhere
 
 Failed
   skills/demo/features/retries.md › src/retry.skill.test.ts:30  user-asks-for-mutations
-  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
   skills/demo/features/retries.md › retry-delay › src/retry.skill.test.ts:19  exact-command
   src/skill.skill.test.ts:20  which-file
   skills/demo/SKILL.md § Gone  could not run
 
-FAILED  lint 1 error, 1 warning · test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
+FAILED  test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
 "
 `;
 
 exports[`reporters > table: the report by unit > --compact: one row per unit, with what failed under it 1`] = `
 "
-Lint  skills/demo
-    FILE                        ERRORS  WARNINGS
-  ✗ features/retries.md              1         1
-  ✓ 1 other file clean
-  3 units · 6 examples type-checked with TypeScript 5.6.3 · 1 marked no-check · not checked, no command set: 2 sh
-
 Units  proof ran \`npx vitest run\` in 2.3 s, exit 0 · test jev-1.14.0
 
   skills/demo/SKILL.md
@@ -495,8 +418,7 @@ Units  proof ran \`npx vitest run\` in 2.3 s, exit 0 · test jev-1.14.0
                  got:       none · probability 0.66, threshold 0.50 · wrong answer
                             none 66% · explain 34% · tool 0%
                  phrasings: 0.34 fail  0.12 fail  0.72 pass (probability of "explain" for each; 1 of 3 pass, and most must)
-    ✗ retry-idempotent-only  rule      test      1/1
-        lint   ✗ skills/demo/features/retries.md:24  breaks \`retry-idempotent-only\`: \`post('/users', {}, { retry\` matches its \`Check\` (features/retries.md:35)
+    ✓ retry-idempotent-only  rule      test      1/1
     ✗ retry-delay            fact      declared  0/1
         test   ✗ src/retry.skill.test.ts:19  exact-command  exact 0.44
                  scenario:  The user asks to retry a POST.
@@ -506,7 +428,7 @@ Units  proof ran \`npx vitest run\` in 2.3 s, exit 0 · test jev-1.14.0
                             exact 44% · none 40% · loose 16%
 
   4 units · 1 proof and test · 0 proof only · 1 test only · 2 not covered
-  4 units · 1 proved by a test · 3 declared without one · 0 values in prose
+  4 units · 1 proved by a test · 3 declared without one
   4 tests · 2 borderline: within 0.13 of the threshold · 2,000 in / 200 out tokens
 
 Elsewhere
@@ -517,28 +439,27 @@ Elsewhere
 
 Failed
   skills/demo/features/retries.md › src/retry.skill.test.ts:30  user-asks-for-mutations
-  skills/demo/features/retries.md › retry-idempotent-only › lint skills/demo/features/retries.md:24
   skills/demo/features/retries.md › retry-delay › src/retry.skill.test.ts:19  exact-command
   src/skill.skill.test.ts:20  which-file
   skills/demo/SKILL.md § Gone  could not run
 
-FAILED  lint 1 error, 1 warning · proof ok · test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
+FAILED  proof ok · test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
 "
 `;
 
 exports[`reporters > the proof layer > github: units proved by a test and declared without one, with every kind of finding 1`] = `
 "::error file=skills/demo/features/retries.md,line=22,title=SkillUnit proof%3A retry-idempotent-only::this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.%0Afrom the test of \`retry-idempotent-only\`, src/retry.test.ts:12
-::error file=skills-src/demo/features/retries.md,line=30,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
-::error file=skills-src/demo/SKILL.md,line=28,title=SkillUnit proof%3A await-every-request::no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
+::error file=src/retry.test.ts,line=40,title=SkillUnit proof%3A retry-delay::the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
+::error file=skills/demo/SKILL.md,line=30,title=SkillUnit proof%3A await-every-request::the skill has the unit \`await-every-request\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill
 ::warning file=skillunit.yaml,line=3,title=SkillUnit proof::\`proof.format\` failed on the build of SKILL.md
-::notice title=SkillUnit proof::4 units · 1 proved by a test, 1 failed, 1 missing · 1 declared without one · 2 values in prose · 1 file out of date
+::notice title=SkillUnit proof::3 units · 1 proved by a test, 1 failed · 1 declared without one · 1 file out of date
 FAILED  proof 3 errors, 1 warning
 "
 `;
 
 exports[`reporters > the proof layer > json: units proved by a test and declared without one, with every kind of finding 1`] = `
 "{
-  "schema": 6,
+  "schema": 7,
   "command": "proof",
   "ok": false,
   "units": [
@@ -571,7 +492,6 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
     "configured": true,
     "ok": false,
     "skill": "/repo/skills/demo",
-    "source": "/repo/skills-src/demo",
     "write": false,
     "run": {
       "command": "npx vitest run",
@@ -586,9 +506,9 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
         "state": "passed",
         "file": "features/retries.md",
         "line": 20,
-        "source": {
-          "file": "../../skills-src/demo/features/retries.md",
-          "line": 20
+        "setup": {
+          "file": "../../src/retry.test.ts",
+          "line": 3
         },
         "test": {
           "file": "../../src/retry.test.ts",
@@ -602,9 +522,9 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
         "state": "failed",
         "file": "features/retries.md",
         "line": 40,
-        "source": {
-          "file": "../../skills-src/demo/features/retries.md",
-          "line": 30
+        "setup": {
+          "file": "../../src/retry.test.ts",
+          "line": 3
         },
         "test": {
           "file": "../../src/retry.test.ts",
@@ -619,25 +539,13 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
         "state": "passed",
         "file": "SKILL.md",
         "line": 12,
-        "source": {
-          "file": "../../skills-src/demo/SKILL.md",
-          "line": 12
+        "setup": {
+          "file": "../../src/skill.skill.test.ts",
+          "line": 3
         },
         "test": {
           "file": "../../src/skill.skill.test.ts",
           "line": 5
-        }
-      },
-      {
-        "id": "await-every-request",
-        "kind": null,
-        "from": "test",
-        "state": "missing",
-        "file": "SKILL.md",
-        "line": 30,
-        "source": {
-          "file": "../../skills-src/demo/SKILL.md",
-          "line": 28
         }
       }
     ],
@@ -657,7 +565,6 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
         "line": 22,
         "unit": "retry-idempotent-only",
         "severity": "error",
-        "rule": "proof",
         "message": "this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.",
         "origin": {
           "kind": "test",
@@ -667,36 +574,31 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
         }
       },
       {
-        "file": "../../skills-src/demo/features/retries.md",
-        "line": 30,
+        "file": "../../src/retry.test.ts",
+        "line": 40,
         "unit": "retry-delay",
         "severity": "error",
-        "rule": "proof",
         "message": "the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000"
       },
       {
-        "file": "../../skills-src/demo/SKILL.md",
-        "line": 28,
+        "file": "SKILL.md",
+        "line": 30,
         "unit": "await-every-request",
         "severity": "error",
-        "rule": "proof",
-        "message": "no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run"
+        "message": "the skill has the unit \`await-every-request\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill"
       },
       {
         "file": "../../skillunit.yaml",
         "line": 3,
         "severity": "warning",
-        "rule": "proof",
         "message": "\`proof.format\` failed on the build of SKILL.md"
       }
     ],
     "summary": {
-      "units": 4,
+      "units": 3,
       "proved": 1,
       "declared": 1,
       "failed": 1,
-      "missing": 1,
-      "values": 2,
       "files": 2,
       "differ": 1,
       "written": 0,
@@ -709,8 +611,8 @@ exports[`reporters > the proof layer > json: units proved by a test and declared
 
 exports[`reporters > the proof layer > junit: units proved by a test and declared without one, with every kind of finding 1`] = `
 "<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="SkillUnit" tests="5" failures="3" errors="0">
-  <testsuite name="proof" tests="5" failures="3" errors="0">
+<testsuites name="SkillUnit" tests="4" failures="2" errors="0">
+  <testsuite name="proof" tests="4" failures="2" errors="0">
     <testcase name="retry-idempotent-only" classname="proof.skills/demo/features/retries.md">
       <properties>
         <property name="from" value="test"/>
@@ -726,7 +628,7 @@ from the test of \`retry-idempotent-only\`, src/retry.test.ts:12</failure>
         <property name="state" value="failed"/>
         <property name="origin" value="src/retry.test.ts:40"/>
       </properties>
-      <failure message="skills-src/demo/features/retries.md:30  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000">skills-src/demo/features/retries.md:30  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000</failure>
+      <failure message="src/retry.test.ts:40  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000">src/retry.test.ts:40  retry-delay  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000</failure>
     </testcase>
     <testcase name="pick-a-client" classname="proof.skills/demo/SKILL.md">
       <properties>
@@ -734,14 +636,6 @@ from the test of \`retry-idempotent-only\`, src/retry.test.ts:12</failure>
         <property name="state" value="passed"/>
         <property name="origin" value="src/skill.skill.test.ts:5"/>
       </properties>
-    </testcase>
-    <testcase name="await-every-request" classname="proof.skills/demo/SKILL.md">
-      <properties>
-        <property name="from" value="test"/>
-        <property name="state" value="missing"/>
-        <property name="origin" value="skills-src/demo/SKILL.md:28"/>
-      </properties>
-      <failure message="skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run">skills-src/demo/SKILL.md:28  await-every-request  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run</failure>
     </testcase>
     <testcase name="skillunit.yaml:3" classname="proof">
       <system-out>warning: skillunit.yaml:3  -  \`proof.format\` failed on the build of SKILL.md</system-out>
@@ -759,7 +653,7 @@ Units  proof ran \`npx vitest run\` in 4.2 s, exit 1
     pick-a-client  decision
       proof  – declared, no test, src/skill.skill.test.ts:5
     await-every-request  rule
-      proof  ✗ skills-src/demo/SKILL.md:28  no test left the unit \`await-every-request\`: its test was skipped or deleted, or did not run
+      proof  ✗ skills/demo/SKILL.md:30  the skill has the unit \`await-every-request\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill
 
   skills/demo/features/retries.md
     retry-idempotent-only  rule
@@ -767,17 +661,17 @@ Units  proof ran \`npx vitest run\` in 4.2 s, exit 1
       proof  ✗ skills/demo/features/retries.md:22  this line is not what the build gives: the build has \`Do: retry GET only.\`, the skill has \`Do: retry anything.\`. Run \`skillunit proof --write\` to update the skill. To change this text, change where it comes from: the skill folder is built.
                from the test of \`retry-idempotent-only\`, src/retry.test.ts:12
     retry-delay  fact
-      proof  ✗ skills-src/demo/features/retries.md:30  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
+      proof  ✗ src/retry.test.ts:40  the test of \`retry-delay\` (src/retry.test.ts:40) failed, so it left no unit: expected 500 to be 1000
 
-  4 units · 1 proved by a test, 1 failed, 1 missing · 1 declared without one · 2 values in prose · 1 file out of date
+  3 units · 1 proved by a test, 1 failed · 1 declared without one · 1 file out of date
 
 Elsewhere
   proof  ~ skillunit.yaml:3  \`proof.format\` failed on the build of SKILL.md
 
 Failed
-  skills/demo/SKILL.md › await-every-request › proof skills-src/demo/SKILL.md:28
+  skills/demo/SKILL.md › await-every-request › proof skills/demo/SKILL.md:30
   skills/demo/features/retries.md › retry-idempotent-only › proof skills/demo/features/retries.md:22
-  skills/demo/features/retries.md › retry-delay › proof skills-src/demo/features/retries.md:30
+  skills/demo/features/retries.md › retry-delay › proof src/retry.test.ts:40
 
 FAILED  proof 3 errors, 1 warning
 "

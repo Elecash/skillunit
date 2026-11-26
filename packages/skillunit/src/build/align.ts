@@ -47,8 +47,15 @@ export interface Difference {
   line: number;
   /** The line in `expected`, or undefined when `actual` only has more lines there. */
   expected: string | undefined;
+  /**
+   * Where `expected` is in `expected`, from 1, when it is there. When `actual` lacks lines, `line`
+   * is the line after the gap, which may belong to something else.
+   */
+  expectedLine?: number;
   /** The line in `actual`, or undefined when it lacks lines `expected` has. */
   actual: string | undefined;
+  /** The line after the run in `actual`, from 1: the run is `line` up to it. */
+  actualEnd?: number;
 }
 
 /**
@@ -71,7 +78,9 @@ export function differences(expected: string[], actual: string[]): Difference[] 
       out.push({
         line: Math.min(b + k, Math.max(actual.length - 1, 0)) + 1,
         expected: a + k < i ? expected[a + k] : undefined,
+        ...(a + k < i ? { expectedLine: a + k + 1 } : {}),
         actual: b + k < j ? actual[b + k] : undefined,
+        actualEnd: j + 1,
       });
     }
     a = i + 1;

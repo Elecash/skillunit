@@ -12,62 +12,69 @@ const run = (...args: string[]) => spawnSync(process.execPath, [CLI, ...args], {
 
 describe('exit 2 with a JSON reporter', () => {
   it('prints the error as JSON on stdout as well as on stderr', () => {
-    for (const args of [['lint', '--reporter', 'json', '--bogus'], ['check', '--json', '--config', 'missing.yaml']]) {
+    for (const args of [['proof', '--reporter', 'json', '--bogus'], ['check', '--json', '--config', 'missing.yaml']]) {
       const result = run(...args);
       expect(result.status).toBe(2);
       expect(result.stderr).toMatch(/^skillunit: /);
       const out = JSON.parse(result.stdout);
-      expect(out).toMatchObject({ schema: 6, command: args[0], ok: false, error: { exit: 2 } });
+      expect(out).toMatchObject({ schema: 7, command: args[0], ok: false, error: { exit: 2 } });
       expect(result.stderr).toContain(out.error.message);
     }
   });
 
   it('prints nothing on stdout with the table reporter', () => {
-    const result = run('lint', '--bogus');
+    const result = run('proof', '--bogus');
     expect(result.status).toBe(2);
     expect(result.stdout).toBe('');
+  });
+
+  it('has no lint command', () => {
+    const result = run('lint');
+    expect(result.status).toBe(2);
+    expect(result.stderr).toBe('skillunit: unknown command "lint". Run `skillunit --help`.\n');
   });
 });
 
 describe('a report through a pipe', () => {
-  // A skill whose report is far above the 64 KB a pipe holds: 3,000 links that do not resolve.
-  const skill = mkdtempSync(join(tmpdir(), 'skillunit-pipe-'));
-  const links = Array.from({ length: 3000 }, (_, i) => `- [file ${i}](references/missing-file-number-${i}.md)`);
-  writeFileSync(join(skill, 'SKILL.md'), `---\nname: big\ndescription: A skill with a long report.\n---\n\n# Big\n\n${links.join('\n')}\n`);
-  afterAll(() => rmSync(skill, { recursive: true, force: true }));
+  // A report far above the 64 KB a pipe holds: 3,000 files of the skill folder that no `setup()`
+  // declares, since no test declares any.
+  const root = mkdtempSync(join(tmpdir(), 'skillunit-pipe-'));
+  mkdirSync(join(root, 'skill'));
+  for (let i = 0; i < 3000; i++) writeFileSync(join(root, 'skill', `extra-file-number-${i}.md`), '# Extra\n');
+  writeFileSync(join(root, 'skillunit.yaml'), 'skill: ./skill\nproof: {}\n');
+  afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   // spawnSync reads stdout through a pipe, as `| jq` and a CI log do.
-  const lint = (...args: string[]) =>
-    spawnSync(process.execPath, [CLI, 'lint', skill, ...args], { cwd: skill, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, NO_COLOR: '1' } });
+  const proof = (...args: string[]) =>
+    spawnSync(process.execPath, [CLI, 'proof', ...args], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env: { ...process.env, NO_COLOR: '1' } });
 
   it('arrives whole with the JSON reporter', () => {
-    const result = lint('--reporter', 'json');
+    const result = proof('--reporter', 'json');
     expect(result.status).toBe(1);
     expect(result.stdout.length).toBeGreaterThan(256 * 1024);
     const report = JSON.parse(result.stdout);
-    expect(report.lint.problems.filter((p: { message: string }) => p.message.includes('does not resolve'))).toHaveLength(3000);
+    expect(report.proof.problems.filter((p: { message: string }) => p.message.startsWith('no `setup()` declares'))).toHaveLength(3000);
   });
 
   it.each(['table', 'github'])('ends with the status line with the %s reporter', (reporter) => {
-    const result = lint('--reporter', reporter);
+    const result = proof('--reporter', reporter);
     expect(result.status).toBe(1);
     expect(result.stdout.length).toBeGreaterThan(64 * 1024);
     // Nx sets FORCE_COLOR, which wins over NO_COLOR.
     const last = result.stdout.replace(/\x1b\[[0-9;]*m/g, '').trimEnd().split('\n').at(-1);
-    expect(last).toMatch(/^FAILED {2}lint 3,?000 errors/);
+    expect(last).toMatch(/^FAILED {2}proof 3,?000 errors/);
   });
 });
+
 
 describe('the decision model provider', () => {
   // Outside any git repository, so no .env above it supplies a key.
   const project = mkdtempSync(join(tmpdir(), 'skillunit-provider-'));
-  // A skill built from a source, whose `proof.run` declares nothing: the questions are none.
+  // A skill whose `proof.run` declares nothing: the questions are none.
   const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
-  for (const dir of ['skill', 'skill-src']) {
-    mkdirSync(join(project, dir));
-    writeFileSync(join(project, dir, 'SKILL.md'), skill);
-  }
-  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  mkdirSync(join(project, 'skill'));
+  writeFileSync(join(project, 'skill', 'SKILL.md'), skill);
+  const settings = 'skill: ./skill\nproof: { run: "true" }\n';
   writeFileSync(join(project, 'skillunit.yaml'), settings);
   writeFileSync(join(project, 'mine.mjs'), "export default { id: 'mine', limits: { perQuestionTokens: 1000, perRequestTokens: 2000 }, decide: async () => { throw new Error('not sent'); } };\n");
   writeFileSync(join(project, 'module.yaml'), `${settings}model: ./mine.mjs\n`);
@@ -93,7 +100,7 @@ describe('the decision model provider', () => {
     const unknown = inProject('test', '--provider', 'mistral');
     expect(unknown.status).toBe(2);
     expect(unknown.stderr).toBe('skillunit: --provider takes typesafe, openai; any other provider goes in a model module\n');
-    expect(inProject('lint', '--provider', 'typesafe').stderr).toContain('lint does not take --provider');
+    expect(inProject('proof', '--provider', 'typesafe').stderr).toContain('proof does not take --provider');
   });
 
   it('--provider replaces a model module of the settings, and --model alone does not', () => {
@@ -120,7 +127,7 @@ describe('the table reporter by unit', () => {
   };
 
   it('names every unit of tinyfetch once, in the order of its files', () => {
-    expect(ids).toHaveLength(12);
+    expect(ids).toHaveLength(24);
     const heads = [...table().matchAll(/^ {4}(\S+) {2}(?:rule|decision|fact)$/gm)].map((m) => m[1]);
     expect(heads).toEqual(ids);
   });
@@ -134,11 +141,9 @@ describe('the table reporter by unit', () => {
 describe('the thresholds of a yes/no question', () => {
   const project = mkdtempSync(join(tmpdir(), 'skillunit-thresholds-'));
   const skill = '---\nname: tiny\ndescription: A tiny skill.\n---\n\n# Tiny\n\nRetry only GET requests.\n';
-  for (const dir of ['skill', 'skill-src']) {
-    mkdirSync(join(project, dir));
-    writeFileSync(join(project, dir, 'SKILL.md'), skill);
-  }
-  const settings = 'skill: ./skill\nsource: ./skill-src\nproof: { run: "true" }\n';
+  mkdirSync(join(project, 'skill'));
+  writeFileSync(join(project, 'skill', 'SKILL.md'), skill);
+  const settings = 'skill: ./skill\nproof: { run: "true" }\n';
   writeFileSync(join(project, 'skillunit.yaml'), settings);
   writeFileSync(join(project, 'low-yes.yaml'), `${settings}thresholds: { yes: 0.3 }\n`);
   afterAll(() => rmSync(project, { recursive: true, force: true }));
@@ -161,5 +166,29 @@ describe('the thresholds of a yes/no question', () => {
     expect(result.status).toBe(2);
     expect(result.stderr).toMatch(/^skillunit: \S*low-yes\.yaml: /);
     expect(result.stderr).toContain(`low-yes.yaml: ${YES}\n`);
+  });
+});
+
+describe('--changed on a copy of tinyfetch', () => {
+  const table = (app: App, ...args: string[]) =>
+    spawnSync(process.execPath, [CLI, ...args], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } })
+      .stdout.replace(/\x1b\[[0-9;]*m/g, '')
+      .trimEnd()
+      .split('\n')
+      .at(-1);
+
+  it('an edit not committed counts: its questions are asked', () => {
+    const app = App.copy('changed-tree');
+    app.edit('skill/features/retries.md', '# tinyfetch', '# tinyfetch, edited');
+    const run = app.run('test', '--changed', '--dry-run');
+    expect(run.report.test.requests.map((r: any) => r.file)).toEqual(['features/retries.md']);
+    expect(run.report.test.summary.tests).toBeGreaterThan(0);
+  });
+
+  it('nothing changed: the summary says no question was about a changed file, and since which ref', () => {
+    const app = App.copy('changed-none');
+    const run = app.run('test', '--changed', '--dry-run');
+    expect(run.report.test.summary.tests).toBe(0);
+    expect(table(app, 'test', '--changed', '--dry-run', '--base', app.base)).toBe(`OK  test dry run ok: no question is about a file changed since ${app.base} (${app.base.slice(0, 7)})`);
   });
 });

@@ -2,15 +2,14 @@
  * The one report every command builds and every reporter prints: the layers that ran, each with
  * its own result. `--reporter json` prints it as it is.
  */
-import type { LintResult } from '../lint/types.js';
 import type { ProofResult, ProofSkipped } from '../proof/layer.js';
 import type { Report as TestReport } from '../test/runner.js';
-import type { UnitKind } from '../units/types.js';
+import type { UnitKind } from '../unit/contract.js';
 
 /** Bumped only when a field changes meaning or disappears. */
-export const REPORT_SCHEMA = 6;
+export const REPORT_SCHEMA = 7;
 
-export type Command = 'lint' | 'proof' | 'test' | 'check';
+export type Command = 'proof' | 'test' | 'check';
 
 export interface CheckReport {
   schema: typeof REPORT_SCHEMA;
@@ -18,7 +17,6 @@ export interface CheckReport {
   ok: boolean;
   /** Every unit of the skill, in the order of its files, so a tool can join the layers on the id. */
   units?: ReportUnit[];
-  lint?: LintResult;
   /** `{ configured: false }` when `check` ran and the settings have no `proof` key. */
   proof?: ProofResult | ProofSkipped;
   test?: TestReport;
@@ -31,7 +29,7 @@ export interface ReportUnit {
   file: string;
   /** Line of the unit's heading. */
   line: number;
-  /** When the skill is built (`source`, and the proof ran): proved by a test, or declared with no body. */
+  /** When the skill is built (`proof`, and the proof ran): proved by a test, or declared with no body. */
   from?: 'test' | 'declared';
   /** Where it is declared, from the skill folder. */
   test?: { file: string; line: number };
@@ -54,6 +52,6 @@ export interface ReportOptions {
 }
 
 export function buildReport(command: Command, layers: Omit<CheckReport, 'schema' | 'command' | 'ok'>): CheckReport {
-  const ok = [layers.lint, layers.proof, layers.test].every((l) => l === undefined || l.ok);
+  const ok = [layers.proof, layers.test].every((l) => l === undefined || l.ok);
   return { schema: REPORT_SCHEMA, command, ok, ...layers };
 }

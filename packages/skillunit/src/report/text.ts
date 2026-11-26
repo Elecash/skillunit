@@ -1,6 +1,6 @@
 /** Pieces the text reporters share: colour, padding, paths, and how a verdict reads. */
 import { isAbsolute, join, relative } from 'node:path';
-import type { LintSummary, Problem } from '../lint/types.js';
+import type { Problem } from '../problems.js';
 import type { ProofResult } from '../proof/layer.js';
 import type { Verdict } from '../test/reader.js';
 import type { CheckReport, ReportOptions } from './types.js';
@@ -41,7 +41,7 @@ export function shown(path: string, options: ReportOptions): string {
 }
 
 /**
- * Where a lint or proof problem is, for people: `skills/x/SKILL.md:12` from the folder the command
+ * Where a proof problem is, for people: `skills/x/SKILL.md:12` from the folder the command
  * ran in, or from the skill folder, which the layer's header names, when the skill is outside it.
  */
 export function where(skill: string, p: Problem, options: ReportOptions): string {
@@ -96,13 +96,13 @@ export function buildChange(proof: ProofResult, options: ReportOptions): string 
 }
 
 /**
- * Where the line of a finding comes from, when the skill is built: the test of a unit, or a file
- * of the source. Null for a skill that is not built.
+ * Where the line of a finding comes from, when the skill is built: the test of a unit, or the
+ * `setup()` of its file. Null for a skill that is not built.
  */
 export function originOf(skill: string, p: Problem, options: ReportOptions): string | null {
   if (!p.origin) return null;
   const place = `${skillFile(skill, p.origin.file, options)}:${p.origin.line}`;
-  return p.origin.kind === 'test' ? `the test of \`${p.origin.unit}\`, ${place}` : `the source, ${place}`;
+  return p.origin.unit ? `the test of \`${p.origin.unit}\`, ${place}` : `the test, ${place}`;
 }
 
 /** The message of a finding, with where its line comes from. */
@@ -111,16 +111,15 @@ export function withOrigin(skill: string, p: Problem, options: ReportOptions): s
   return origin ? `${p.message}\nfrom ${origin}` : p.message;
 }
 
-/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one · 2 values in prose`, and what is wrong. */
+/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one`, and what is wrong. */
 export function proofSummary(proof: ProofResult): string {
   const s = proof.summary;
   return [
     plural(s.units, 'unit'),
-    `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}${s.missing ? `, ${s.missing} missing` : ''}`,
+    `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}`,
     `${s.declared} declared without one`,
-    `${plural(s.values, 'value')} in prose`,
     s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
-    s.extra ? `${plural(s.extra, 'file')} the source does not build` : '',
+    s.extra ? `${plural(s.extra, 'file')} no \`setup()\` declares` : '',
   ]
     .filter(Boolean)
     .join(' · ');
@@ -133,7 +132,7 @@ export function proofSummary(proof: ProofResult): string {
 export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
   const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
   if (!u?.test) return null;
-  const skill = report.lint?.skill ?? (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  const skill = (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
   const place = `${skillFile(skill, u.test.file, options)}:${u.test.line}`;
   return u.from === 'declared' ? `the unit \`${u.id}\` is declared, with no test, at ${place}` : `the unit \`${u.id}\` comes from its test, ${place}`;
 }
@@ -141,12 +140,7 @@ export function unitOrigin(report: CheckReport, unit: string | undefined, option
 /** One line on how each layer went, for the end of every text report. */
 export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
-  const { lint, proof, test } = report;
-  if (lint) {
-    const errors = lint.problems.filter((p) => p.severity === 'error').length;
-    const warnings = lint.problems.length - errors;
-    parts.push(`lint ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}`);
-  }
+  const { proof, test } = report;
   if (proof) {
     if (!proof.configured) parts.push('proof not configured');
     else {
@@ -160,11 +154,13 @@ export function statusLine(report: CheckReport): string {
     const s = test.summary;
     const errors = test.requests.filter((x) => x.error).length;
     const wrong = [errors ? `${plural(errors, 'request')} could not run` : '', test.problems.length ? plural(test.problems.length, 'problem') : ''].filter(Boolean).join(', ');
+    const nothing = test.changed && !s.tests && !wrong ? `no question is about a file changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : null;
     if (test.dryRun) {
-      parts.push(`test dry run ${wrong || `ok, ${plural(s.tests, 'test')} ready`}`);
+      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}`);
     } else {
       const extra = [wrong, s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
-      parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
+      if (nothing) parts.push(`test asked nothing: ${nothing}`);
+      else parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
     }
   }
   return `${report.ok ? 'OK' : 'FAILED'}  ${parts.join(' · ')}`;
@@ -179,19 +175,4 @@ export function brief(message: string, max = 400): string {
     .split('\n')
     .map((line) => (line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`))
     .join('\n');
-}
-
-/** Where a skill declares the names its examples use. */
-export const SETUP_DOCS = 'https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md#setup';
-
-/**
- * The names no example or `Setup` declares, the five most frequent with their counts, and where
- * to declare them: two lines, or none when every name is declared.
- */
-export function undeclaredNames(summary: LintSummary): [string, string] | null {
-  const names = summary.undeclared;
-  if (!names.length) return null;
-  const top = names.slice(0, 5).map((n) => `${n.name} ${n.count}`).join(' · ');
-  const more = names.length > 5 ? `, and ${names.length - 5} more` : '';
-  return [`Names nothing declares: ${top}${more}`, `A \`Setup:\` block in \`SKILL.md\` declares them once for every file of the skill: ${SETUP_DOCS}`];
 }

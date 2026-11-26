@@ -12,9 +12,9 @@ for (const f of ['SKILL.md', 'features/retries.md', 'features/timeouts.md']) wri
 
 const ask = { scenario: 'A request times out.', question: 'How long did it wait?', options: ['ten', 'thirty'], expect: 'ten' };
 const unit = (id: string, line: number, more: Record<string, unknown> = {}): ReadUnit =>
-  ({ skillunit: 1, status: 'passed', id, kind: 'fact', file: 'src/a.skill.test.ts', line, test: `fact ${id}`, when: 'x.', value: 'y.', examples: [], path: `/p/${id}.json`, abs: '/project/src/a.skill.test.ts', ...more }) as ReadUnit;
+  ({ skillunit: 2, status: 'passed', id, kind: 'fact', file: 'src/a.skill.test.ts', line, test: `fact ${id}`, when: 'x.', value: 'y.', examples: [], path: `/p/${id}.json`, abs: '/project/src/a.skill.test.ts', ...more }) as ReadUnit;
 const question = (id: string, line: number, more: Record<string, unknown> = {}): ReadQuestion =>
-  ({ skillunit: 1, status: 'passed', kind: 'question', id, file: 'src/b.skill.test.ts', line, test: `question ${id}`, skillFile: 'SKILL.md', ask: [{ id, ...ask }], path: `/p/${id}.json`, abs: '/project/src/b.skill.test.ts', ...more }) as ReadQuestion;
+  ({ skillunit: 2, status: 'passed', kind: 'question', id, file: 'src/b.skill.test.ts', line, test: `question ${id}`, skillFile: 'SKILL.md', ask: [{ id, ...ask }], path: `/p/${id}.json`, abs: '/project/src/b.skill.test.ts', ...more }) as ReadQuestion;
 const inSkill = [
   { id: 'default-timeout', file: 'features/timeouts.md' },
   { id: 'retry-defaults', file: 'features/retries.md' },
@@ -43,7 +43,7 @@ describe('collectQuestions', () => {
   });
 
   it('a unit with no questions, and a failed record, add nothing', () => {
-    const failed = { skillunit: 1, status: 'failed', id: 'retry-defaults', file: 'src/a.skill.test.ts', line: 4, test: 't', error: 'boom', path: '/p/x.json', abs: '/project/src/a.skill.test.ts' } as ReadUnit;
+    const failed = { skillunit: 2, status: 'failed', id: 'retry-defaults', file: 'src/a.skill.test.ts', line: 4, test: 't', error: 'boom', path: '/p/x.json', abs: '/project/src/a.skill.test.ts' } as ReadUnit;
     expect(collectQuestions([unit('default-timeout', 10), failed], [], skill, inSkill)).toEqual({ questions: [], problems: [] });
   });
 

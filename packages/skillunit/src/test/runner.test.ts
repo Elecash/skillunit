@@ -1,14 +1,14 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
 import { buildRequest, framing, judge, NONE_DESCRIPTION } from './reader.js';
-import { changedSelection } from './changed.js';
+import { changedSelection, changedSkillFiles } from './changed.js';
 import type { Question, TestCase } from './questions.js';
 import { runAll } from './runner.js';
-import { unit } from '../vitest.js';
 
 /**
  * The only stand-in for a decision model: it answers what a test tells it to, for the cases a
@@ -35,23 +35,7 @@ const no: TestCase = { ...yes, expect: 'no' };
 const th = DEFAULT_THRESHOLDS;
 
 describe('buildRequest', () => {
-  unit('none-is-built-in', {
-      when: 'the agent wants an option that means "other", "none of these" or "the skill does not say".',
-      do: 'leave it out: SkillUnit adds `none` to every question with options.',
-      ask: {
-        id: 'define-other',
-        scenario: [
-          'The agent wants an option for "a command that is not in the list".',
-          'The agent wants an option meaning "the skill does not say".',
-        ],
-        question: 'What should the agent do with that option?',
-        options: {
-          add: 'Add it to the options of the question',
-          leave: 'Leave it out',
-        },
-        expect: 'leave',
-      },
-    }, () => {
+  it('adds `none` to every question with options, and sends each phrasing as a question of its own', () => {
     const request = buildRequest('skill text', [{ ...choice, scenarios: ['One.', 'Two.'] }, yes], 'A tiny HTTP client.');
     expect(request.questions.map((q) => q.id)).toEqual(['pick#1', 'pick#2', 'allowed']);
     expect(request.questions[0]).toEqual({
@@ -271,26 +255,7 @@ describe('runAll', () => {
     expect(report.summary).toMatchObject({ tests: 2, passed: 1 });
   });
 
-  unit('dry-run-without-key', {
-      when: 'there is no API key, and the user asked for tests.',
-      do: 'write the questions anyway, run `npx skillunit check --dry-run`, and tell the user they were not sent to the model.',
-      evenWhen: 'the questions look obviously right; a question that was never sent has not passed.',
-      ask: {
-        id: 'no-key-yet',
-        scenario: [
-          'The user asks for SkillUnit tests for their skill, and TYPESAFE_API_KEY is not set anywhere.',
-          'The agent is about to test a skill, but there is no .env file and no API key in the environment.',
-        ],
-        question: 'What should the agent do?',
-        options: {
-          dry: 'Write the questions, run `check --dry-run`, and tell the user they were not sent',
-          ask: 'Stop and wait until the user provides a key before writing anything',
-          skip: 'Write the questions and report them as passing',
-        },
-        expect: 'dry',
-      },
-    }, async (u) => {
-    u.example('sh', 'npx skillunit check --dry-run');
+  it('a dry run sends nothing, and still fails a question that does not fit', async () => {
     const config = project();
     const { model, calls } = stub(() => new Error('must not be called'));
     const report = await runAll(config, model, collected(postRetry, getOk), { dryRun: true });
@@ -298,6 +263,15 @@ describe('runAll', () => {
     expect(report).toMatchObject({ ok: true, dryRun: true });
     const small = stub(() => ({}), { perQuestionTokens: 50, perRequestTokens: 64_000 });
     expect((await runAll(config, small.model, collected(postRetry, getOk), { dryRun: true })).ok).toBe(false);
+  });
+
+  it('a dry run gives the estimate of the whole request, every question counted, not the figure the limit checks', async () => {
+    const config = project();
+    const { model } = stub(() => new Error('must not be called'));
+    const one = (await runAll(config, model, collected(postRetry), { dryRun: true })).requests[0]!.estimatedTokens;
+    const two = (await runAll(config, model, collected(postRetry, getOk), { dryRun: true })).requests[0]!.estimatedTokens;
+    // The second question adds its own tokens, where the longest question alone would not grow.
+    expect(two).toBeGreaterThan(one);
   });
 });
 
@@ -422,5 +396,24 @@ describe('--changed', () => {
     expect(select(about('SKILL.md', []))).toBe(false);
     expect(select(about('SKILL.md', ['other.md']))).toBe(false);
     expect(changedSelection(changed([]))(about('SKILL.md', 'all'))).toBe(false);
+  });
+
+  it('counts what differs from the merge base in the working tree: edits not committed, and new files that git does not ignore', () => {
+    const root = mkdtempSync(join(dir, 'git-'));
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
+    mkdirSync(join(root, 'skill/features'), { recursive: true });
+    writeFileSync(join(root, 'skill/SKILL.md'), '# Skill\n');
+    writeFileSync(join(root, 'skill/features/a.md'), '# A\n');
+    writeFileSync(join(root, '.gitignore'), 'skill/ignored.md\n');
+    git('init', '-q');
+    git('symbolic-ref', 'HEAD', 'refs/heads/main');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'base');
+    expect(changedSkillFiles(join(root, 'skill'), 'main').files).toEqual([]);
+    writeFileSync(join(root, 'skill/features/a.md'), '# A, edited\n');
+    writeFileSync(join(root, 'skill/features/new.md'), '# New\n');
+    writeFileSync(join(root, 'skill/ignored.md'), '# Ignored\n');
+    writeFileSync(join(root, 'outside.md'), '# Outside\n');
+    expect(changedSkillFiles(join(root, 'skill'), 'main').files.sort()).toEqual(['features/a.md', 'features/new.md']);
   });
 });

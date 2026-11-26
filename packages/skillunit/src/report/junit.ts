@@ -1,10 +1,10 @@
 /**
- * JUnit XML, for CI systems that show test results from it. One suite per layer: lint has one
- * case per file, proof one per unit (and one per finding about no unit), and test one suite per
- * spec with one case per test. Borderline verdicts carry a `borderline` property.
+ * JUnit XML, for CI systems that show test results from it. One suite per layer: proof has one
+ * case per unit (and one per finding about no unit), and test one suite per request with one
+ * case per test. Borderline verdicts carry a `borderline` property.
  */
 import { join } from 'node:path';
-import type { Problem } from '../lint/types.js';
+import type { Problem } from '../problems.js';
 import { buildChange, gotLine, shown, unitOrigin, withOrigin } from './text.js';
 import type { CheckReport, ReportOptions } from './types.js';
 
@@ -26,27 +26,10 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   const suites: Suite[] = [];
   const line = (skill: string, p: Problem) => `${shown(join(skill, p.file), options)}:${p.line}  ${p.unit ?? '-'}  ${withOrigin(skill, p, options)}`;
 
-  if (report.lint) {
-    const { lint } = report;
-    const files = [...new Set([...lint.files, ...lint.problems.map((p) => p.file)])];
-    suites.push({
-      name: 'lint',
-      cases: files.map((file) => {
-        const mine = lint.problems.filter((p) => p.file === file);
-        const errors = mine.filter((p) => p.severity === 'error');
-        const warnings = mine.filter((p) => p.severity === 'warning');
-        const c: Case = { name: shown(join(lint.skill, file), options), classname: 'lint' };
-        if (errors.length) c.failure = errors.map((p) => line(lint.skill, p)).join('\n');
-        if (warnings.length) c.out = warnings.map((p) => `warning: ${line(lint.skill, p)}`).join('\n');
-        return c;
-      }),
-    });
-  }
-
   if (report.proof?.configured) {
     const { proof } = report;
     const cases: Case[] = proof.units.map((u) => {
-      const from = u.test ? `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}` : `${shown(join(proof.skill, u.source.file), options)}:${u.source.line}`;
+      const from = `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}`;
       const c: Case = { name: u.id, classname: `proof.${shown(join(proof.skill, u.file), options)}`, properties: { from: u.from, state: u.state, origin: from } };
       const mine = proof.problems.filter((p) => p.unit === u.id);
       const errors = mine.filter((p) => p.severity === 'error');
@@ -55,7 +38,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
       if (warnings.length) c.out = warnings.map((p) => `warning: ${line(proof.skill, p)}`).join('\n');
       return c;
     });
-    // Findings about no unit: a file of the skill or the source, a record, the settings.
+    // Findings about no unit: a file of the skill, a record, the settings.
     for (const p of proof.problems.filter((p) => !p.unit)) {
       const c: Case = { name: `${shown(join(proof.skill, p.file), options)}:${p.line}`, classname: 'proof' };
       if (p.severity === 'error') c.failure = line(proof.skill, p);
