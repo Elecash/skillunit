@@ -75,5 +75,6 @@ sent again within 30 minutes then pays 10% for that part, and the first request 
 for writing it. Most requests carry less text than that, so caching changes a run's cost by a
 few percent at most.
 
-Lint and proof make no request. `--changed` sends only the questions about the files a change
-touches.
+Lint and proof make no request. `--changed` sends only the questions about the files of the
+skill that differ from the merge base with the target branch, so a pull request that leaves the
+skill alone sends none.

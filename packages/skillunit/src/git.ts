@@ -34,9 +34,15 @@ export class Git {
     return base;
   }
 
-  /** Paths, from the top folder, that differ between two commits. */
-  changedFiles(from: string, to: string): string[] {
-    return this.run(['diff', '--name-only', '-z', from, to])!.split('\0').filter(Boolean);
+  /**
+   * Paths, from the top folder, where the working tree differs from a commit: tracked files
+   * edited, staged or removed, and untracked files that git does not ignore, under the working
+   * folder.
+   */
+  changedSince(commit: string): string[] {
+    const tracked = this.run(['diff', '--name-only', '-z', commit, '--', '.'])!.split('\0');
+    const untracked = this.run(['ls-files', '--others', '--exclude-standard', '--full-name', '-z', '--', '.'])!.split('\0');
+    return [...new Set([...tracked, ...untracked].filter(Boolean))];
   }
 }
 

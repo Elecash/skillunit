@@ -34,7 +34,15 @@ export function init(dir: string, cwd = process.cwd()): string[] {
   writeFileSync(configPath, config(skill, existsSync(join(cwd, 'tsconfig.json'))));
 
   const out = [`created ${CONFIG_FILE}`];
-  if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill}: set \`skill\` in ${CONFIG_FILE} to the folder that has it`);
+  if (!existsSync(join(skillDir, 'SKILL.md'))) {
+    // No skill to lint yet: the steps that build one come first.
+    out.push(
+      `there is no SKILL.md in ${skill}: set \`skill\` in ${CONFIG_FILE} to the folder that has it, or build one there from your tests:`,
+      `next: set \`source\` and \`proof.run\` in ${CONFIG_FILE}, write the source with \`{{unit:<id>}}\` where each unit goes, and declare each unit and its questions in a test with \`unit()\` and \`ask()\` from \`skillunit/vitest\``,
+      `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
+    );
+    return out;
+  }
   out.push('next: run `skillunit lint`');
   out.push('a unit and its questions go in a test: `unit()` and `ask()` from `skillunit/vitest`; set `source` and `proof.run` to build the skill from them');
   return out;

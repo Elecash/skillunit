@@ -120,6 +120,8 @@ export function buildSkill(input: BuildInput): Build {
     const text = readFileSync(abs, 'utf8');
     const eol = text.includes('\r\n') ? '\r\n' : '\n';
     const lines = text.split(/\r?\n/);
+    // A line end at the end of the file starts no line: the empty text after it is the last line.
+    const last = Math.max(1, lines.length - (/\r?\n$/.test(text) ? 1 : 0));
     const out: string[] = [];
     const origins: LineOrigin[] = [];
     let broken = false;
@@ -206,7 +208,7 @@ export function buildSkill(input: BuildInput): Build {
         return String(own[name]);
       });
       out.push(filled);
-      origins.push({ kind: 'source', file: abs, line });
+      origins.push({ kind: 'source', file: abs, line: Math.min(line, last) });
     });
 
     for (const u of parseFile(prose.join('\n'), rel).units) fail(u.line, `units are declared with \`unit()\`; put \`{{unit:${u.id}}}\` here`, u.id);
@@ -232,8 +234,12 @@ function ownRegions(regions: Map<string, Region>, id: string): Region[] {
   return [...regions.values()].filter((r) => r.id === id || r.id.startsWith(`${id}.`)).sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
 
-/** Every file under `dir`, from `dir`, with `/`, sorted; dot files, dot folders and node_modules left out. */
-export function listFiles(dir: string): string[] {
+/**
+ * Every file under `dir`, from `dir`, with `/`, sorted; dot files, dot folders and node_modules
+ * left out. With `dotMarkdown`, a Markdown file whose name starts with a dot is listed: the
+ * skill folder may not hold one the build does not make.
+ */
+export function listFiles(dir: string, { dotMarkdown = false } = {}): string[] {
   const out: string[] = [];
   const walk = (at: string) => {
     let entries;
@@ -243,7 +249,8 @@ export function listFiles(dir: string): string[] {
       return;
     }
     for (const e of entries) {
-      if (e.name.startsWith('.') || e.name === 'node_modules') continue;
+      const listed = dotMarkdown && e.isFile() && e.name.toLowerCase().endsWith('.md');
+      if ((e.name.startsWith('.') && !listed) || e.name === 'node_modules') continue;
       const abs = join(at, e.name);
       if (e.isDirectory()) walk(abs);
       else if (e.isFile()) out.push(relative(dir, abs).split('\\').join('/'));

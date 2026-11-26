@@ -8,5 +8,4 @@ examples:
 # `{{unit:<id>}}`, fills `{{value:<id>.<name>}}`, and formats the result with Prettier.
 proof:
   run: "npx vitest run"
-  sources: ["src/**/*.test.ts"]
   format: "npx --no-install prettier --write {file}"

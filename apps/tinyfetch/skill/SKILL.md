@@ -34,7 +34,7 @@ console.log(users.length);
 
 When: the code calls a tinyfetch method.
 
-Do: `await` the call, or return its promise: every method returns a promise of the parsed body.
+Do: `await` the call, or return its promise: every method returns a promise, of the parsed body for all but `head`, whose promise resolves with nothing.
 
 Right:
 

@@ -1,11 +1,12 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Config } from '../config.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, toTypeSafe, typesafe, type DecisionAnswer, type DecisionModel, type DecisionRequest, type TypeSafeOptions } from '../models/index.js';
 import { buildRequest, framing, judge, NONE_DESCRIPTION } from './reader.js';
-import { changedSelection } from './changed.js';
+import { changedSelection, changedSkillFiles } from './changed.js';
 import type { Question, TestCase } from './questions.js';
 import { runAll } from './runner.js';
 import { unit } from '../vitest.js';
@@ -299,6 +300,15 @@ describe('runAll', () => {
     const small = stub(() => ({}), { perQuestionTokens: 50, perRequestTokens: 64_000 });
     expect((await runAll(config, small.model, collected(postRetry, getOk), { dryRun: true })).ok).toBe(false);
   });
+
+  it('a dry run gives the estimate of the whole request, every question counted, not the figure the limit checks', async () => {
+    const config = project();
+    const { model } = stub(() => new Error('must not be called'));
+    const one = (await runAll(config, model, collected(postRetry), { dryRun: true })).requests[0]!.estimatedTokens;
+    const two = (await runAll(config, model, collected(postRetry, getOk), { dryRun: true })).requests[0]!.estimatedTokens;
+    // The second question adds its own tokens, where the longest question alone would not grow.
+    expect(two).toBeGreaterThan(one);
+  });
 });
 
 // ---------------------------------------------------------------- the typesafe adapter
@@ -422,5 +432,24 @@ describe('--changed', () => {
     expect(select(about('SKILL.md', []))).toBe(false);
     expect(select(about('SKILL.md', ['other.md']))).toBe(false);
     expect(changedSelection(changed([]))(about('SKILL.md', 'all'))).toBe(false);
+  });
+
+  it('counts what differs from the merge base in the working tree: edits not committed, and new files that git does not ignore', () => {
+    const root = mkdtempSync(join(dir, 'git-'));
+    const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=T', '-c', 'user.email=t@example.com', '-c', 'commit.gpgsign=false', ...args], { cwd: root, encoding: 'utf8' });
+    mkdirSync(join(root, 'skill/features'), { recursive: true });
+    writeFileSync(join(root, 'skill/SKILL.md'), '# Skill\n');
+    writeFileSync(join(root, 'skill/features/a.md'), '# A\n');
+    writeFileSync(join(root, '.gitignore'), 'skill/ignored.md\n');
+    git('init', '-q');
+    git('symbolic-ref', 'HEAD', 'refs/heads/main');
+    git('add', '-A');
+    git('commit', '-q', '-m', 'base');
+    expect(changedSkillFiles(join(root, 'skill'), 'main').files).toEqual([]);
+    writeFileSync(join(root, 'skill/features/a.md'), '# A, edited\n');
+    writeFileSync(join(root, 'skill/features/new.md'), '# New\n');
+    writeFileSync(join(root, 'skill/ignored.md'), '# Ignored\n');
+    writeFileSync(join(root, 'outside.md'), '# Outside\n');
+    expect(changedSkillFiles(join(root, 'skill'), 'main').files.sort()).toEqual(['features/a.md', 'features/new.md']);
   });
 });

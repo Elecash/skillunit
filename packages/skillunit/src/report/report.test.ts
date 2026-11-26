@@ -241,8 +241,8 @@ describe('reporters', () => {
   });
 
   it('table: test --changed with nothing to ask', () => {
-    const none = buildReport('test', { test: { ...test, ok: true, problems: [], requests: [], summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, usage: { input_tokens: 0, output_tokens: 0 } } } });
-    expect(render(none, 'table', options)).toBe('\nUnits  test nothing to ask\n\n  0 tests · 7 questions left out by --changed\n\nOK  test 0/0 passed\n');
+    const none = buildReport('test', { test: { ...test, ok: true, problems: [], requests: [], changed: { ref: 'main', commit: 'abc1234def' }, summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, usage: { input_tokens: 0, output_tokens: 0 } } } });
+    expect(render(none, 'table', options)).toBe('\nUnits  test nothing to ask · changed since main (abc1234)\n\n  0 tests · 7 questions left out by --changed\n\nOK  test asked nothing: no question is about a file changed since main (abc1234)\n');
   });
 
   it('table: test --changed names its base', () => {

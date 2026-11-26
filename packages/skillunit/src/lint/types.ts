@@ -27,13 +27,19 @@ export interface Problem {
   example?: number;
   /** Where the line comes from, when the skill is built from `source`: the file to edit instead. */
   origin?: Origin;
+  /**
+   * A line of the skill folder that is not what the build gives: both lines whole, whatever the
+   * message shows. Null on the side that has no line there.
+   */
+  lines?: { build: string | null; skill: string | null };
 }
 
 /**
  * Where a line of a built skill comes from: a test that declares a unit, or a file of `source`.
+ * For a record that is not valid, the test the record names, with `unit` when its id is one.
  * `file` is from the skill folder, with `/`, as `Problem.file` is.
  */
-export type Origin = { kind: 'test'; file: string; line: number; unit: string } | { kind: 'source'; file: string; line: number };
+export type Origin = { kind: 'test'; file: string; line: number; unit?: string } | { kind: 'source'; file: string; line: number };
 
 export interface LintSummary {
   files: number;

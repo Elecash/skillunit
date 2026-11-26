@@ -58,7 +58,7 @@ describe('tinyfetch', () => {
     'await-every-request',
     {
       when: 'the code calls a tinyfetch method.',
-      do: '`await` the call, or return its promise: every method returns a promise of the parsed body.',
+      do: '`await` the call, or return its promise: every method returns a promise, of the parsed body for all but `head`, whose promise resolves with nothing.',
       ask: {
         id: 'await-the-call',
         scenario: 'The code needs the name of user 1 from the API and logs it.',
@@ -71,13 +71,14 @@ describe('tinyfetch', () => {
       },
     },
     async () => {
-      serve({ body: { name: 'Ada' } });
+      serve({ body: { name: 'Ada' } }, { body: { name: 'Ada' } });
       const log = vi.spyOn(console, 'log').mockImplementation(() => {});
       // #region skill:await-every-request
       const user = await tf.get<{ name: string }>('https://api.example.com/users/1');
       console.log(user.name);
       // #endregion
       expect(log).toHaveBeenCalledWith('Ada');
+      expect(await tf.head('https://api.example.com/users/1')).toBeUndefined();
     },
   );
 

@@ -16,6 +16,8 @@ export interface RecordProblem {
   /** Absolute path of the record. */
   path: string;
   message: string;
+  /** Where the record says it was declared, when it parses and has `file` and `line`: the absolute test file, and the unit when its id is one. */
+  test?: { file: string; line: number; unit?: string };
 }
 
 export interface Records {
@@ -38,8 +40,8 @@ export function readRecords(dir: string, cwd: string): Records {
     .sort();
   for (const name of names) {
     const path = join(dir, name);
-    const fail = (message: string) => problems.push({ path, message: `${name}: ${message}` });
     let raw: unknown;
+    const fail = (message: string) => problems.push({ path, message: `${name}: ${message}`, ...declaredAt(raw, cwd) });
     try {
       raw = JSON.parse(readFileSync(path, 'utf8'));
     } catch (e) {
@@ -59,6 +61,15 @@ export function readRecords(dir: string, cwd: string): Records {
   units.sort(order);
   questions.sort(order);
   return { units, questions, problems };
+}
+
+/** Where a record that parsed says it was declared, if it says. */
+function declaredAt(raw: unknown, cwd: string): Pick<RecordProblem, 'test'> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const r = raw as Record<string, unknown>;
+  if (typeof r.file !== 'string' || !r.file || typeof r.line !== 'number' || !Number.isInteger(r.line) || r.line < 1) return {};
+  const unit = r.kind !== 'question' && typeof r.id === 'string' && UNIT_ID.test(r.id) ? r.id : undefined;
+  return { test: { file: resolve(cwd, r.file), line: r.line, ...(unit ? { unit } : {}) } };
 }
 
 /** What is wrong with a record, if anything. */

@@ -50,9 +50,16 @@ describe('init', () => {
     expect(readFileSync(join(root, 'skillunit.yaml'), 'utf8')).toMatch(/^skill: \. +# folder with SKILL\.md$/m);
   });
 
-  it('says so when the folder has no SKILL.md', () => {
+  it('with no SKILL.md, says so, and gives the steps that build one before any that reads it', () => {
     const root = project();
-    expect(init('skills/other', root)[1]).toBe('there is no SKILL.md in ./skills/other: set `skill` in skillunit.yaml to the folder that has it');
+    const out = init('skills/other', root);
+    expect(out).toEqual([
+      'created skillunit.yaml',
+      'there is no SKILL.md in ./skills/other: set `skill` in skillunit.yaml to the folder that has it, or build one there from your tests:',
+      'next: set `source` and `proof.run` in skillunit.yaml, write the source with `{{unit:<id>}}` where each unit goes, and declare each unit and its questions in a test with `unit()` and `ask()` from `skillunit/vitest`',
+      'then: run `skillunit proof --write` to build ./skills/other, and `skillunit check` to check it',
+    ]);
+    expect(out.join('\n')).not.toContain('skillunit lint');
   });
 
   it('refuses to overwrite skillunit.yaml', () => {

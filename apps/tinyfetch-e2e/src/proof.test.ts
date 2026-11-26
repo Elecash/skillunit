@@ -37,6 +37,40 @@ describe('the proof of tinyfetch', () => {
     expect(app.run('check', '--dry-run').code).toBe(0);
   });
 
+  it('the last lines of a unit gone from skill/: the finding is on that unit, not on the next one', () => {
+    const app = App.copy('lacks-end');
+    const lines = app.read('skill/features/requests.md').split('\n');
+    const unit = lines.indexOf('### rule: query-in-options');
+    const right = lines.indexOf('Right:', unit);
+    const next = lines.indexOf('### rule: body-as-object');
+    // `Right:`, its block and the `Check:`, up to the heading of the next unit.
+    app.write('skill/features/requests.md', [...lines.slice(0, right), ...lines.slice(next)].join('\n'));
+    const found = errors(app.run('proof'));
+    expect(found.map((p) => p.unit)).toEqual(['query-in-options']);
+    expect(found[0].origin).toEqual({ kind: 'test', file: `../${TEST}`, line: lineOf(app.read(TEST), "'query-in-options',") - 1, unit: 'query-in-options' });
+    expect(found[0].message).toMatch(/^this line is not what the build gives: the build has `Right:`, the skill has nothing here\./);
+    expect(found[0].lines).toEqual({ build: 'Right:', skill: null });
+  });
+
+  it('a long line that differs at its end: the message shows both ends, and the JSON both lines', () => {
+    const app = App.copy('long-line');
+    app.edit('skill/features/retries.md', 'doubled before each next one', 'tripled before each next one');
+    const [finding] = errors(app.run('proof'));
+    expect(finding.unit).toBe('retry-defaults');
+    expect(finding.message).toMatch(/the build has `….*doubled before each next one\.`, the skill has `….*tripled before each next one\.`\./);
+    expect(finding.lines.skill).toBe(finding.lines.build.replace('doubled', 'tripled'));
+  });
+
+  it('settings with no `proof.sources`: the build keeps every region example, and writes nothing', () => {
+    const app = App.copy('no-sources');
+    expect(app.read('skillunit.yaml')).not.toMatch(/sources/);
+    const write = app.run('proof', '--write');
+    expect(write.code).toBe(0);
+    expect(write.report.proof.files.filter((f: any) => f.state !== 'same')).toEqual([]);
+    expect(app.read('skill/features/errors.md')).toContain('if (isHttpError(error) && error.status === 404)');
+    expect(app.run('check', '--dry-run').code).toBe(0);
+  });
+
   it('a unit edited in skill/ by hand: the finding names the test to edit', () => {
     const app = App.copy('by-hand');
     app.edit('skill/features/timeouts.md', 'Value: 10 seconds', 'Value: 30 seconds');

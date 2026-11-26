@@ -102,7 +102,8 @@ export function buildChange(proof: ProofResult, options: ReportOptions): string 
 export function originOf(skill: string, p: Problem, options: ReportOptions): string | null {
   if (!p.origin) return null;
   const place = `${skillFile(skill, p.origin.file, options)}:${p.origin.line}`;
-  return p.origin.kind === 'test' ? `the test of \`${p.origin.unit}\`, ${place}` : `the source, ${place}`;
+  if (p.origin.kind === 'source') return `the source, ${place}`;
+  return p.origin.unit ? `the test of \`${p.origin.unit}\`, ${place}` : `the test, ${place}`;
 }
 
 /** The message of a finding, with where its line comes from. */
@@ -160,11 +161,13 @@ export function statusLine(report: CheckReport): string {
     const s = test.summary;
     const errors = test.requests.filter((x) => x.error).length;
     const wrong = [errors ? `${plural(errors, 'request')} could not run` : '', test.problems.length ? plural(test.problems.length, 'problem') : ''].filter(Boolean).join(', ');
+    const nothing = test.changed && !s.tests && !wrong ? `no question is about a file changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : null;
     if (test.dryRun) {
-      parts.push(`test dry run ${wrong || `ok, ${plural(s.tests, 'test')} ready`}`);
+      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}`);
     } else {
       const extra = [wrong, s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
-      parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
+      if (nothing) parts.push(`test asked nothing: ${nothing}`);
+      else parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
     }
   }
   return `${report.ok ? 'OK' : 'FAILED'}  ${parts.join(' · ')}`;

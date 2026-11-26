@@ -20,7 +20,7 @@
  *     run: "npx vitest run"      # the project's tests, run through the shell
  *     units: ./tmp/skill-units   # where the tests leave their units (the default)
  *     sources: ['src/**\/*.test.ts'] # test files with `#region skill:<id>` examples
- *     format: "npx prettier --write {file}"   # run on each built Markdown file
+ *     format: "npx prettier --write {file}"   # run once on the built Markdown files
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -67,9 +67,12 @@ export interface ProofConfig {
   run?: string;
   /** Absolute folder where the tests of `skillunit/vitest` and `skillunit/unit` leave their units. */
   units: string;
-  /** Globs of the test files to read `#region skill:<id>` examples from. */
+  /**
+   * Globs of files that hold `#region skill:<id>` examples and declare no unit. The test files the
+   * records name are always read.
+   */
   sources: string[];
-  /** A command with `{file}`, run on each built Markdown file. */
+  /** A command with `{file}`, run once with every built Markdown file in place of `{file}`. */
   format?: string;
   /** Folder of the config file: globs and commands start there. */
   cwd: string;

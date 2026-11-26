@@ -1,7 +1,7 @@
 /**
  * `--changed`: ask every question whose skill file (or a `with` file) changed since the base.
- * The skill files come from git, between the merge base with `--base` (default: the default
- * branch) and HEAD.
+ * The skill files come from git: what differs in the working tree from the merge base of HEAD
+ * with `--base` (default: the default branch), untracked files included.
  */
 import { realpathSync } from 'node:fs';
 import { posix, relative, sep } from 'node:path';
@@ -17,7 +17,7 @@ export interface ChangedSince {
   files: string[];
 }
 
-/** The skill files that changed between the merge base of `base` and HEAD. */
+/** The skill files that differ in the working tree from the merge base of `base` and HEAD. */
 export function changedSkillFiles(skill: string, base?: string): ChangedSince {
   const skillDir = realpathSync(skill);
   const git = new Git(skillDir);
@@ -29,7 +29,7 @@ export function changedSkillFiles(skill: string, base?: string): ChangedSince {
   const skillPath = relative(realpathSync(top), skillDir).split(sep).join('/');
   const prefix = skillPath ? `${skillPath}/` : '';
   const files = git
-    .changedFiles(commit, 'HEAD')
+    .changedSince(commit)
     .filter((c) => c.startsWith(prefix))
     .map((c) => c.slice(prefix.length));
   return { ref, commit, files };

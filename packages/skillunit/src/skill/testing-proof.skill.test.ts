@@ -55,7 +55,7 @@ unit('region-or-example', {
   when: 'a unit from a test should show an example, so the example is code that ran.',
   decide: 'where the example comes from.',
   paths: [
-    { path: 'region', when: 'the example is code: put it in the body between a `// #region skill:<id>` line and a `// #endregion` line, and add the test file to `proof.sources`. A path of a decision takes the region `skill:<id>.<path>`.' },
+    { path: 'region', when: 'the example is code: put it in the body between a `// #region skill:<id>` line and a `// #endregion` line. A path of a decision takes the region `skill:<id>.<path>`.' },
     { path: 'example', when: 'the example is something the body produced, such as an output or a config: pass it to `u.example(lang, text)` in the body.' },
   ],
   ask: {

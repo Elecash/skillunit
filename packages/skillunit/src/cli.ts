@@ -44,9 +44,10 @@ Options
 
 Options for test and check
   --dry-run           check that the questions can be asked and requests fit; send nothing
-  --changed           ask only the questions about skill files that changed in git since --base
-  --base <ref>        with --changed: compare HEAD with its merge base with this ref (default:
-                      the pull request's target branch, else the default branch)
+  --changed           ask only the questions about skill files that differ, committed or not,
+                      from the merge base of HEAD and --base
+  --base <ref>        with --changed: the ref to take the merge base with (default: the pull
+                      request's target branch, else the default branch)
   --provider <name>   decision model provider, instead of the one in the settings: ${PROVIDER_NAMES.join(', ')}
   --model <name>      the provider's model (default: ${MODELS})
   --choice <0-1>      lowest probability that passes a choice test (default 0.5)
@@ -256,7 +257,7 @@ function recordProblems(cfg: ProofConfig, own: TestRun, records: Records): Quest
   const out: QuestionProblem[] = [];
   const failure = runFailure(cfg, own, records.units.length + records.questions.length > 0);
   if (failure) out.push({ message: failure });
-  for (const p of records.problems) out.push({ declared: { file: p.path, line: 1 }, message: p.message });
+  for (const p of records.problems) out.push({ ...(p.test?.unit ? { unit: p.test.unit } : {}), declared: p.test ? { file: p.test.file, line: p.test.line } : { file: p.path, line: 1 }, message: p.message });
   for (const r of [...records.units, ...records.questions]) {
     if (r.status !== 'failed') continue;
     const what = r.kind === 'question' ? `\`ask('${r.id}')\` failed, so it was not asked` : `the test of the unit \`${r.id}\` failed, so its questions were not asked`;

@@ -42,7 +42,7 @@ The keys of the spec give the kind of the unit and its labels:
 | `unknown` | a fact | `Unknown:` |
 | `evenWhen` | a rule or a decision | `Even when:` |
 | `check` | any kind | `Check:` |
-| `values: { name: value }` | any kind | values the prose of the skill uses, as `{{value:<id>.<name>}}`: text on one line, a finite number or a boolean |
+| `values: { name: value }` | any kind | values the prose of the skill uses, as `{{value:<id>.<name>}}`: text on one line, a finite number or a boolean. A name is letters, digits and hyphens: `max-parts`, not `max_parts` |
 | `examples: [{ lang, text }]` | a rule or a fact | blocks shown under `Right`, or under the `Value`; `lang` is a fence language: letters, digits, `_`, `+`, `.` and `-` |
 | `ask` | any kind | the [questions](questions.md) for the decision model about the unit |
 
@@ -70,7 +70,9 @@ unit('what-is-retried', { when: 'a request with `retry` fails.' }, async (u) => 
 ```
 
 Example code comes from the body's own lines, between a line containing `#region skill:<id>` and
-the next line containing `#endregion`, with the indentation they share removed. The markers are
+the next line containing `#endregion`, with the indentation they share removed. SkillUnit reads
+the regions of the test file each record names, with no setting; `proof.sources` adds globs of
+other files that hold regions and declare no unit. The markers are
 comments in the test's language, and the fence of the block takes the language of the test
 file. For a decision, the example of a path is the region `skill:<id>.<path>`. A unit shows its
 regions first, in the order of the test files, then the blocks of `examples`, then those of
@@ -187,7 +189,7 @@ about a template language can show `{{ user.name }}`.
 1. empty the `proof.units` folder of its records;
 2. run `proof.run` through the shell, from the folder of `skillunit.yaml`, and go on whatever it
    exits with, so a failing test is reported on the unit it declares;
-3. read the units, fill the source, and run `proof.format` on each built Markdown file;
+3. read the units, fill the source, and run `proof.format` once on the built Markdown files;
 4. compare the result with the `skill` folder, and fail on each block of lines that differs.
    A block is reported on its first line that differs in more than layout, so a table whose
    columns the formatter padded again is reported on the row whose value changed.
@@ -205,8 +207,9 @@ It is an error when:
 - two tests declare the same id;
 - the source has a unit heading;
 - a slot appears twice;
-- the `skill` folder holds a file the source does not build. `--write` reports it and does not
-  delete it;
+- the `skill` folder holds a file the source does not build, a Markdown file whose name starts
+  with a dot included, since the build makes none. Other names that start with a dot, such as
+  `.DS_Store`, are left alone. `--write` reports it and does not delete it;
 - `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, and says the
   command, how it ended and the last lines of its output, where the runner names the test that
   failed. When the run left no unit at all, it says that too, in the same error. A test that
@@ -265,7 +268,6 @@ source: ./skill-src     # written by people: prose, tables and slots
 proof:
   run: "npx vitest run skill.test"      # the tests that declare units
   units: ./tmp/skill-units              # where tests leave units (the default)
-  sources: ["src/**/*.test.ts"]         # test files to read regions from
   format: "npx --no-install prettier --write {file}"
 ```
 
@@ -276,6 +278,9 @@ written by hand, and `check` says the proof is not configured.
 `format` is for a project whose formatter rewrites Markdown, as Prettier rewrites tables and the
 code in fenced blocks. Each built file is formatted on a copy next to where it goes, so the
 formatter finds the project's settings, and the skill folder is compared with what it leaves.
+The command runs once, with every copy in place of `{file}`, so it must take several files, as
+`prettier --write` does. When that run fails, it runs once per file, and the error names the file
+it failed on.
 
 ## The JSON contract
 
@@ -314,7 +319,9 @@ A failed test writes the same `skillunit`, `id`, `file`, `line` and `test`, with
 `{ "lang": …, "text": … }`, the blocks of `examples` and of `u.example`. As with `unit()`, a value
 is a single line and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`):
 SkillUnit refuses a record that breaks either, since a line break there would add lines to the
-built file that no unit declares. A unit declared with no body has `"body": false`. `ask` holds
+built file that no unit declares. The finding about a record that is refused is on the record,
+and its origin is the test the record names in `file` and `line`, when it has them. A unit
+declared with no body has `"body": false`. `ask` holds
 the questions as the spec gives them, one or a list, with or without `id`; SkillUnit fills in the
 default ids and checks them when it reads the record. The other keys are those of the spec above.
 
@@ -356,9 +363,15 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.fixture
 def unit(request):
-    """Declares the unit this test proves; call it first, with the keys of the contract."""
+    """Declares the unit this test proves; call it once, first, with the keys of the contract."""
     spec = {}
-    yield lambda id, **keys: spec.update(id=id, **keys)
+
+    def declare(id, **keys):
+        if spec:
+            raise RuntimeError(f"unit() is called once per test; {spec['id']} is already declared here")
+        spec.update(id=id, **keys)
+
+    yield declare
     report = getattr(request.node, "skill_report", None)
     if not spec or report is None or report.skipped:
         return
@@ -368,7 +381,8 @@ def unit(request):
         kind = "rule" if "do" in spec else "decision" if "paths" in spec else "fact"
         record.update(status="passed", kind=kind, examples=spec.pop("examples", []), **spec)
     else:
-        record.update(status="failed", error=str(report.longrepr).splitlines()[-1])
+        crash = getattr(report.longrepr, "reprcrash", None)
+        record.update(status="failed", error=crash.message if crash else str(report.longrepr))
     UNITS.mkdir(parents=True, exist_ok=True)
     name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
     (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
@@ -402,7 +416,10 @@ def test_never_disable_timeout(unit):
 ```
 
 `request.node.location` gives the file from pytest's root folder, so this assumes `skillunit.yaml`
-sits there. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies
+sits there. A test calls `unit` once: a second call fails the test and says so. A failed test's
+record keeps the assertion's message, as pytest reports it. A parametrized test writes one record
+per case, all with the same id, and SkillUnit refuses an id declared twice; a unit built from
+several cases goes in one test that loops over them. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies
 `ask` and `body` into the record as they are given, so SkillUnit checks the questions when it reads
 the record, not when pytest runs the test.
 

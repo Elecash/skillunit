@@ -7,8 +7,10 @@ Agents copy examples before they read rules, so an example that breaks a rule or
 ```yaml
 examples:
   ts: { tsconfig: ./tsconfig.json }
-  py: { command: "python3 -m py_compile {file}" }
+  py: { command: "PYTHONPATH=src python3 {file}" }
 ```
+
+A command runs on a copy of the example in a temporary folder, so `python3 -m py_compile {file}` checks the syntax only, and an import of a name the library no longer has passes. `PYTHONPATH=src python3 {file}`, with `src` the folder that holds the package, imports the library and runs the example.
 
 The tsconfig named in `examples.ts` resolves the library's own name, usually with a `paths` entry, so an example's import reaches the current source. Without `examples.ts`, lint skips those blocks and says how many it skipped. Types that only generated code has, such as a Prisma client or a TanStack Router route tree, come from the tsconfig too: it includes the generated code, or a small fixture checked in for it, and the `Setup` imports it; a `Setup` cannot write them.
 

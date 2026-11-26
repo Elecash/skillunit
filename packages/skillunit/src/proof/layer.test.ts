@@ -190,6 +190,22 @@ describe('building the skill', () => {
     ]);
   });
 
+  it('reads the regions from the test file each record names, with no `proof.sources`', () => {
+    const root = project(GOOD);
+    const r = run(root, { sources: [] }, { write: true });
+    expect(r.problems.map(show)).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+  });
+
+  it('reads the regions of `proof.sources` too: a file that holds regions and declares no unit', () => {
+    const shared = `// ${OPEN('check-status')}\nif (isHttpError(error)) return null;\n// ${CLOSE}\n`;
+    const root = project({ ...GOOD, 'tests/a.test.ts': TEST.replace(`  // ${OPEN('check-status')}\n  if (isHttpError(error)) return null;\n  // ${CLOSE}\n`, ''), 'examples/shared.ts': shared });
+    expect(read(root, 'tests/a.test.ts')).not.toContain(OPEN('check-status'));
+    const r = run(root, { sources: ['examples/*.ts'] }, { write: true });
+    expect(r.problems.map(show)).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+  });
+
   it('compares the skill folder with the build: the same, after a write', () => {
     const root = project(GOOD);
     run(root, {}, { write: true });
@@ -230,6 +246,49 @@ describe('a skill folder edited by hand', () => {
     expect(errors(run(root)).map((e) => e.replace(/ error: .* \[/, ' ['))).toEqual(['SKILL.md:3 - [source ../skill-src/SKILL.md:3]', 'SKILL.md:23 default-timeout [test ../tests/a.test.ts:10]']);
   });
 
+  it('a long line that differs past its first 100 characters: each side is shown around the difference, and the JSON keeps both whole', () => {
+    const value = 'a failed request is sent again after a wait of 300 ms before the first new attempt, which grows before each next one: doubled.';
+    const root = project({ ...GOOD, 'tmp/skill-units/default-timeout.0001.json': record('default-timeout', 10, { kind: 'fact', when: 'x.', value, values: { seconds: 10, ms: 10000 } }) });
+    run(root, {}, { write: true });
+    const built = read(root, 'skill/SKILL.md');
+    writeFileSync(join(root, 'skill/SKILL.md'), built.replace('one: doubled.', 'one: tripled.'));
+    const [finding] = run(root).problems;
+    const [, build, skill] = /the build has `(.*)`, the skill has `(.*)`\. Run/.exec(finding!.message)!;
+    expect(build).not.toBe(skill);
+    expect(build).toMatch(/^….*next one: doubled\.$/);
+    expect(skill).toMatch(/^….*next one: tripled\.$/);
+    expect(finding!.lines).toEqual({ build: `Value: ${value}`, skill: `Value: ${value.replace('doubled', 'tripled')}` });
+  });
+
+  it('lines the skill lacks at the end of a unit: blamed on that unit, not the next one', () => {
+    const root = written();
+    writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('Check: forbid `/\\.status\\b/` in ts\n\n', ''));
+    const found = run(root).problems;
+    expect(found.map(show)).toEqual([
+      expect.stringMatching(/^SKILL\.md:\d+ check-status error: .* the build has `Check: forbid '\/\\\.status\\b\/' in ts`, the skill has nothing here\. .* \[test \.\.\/tests\/a\.test\.ts:20\]$/),
+    ]);
+    expect(found[0]!.lines).toEqual({ build: 'Check: forbid `/\\.status\\b/` in ts', skill: null });
+  });
+
+  it('lines the skill lacks at the end of the file: the line reported is in the file, and so is its origin', () => {
+    const root = project({ ...GOOD, 'skill-src/SKILL.md': '# Demo\n\nA.\n\nLast line.\n' });
+    run(root, {}, { write: true });
+    writeFileSync(join(root, 'skill/SKILL.md'), '# Demo\n\nA.\n');
+    const [finding] = run(root).problems.filter((p) => p.file === 'SKILL.md');
+    expect(finding!.line).toBeLessThanOrEqual(3);
+    expect(finding!.origin).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 5 });
+  });
+
+  it('an empty line the skill has at its end: the line reported and its origin are lines of their files', () => {
+    const root = project({ ...GOOD, 'skill-src/SKILL.md': '# Demo\n\nLast line.\n' });
+    run(root, {}, { write: true });
+    // Four lines, where the build and the source have three.
+    writeFileSync(join(root, 'skill/SKILL.md'), '# Demo\n\nLast line.\n\n');
+    const [finding] = run(root).problems.filter((p) => p.file === 'SKILL.md');
+    expect(finding!.line).toBeLessThanOrEqual(4);
+    expect(finding!.origin).toEqual({ kind: 'source', file: '../skill-src/SKILL.md', line: 3 });
+  });
+
   it('a line of prose: the finding names the source', () => {
     const root = written();
     writeFileSync(join(root, 'skill/SKILL.md'), BUILT.replace('A request waits', 'Every request waits'));
@@ -248,6 +307,13 @@ describe('a skill folder edited by hand', () => {
     const root = written();
     writeFileSync(join(root, 'skill/logo.txt'), 'other\n');
     expect(errors(run(root))).toEqual(['logo.txt:1 - error: this file is not the one in `source`, which it is copied from: edit skill-src/logo.txt, then run `skillunit proof --write` [source ../skill-src/logo.txt:1]']);
+  });
+
+  it('a Markdown file whose name starts with a dot: reported as any file the source does not build; other dot-files are left alone', () => {
+    const root = written();
+    writeFileSync(join(root, 'skill/.notes.md'), 'tinyfetch retries forever.\n');
+    writeFileSync(join(root, 'skill/.DS_Store'), 'x');
+    expect(errors(run(root))).toEqual(['.notes.md:1 - error: no file of `source` builds `.notes.md`, and none can: the build leaves out a name that starts with a dot. Remove it from the skill folder']);
   });
 
   it('a file the source does not build: reported, and left in place by --write', () => {
@@ -397,17 +463,19 @@ describe('questions in a record', () => {
       'tmp/skill-units/c.json': asked({ when: 'x.' }),
     });
     expect(errors(run(root, {}, { write: true }))).toEqual([
-      '../tmp/skill-units/a.json:1 - error: a.json: `skillFile` must be the built file the question is about, such as `SKILL.md`',
-      '../tmp/skill-units/b.json:1 - error: b.json: the question in `ask` has the id `other`, and the record `which-file`',
-      '../tmp/skill-units/c.json:1 - error: c.json: a question has no `when`',
+      '../tmp/skill-units/a.json:1 - error: a.json: `skillFile` must be the built file the question is about, such as `SKILL.md` [test ../tests/a.test.ts:40]',
+      '../tmp/skill-units/b.json:1 - error: b.json: the question in `ask` has the id `other`, and the record `which-file` [test ../tests/a.test.ts:40]',
+      '../tmp/skill-units/c.json:1 - error: c.json: a question has no `when` [test ../tests/a.test.ts:40]',
     ]);
   });
 
-  it('a question with a mistake makes the record one that is not valid', () => {
+  it('a question with a mistake makes the record one that is not valid, and the finding names the test the record says it comes from', () => {
     const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': rule({ ...question, expect: 'status-code' }) });
-    expect(errors(run(root, {}, { write: true }))).toContainEqual(
-      '../tmp/skill-units/check-status.0002.json:1 - error: check-status.0002.json: unit `check-status`: the question `check-status`: `expect` is "status-code", which is not an option (use one of: helper, status, none)',
+    const r = run(root, {}, { write: true });
+    expect(errors(r)).toContainEqual(
+      '../tmp/skill-units/check-status.0002.json:1 check-status error: check-status.0002.json: unit `check-status`: the question `check-status`: `expect` is "status-code", which is not an option (use one of: helper, status, none) [test ../tests/a.test.ts:20]',
     );
+    expect(r.problems.find((p) => p.file.endsWith('.json'))!.origin).toEqual({ kind: 'test', file: '../tests/a.test.ts', line: 20, unit: 'check-status' });
   });
 });
 
@@ -482,9 +550,13 @@ process.exit(${code});
 
 describe('format', () => {
   // A formatter that inserts a line after the heading and drops the blank line before `Right:`.
-  const FMT = `import { readFileSync, writeFileSync } from 'node:fs';
-const f = process.argv[2];
-writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\\n', '# Demo\\n\\n<!-- built -->\\n').replace('\\n\\nRight:', '\\nRight:'));
+  const FMT = `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+const files = process.argv.slice(2);
+appendFileSync('runs.txt', files.length + '\\n');
+// A file that says BAD fails the run, as a formatter fails on what it cannot parse.
+const bad = files.find((f) => readFileSync(f, 'utf8').includes('BAD'));
+if (bad) { console.error(bad + ': cannot format'); process.exit(2); }
+for (const f of files) writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\\n', '# Demo\\n\\n<!-- built -->\\n').replace('\\n\\nRight:', '\\nRight:'));
 `;
 
   it('runs on each built Markdown file, and the skill is compared as it leaves them', () => {
@@ -496,6 +568,22 @@ writeFileSync(f, readFileSync(f, 'utf8').replace('# Demo\\n', '# Demo\\n\\n<!-- 
     expect(run(root, { format: 'node fmt.mjs {file}' }).ok).toBe(true);
     // No copy left next to the file.
     expect(readdirSync(join(root, 'skill')).sort()).toEqual(['SKILL.md', 'logo.txt']);
+  });
+
+  it('runs once, with every built Markdown file in place of {file}', () => {
+    const root = project({ ...GOOD, 'fmt.mjs': FMT, 'skill-src/features/other.md': '# Demo\n\nOther.\n', 'skill-src/third.md': '# Demo\n\nThird.\n' });
+    const r = run(root, { format: 'node fmt.mjs {file}' }, { write: true });
+    expect(r.problems.map(show)).toEqual([]);
+    expect(read(root, 'runs.txt')).toBe('3\n');
+    for (const f of ['skill/SKILL.md', 'skill/features/other.md', 'skill/third.md']) expect(read(root, f)).toContain('<!-- built -->');
+  });
+
+  it('when the one run fails, runs once per file, so the error names the file it failed on and the others are formatted', () => {
+    const root = project({ ...GOOD, 'fmt.mjs': FMT, 'skill-src/features/other.md': '# Demo\n\nBAD.\n', 'skill-src/third.md': '# Demo\n\nThird.\n' });
+    const r = run(root, { format: 'node fmt.mjs {file}' }, { write: true });
+    expect(errors(r)).toEqual([expect.stringMatching(/^\.\.\/skillunit\.yaml:\d+ - error: `proof\.format` failed on the build of features\/other\.md:\n.*features\/other\.md: cannot format$/)]);
+    expect(read(root, 'runs.txt')).toBe('3\n1\n1\n1\n');
+    expect(read(root, 'skill/third.md')).toContain('<!-- built -->');
   });
 
   it('traces a line through the formatter: the lines it moved still have their origin', () => {

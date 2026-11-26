@@ -163,3 +163,27 @@ describe('the thresholds of a yes/no question', () => {
     expect(result.stderr).toContain(`low-yes.yaml: ${YES}\n`);
   });
 });
+
+describe('--changed on a copy of tinyfetch', () => {
+  const table = (app: App, ...args: string[]) =>
+    spawnSync(process.execPath, [CLI, ...args], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } })
+      .stdout.replace(/\x1b\[[0-9;]*m/g, '')
+      .trimEnd()
+      .split('\n')
+      .at(-1);
+
+  it('an edit not committed counts: its questions are asked', () => {
+    const app = App.copy('changed-tree');
+    app.edit('skill/features/retries.md', '# tinyfetch', '# tinyfetch, edited');
+    const run = app.run('test', '--changed', '--dry-run');
+    expect(run.report.test.requests.map((r: any) => r.file)).toEqual(['features/retries.md']);
+    expect(run.report.test.summary.tests).toBeGreaterThan(0);
+  });
+
+  it('nothing changed: the summary says no question was about a changed file, and since which ref', () => {
+    const app = App.copy('changed-none');
+    const run = app.run('test', '--changed', '--dry-run');
+    expect(run.report.test.summary.tests).toBe(0);
+    expect(table(app, 'test', '--changed', '--dry-run', '--base', app.base)).toBe(`OK  test dry run ok: no question is about a file changed since ${app.base} (${app.base.slice(0, 7)})`);
+  });
+});

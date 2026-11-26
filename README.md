@@ -54,7 +54,7 @@ Each `test` line is a question for the decision model, at the line of the test f
 
 What it costs to run:
 
-- **A check takes seconds.** Lint and proof take 1 to 2 seconds per skill, plus the time of the tests that declare units, which proof runs. The decision model answers the questions about one file in under a second, however many there are: 58 questions about 8 files take about 1.5 seconds on TypeSafe and 3 on OpenAI.
+- **A check takes seconds.** Lint and proof take under half a second each on the two skills of this repository (0.35 to 0.47 s on a 14-core laptop), plus the time of the tests that declare units, which proof runs. The decision model answers the questions about one file in under a second, however many there are: 58 questions about 8 files take about 1.5 seconds on TypeSafe and 3 on OpenAI.
 - **Lint and proof need no model and no key.** They run on pull requests from forks, which get no secrets.
 - **The test layer costs a fraction of a cent per run.** See [what a run costs](https://github.com/Elecash/skillunit/blob/main/docs/ci.md#what-a-run-costs).
 

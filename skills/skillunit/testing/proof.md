@@ -51,7 +51,7 @@ When: a unit from a test should show an example, so the example is code that ran
 
 Decide: where the example comes from.
 
-- **region** — the example is code: put it in the body between a `// #region skill:<id>` line and a `// #endregion` line, and add the test file to `proof.sources`. A path of a decision takes the region `skill:<id>.<path>`.
+- **region** — the example is code: put it in the body between a `// #region skill:<id>` line and a `// #endregion` line. A path of a decision takes the region `skill:<id>.<path>`.
 
 - **example** — the example is something the body produced, such as an output or a config: pass it to `u.example(lang, text)` in the body.
 

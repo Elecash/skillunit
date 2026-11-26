@@ -188,8 +188,11 @@ never opens can settle a question that the agent would get wrong. Keep `all` for
 
 Each decision model has a limit on the state plus the longest question; TypeSafe's is 32,000
 tokens, and OpenAI's is 922,000 for the whole request. SkillUnit estimates the size before
-sending, prints it with `--dry-run`, and refuses a request that would not fit, naming its largest
-files. The estimate runs about 8% high.
+sending and refuses a request that would not fit, naming its largest files. `--dry-run` prints
+in `TOKENS` the estimate of the whole request, every question counted with the instructions,
+which is what a run bills. Measured on TypeSafe on 2026-11-25 against the input tokens it billed,
+that estimate was 2% low on tinyfetch's skill (8,463 against 8,617; from 24% low to 6% high per
+request) and 14% high on SkillUnit's own (35,179 against 30,739; from 7% to 20% high).
 
 Keep questions without `with` as well. The two answer different questions:
 

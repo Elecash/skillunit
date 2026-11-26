@@ -186,6 +186,17 @@ ${F}
     expect(long.problems[0]!.message.split('\n').slice(-2)).toEqual(['12', '(8 more lines)']);
   });
 
+  it('names a line of the output by its line in the skill: in the example, or in the Setup above it', () => {
+    const root = skillDir({ 'SKILL.md': `# T\n\nSetup:\n\n${F}sh\na=1\nb=2\n${F}\n\n${F}sh\necho x\necho y\n${F}\n` });
+    // A checker that reports line 4 and line 2 of the file it is given, as mypy does.
+    const command = "printf '%s:4: bad\\n%s:2: worse\\n' {file} {file}; exit 1";
+    const [setup, example] = runCommands(parseSkill(root), { commands: { sh: command }, cwd: root }).problems;
+    // The temporary file is the Setup's two lines, then the example's: line 4 is `echo y`.
+    expect(example!.message.split('\n').slice(1)).toEqual(['SKILL.md:12: bad', 'SKILL.md:7 (Setup): worse']);
+    // The Setup runs on its own: line 2 is its last, and line 4 is past it.
+    expect(setup!.message.split('\n').slice(1)).toEqual(['SKILL.md:7: bad', 'SKILL.md:7: worse']);
+  });
+
   it('runs the command on a block under the Value of a fact like any other example', () => {
     const unit = `# T\n\n## Rules\n\n### fact: r\n\nWhen: a.\n\nValue: b.\n\n${F}sh\nif then fi\n${F}\n`;
     const root = skillDir({ 'SKILL.md': unit });

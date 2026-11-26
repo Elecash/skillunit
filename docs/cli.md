@@ -15,7 +15,8 @@ skillunit init [skill]              create skillunit.yaml here, for that skill f
 Run `skillunit init skills/my-skill` from the project root. It writes `skillunit.yaml` there,
 with `skill: ./skills/my-skill`, `source` and `proof` commented out, and the type-check of
 TypeScript examples turned on when a `tsconfig.json` is there. Every other command runs from
-that folder with no `--config`.
+that folder with no `--config`. When the folder has no `SKILL.md`, it gives the steps that build
+one from the tests, `skillunit proof --write` last, in place of `skillunit lint`.
 
 ## Options
 
@@ -29,7 +30,7 @@ that folder with no `--config`.
 | `--no-run` | proof, test, check | do not run `proof.run`; use the units and questions the tests already left |
 | `--dry-run` | test, check | check that the questions can be asked, headings exist and requests fit; send nothing |
 | `--changed` | test, check | ask only the questions about what changed in git since `--base` |
-| `--base <ref>` | test, check | with `--changed`: compare HEAD with its merge base with this ref |
+| `--base <ref>` | test, check | with `--changed`: the ref whose merge base with HEAD the working tree is compared with |
 | `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
 | `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md): `--yes` 0.5 or more and `--no` under 0.5, so a yes/no question passes only on the answer it expects |
@@ -43,8 +44,11 @@ Only `--changed` reads git history.
 `--base`: a question is asked when the file it is about, or a file in its `with`, changed.
 Without `--base` it uses the pull request's target branch in
 GitHub Actions, then the remote's default branch, then `origin/main`, `origin/master`, `main` or
-`master`, and compares HEAD with the merge base of that ref and HEAD, so commits that landed on
-the main branch after the branch point do not count.
+`master`. It compares the working tree with the merge base of that ref and HEAD: a file counts
+when it differs there, committed or not, and so does a new file git does not ignore. Commits
+that landed on the main branch after the branch point do not count. In CI the tree is clean, so
+that is what the branch's commits changed. When no question is about a changed file, the summary
+says so and names the ref and the commit it compared with.
 
 ## Proof
 
@@ -126,7 +130,16 @@ also runs lint and proof in full.
   starts, when the type-check found it. `lint.summary`
   counts the examples that went through the type-check (`typeChecked`) apart from those that did
   not parse (`notParsed`), and lists in `undeclared` every name that nothing declares, as
-  `{ name, count }`, the most frequent first. The JSON keeps every finding, whole.
+  `{ name, count }`, the most frequent first. A proof finding about a line that is not what the
+  build gives has `lines`, `{ build, skill }`, the two lines whole, `null` on the side that has
+  no line there; its message shows each cut around the first difference. The JSON keeps every
+  finding, whole.
+
+  Every `file` in `units`, `lint` and `proof`, the `origin` of a finding and the `source` and
+  `test` of a unit included, starts from the skill folder, so the test of a unit is
+  `../src/tinyfetch.test.ts`. The table prints the same paths from the folder it runs in.
+  `lint.skill`, `proof.skill`, `proof.source` and the `declared` of a verdict or a test problem
+  are absolute.
 - `junit`: JUnit XML, one suite per layer and one per request, for CI systems that read it. The
   proof suite has one case per unit, with its state as a property; a question's case is named
   after its id, in the class of the file and line that declare it.

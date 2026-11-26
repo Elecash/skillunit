@@ -24,8 +24,7 @@ lint:
 proof:
   run: "npx vitest run skill.test"           # the tests that declare units, run through the shell
   units: ./tmp/skill-units                   # where the tests leave their units (the default)
-  sources: ["src/**/*.test.ts"]              # test files with `#region skill:<id>` examples
-  format: "npx --no-install prettier --write {file}"   # run on each built Markdown file
+  format: "npx --no-install prettier --write {file}"   # run once on the built Markdown files
 ```
 
 - `skill`: the folder with `SKILL.md`. `--skill` overrides it. With `source`, it is built.
@@ -53,6 +52,11 @@ proof:
   found in `node_modules` at or above that tsconfig). The tsconfig should resolve the library's
   name to its source, usually with a `paths` entry. Any other language takes a `command` with
   `{file}` where the example's path goes, run in the folder of `skillunit.yaml`; it must exit 0.
+  The file is a copy of the example in a temporary folder, after its `Setup`, so a command that
+  only parses it checks the syntax and nothing else: `python3 -m py_compile {file}` passes an
+  import of a name the library no longer has. `PYTHONPATH=src python3 {file}`, with `src` the
+  folder that holds the package, imports the library and runs the example, so that import
+  fails.
   A key and a fence name a language the same way, and the usual pairs are one language: `py` and
   `python`, `js` and `javascript`, `ts` and `typescript`, `sh`, `bash` and `shell`, `yml` and
   `yaml`. Lint warns about a language set here that no block of the skill is in.
@@ -73,8 +77,11 @@ proof:
   `npx vitest run skill.test` for files named `*.skill.test.ts`: on SkillUnit's own skill that is
   4.0 s where the whole suite takes 70.9 s, and CI still runs the whole suite. `units` is the
   folder where the tests leave their units (default `./tmp/skill-units`), and `proof` empties it
-  of its records before `run`. `sources` are globs of the test files with `#region skill:<id>`
-  examples. `format` is a command with `{file}`, run on each built Markdown file. Globs start
+  of its records before `run`. The regions of examples are read from the test file each record
+  names. `sources` are globs of other files that hold regions and declare no unit, such as a
+  file of examples a test imports. `format` is a command with `{file}`, run once with every built Markdown file in place
+  of `{file}`, so it must take several files, as `prettier --write` does; when that run fails, it
+  runs once per file, so the error names its file. Globs start
   from the folder of this file and leave out `node_modules`.
   [Proof](proof.md#which-tests-proofrun-runs) has the details.
 
@@ -125,8 +132,8 @@ A choice question is judged on the probability of the option the model ranks fir
 the model reports about its answer.
 
 `openai` uses the same default thresholds as `typesafe`. With them, on 2026-11-25, `typesafe`
-passed all 58 questions of SkillUnit's own skill and all 16 of tinyfetch's; `openai` passed the
-16 of tinyfetch and 55 of the 58, three right answers under the threshold.
+passed all 58 questions of SkillUnit's own skill and all 16 of tinyfetch's. `openai` passed the
+16 of tinyfetch and 54 of the 58, on each of three runs, and failed the same four every time.
 
 **Pick one model and write your questions for it.** Decision models can answer the same question
 differently: OpenAI's, for one, is more decisive than Jev. A question that fails where it should

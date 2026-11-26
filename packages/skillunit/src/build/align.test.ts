@@ -30,15 +30,21 @@ describe('aligning the lines of two texts', () => {
 describe('the blocks where two texts differ', () => {
   it('gives the first line of each block, counted in the second text', () => {
     expect(differences(lines('abcdefg'), lines('aXcdeYg'))).toEqual([
-      { line: 2, expected: 'b', actual: 'X' },
-      { line: 6, expected: 'f', actual: 'Y' },
+      { line: 2, expected: 'b', expectedLine: 2, actual: 'X' },
+      { line: 6, expected: 'f', expectedLine: 6, actual: 'Y' },
     ]);
   });
 
   it('a block one text lacks, and none when they are equal', () => {
-    expect(differences(lines('abc'), lines('ac'))).toEqual([{ line: 2, expected: 'b', actual: undefined }]);
+    expect(differences(lines('abc'), lines('ac'))).toEqual([{ line: 2, expected: 'b', expectedLine: 2, actual: undefined }]);
     expect(differences(lines('ac'), lines('abc'))).toEqual([{ line: 2, expected: undefined, actual: 'b' }]);
     expect(differences(lines('abc'), lines('abc'))).toEqual([]);
+  });
+
+  it('lines the second text lacks: `expectedLine` is where they are in the first, which `line` is not', () => {
+    // `line` 4 is `d`, the line after the gap; `X` and `Y` belong before it.
+    expect(differences(lines('abcXYd'), lines('abcd'))).toEqual([{ line: 4, expected: 'X', expectedLine: 4, actual: undefined }]);
+    expect(differences(lines('aXYbcd'), lines('abcd'))).toEqual([{ line: 2, expected: 'X', expectedLine: 2, actual: undefined }]);
   });
 });
 
@@ -46,13 +52,13 @@ describe('a block that differs only in layout on some lines', () => {
   it('a table whose value changes width: reported on the row with the value, not the header', () => {
     const before = ['# T', '', '| Option    | Default  |', '| --------- | -------- |', '| `timeout` | `10_000` |', '| `signal`  | none     |', ''];
     const after = ['# T', '', '| Option    | Default |', '| --------- | ------- |', '| `timeout` | `5_000` |', '| `signal`  | none    |', ''];
-    expect(differences(after, before)).toEqual([{ line: 5, expected: '| `timeout` | `5_000` |', actual: '| `timeout` | `10_000` |' }]);
+    expect(differences(after, before)).toEqual([{ line: 5, expected: '| `timeout` | `5_000` |', expectedLine: 5, actual: '| `timeout` | `10_000` |' }]);
   });
 
   it('a table whose padding alone changed: reported on its first line', () => {
     const before = ['| A | B |', '|---|---|', '| 1 | 2 |'];
     const after = ['| A   | B   |', '| --- | --- |', '|  1  |  2  |'];
-    expect(differences(after, before)).toEqual([{ line: 1, expected: '| A   | B   |', actual: '| A | B |' }]);
+    expect(differences(after, before)).toEqual([{ line: 1, expected: '| A   | B   |', expectedLine: 1, actual: '| A | B |' }]);
   });
 
   it('separator rows with another number of columns differ in more than layout', () => {

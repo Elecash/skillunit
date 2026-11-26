@@ -139,7 +139,8 @@ export function buildRequest(
  * Characters per token used to estimate a request before it is sent, since there is no
  * tokenizer for every model. Measured with TypeSafe on a real skill: adding 65,000 characters of
  * its markdown to a state added about 18,300 input tokens (3.57 characters per token). Rounded
- * down so the estimate errs high by about 8%.
+ * down. Against what TypeSafe billed for whole requests on 2026-11-25: 2% low on tinyfetch's
+ * skill, 14% high on SkillUnit's own (`docs/questions.md`).
  */
 const CHARS_PER_TOKEN = 3.3;
 

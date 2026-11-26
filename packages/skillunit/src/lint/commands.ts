@@ -34,13 +34,21 @@ export function runCommands(skill: ParsedSkill, examples: ExamplesConfig): Comma
           result.noCheck++;
           continue;
         }
-        const setup = fence.owner.kind === 'setup' ? undefined : setupFor(skill, file, fence.lang)?.fence;
+        const source = fence.owner.kind === 'setup' ? undefined : setupFor(skill, file, fence.lang);
+        const setup = source?.fence;
         const path = join(dir, `example${n++}.${fence.lang}`);
         writeFileSync(path, setup ? `${setup.code}\n${fence.code}\n` : `${fence.code}\n`);
         result.checked++;
         const run = spawnSync(command.replaceAll('{file}', quote(path)), { shell: true, cwd: examples.cwd, encoding: 'utf8' });
         if (run.status === 0) continue;
-        const said = output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [path, join(realDir, basename(path)), dir, realDir], `${file.file}:${fence.line}`) || (run.error?.message ?? '');
+        const setupLines = setup ? setup.code.split('\n').length : 0;
+        const codeLines = fence.code.split('\n').length;
+        // Line `n` of the temp file: in the `Setup` written above the example, or in the example.
+        const lineAt = (n: number) => {
+          if (source && n <= setupLines) return `${source.file.file}:${source.fence.line + Math.max(n, 1)} (Setup)`;
+          return `${file.file}:${fence.line + Math.min(Math.max(n - setupLines, 1), codeLines)}`;
+        };
+        const said = output(`${run.stderr ?? ''}${run.stdout ?? ''}`, [path, join(realDir, basename(path)), dir, realDir], `${file.file}:${fence.line}`, lineAt) || (run.error?.message ?? '');
         const p: Problem = {
           file: file.file,
           line: fence.line,
@@ -72,10 +80,14 @@ const LINE_CHARS = 200;
 /**
  * What a command printed, for a finding: its non-empty lines, at most `OUTPUT_LINES`, with the
  * temp file it was given named by the example's place in the skill, since that file is gone.
+ * With `lineAt`, `<temp file>:<n>` is named by the line of the skill that line `n` is.
  */
-export function output(text: string, temp: string[], place: string): string {
+export function output(text: string, temp: string[], place: string, lineAt?: (n: number) => string): string {
   let out = text;
-  for (const path of temp) out = out.split(path).join(place);
+  for (const path of temp) {
+    if (lineAt) out = out.replace(new RegExp(`${path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:(\\d+)`, 'g'), (_, n: string) => lineAt(Number(n)));
+    out = out.split(path).join(place);
+  }
   const lines = out
     .split(/\r?\n/)
     .map((l) => l.trimEnd())
