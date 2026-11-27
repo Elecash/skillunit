@@ -218,7 +218,7 @@ describe('questions.md', () => {
   unit('when-to-ask', {
     when: 'a test decides whether a unit gets a question.',
     do: 'give a question to a rule or a decision an agent would plausibly get wrong, and to a fact whose sentence leaves something to work out: two values to combine, an exception to apply. A fact that states one value from the code gets no question.',
-    evenWhen: 'the user asks for a question on every unit: a question about one value passes without its unit, or fails on a wording, and proves nothing either way.',
+    evenWhen: 'the user asks for a question on every unit: a question about one value its test already proves adds only a chance to fail on a wording.',
     ask: {
       id: 'which-units-get-a-question',
       scenario: 'A skill has rules, decisions, and facts that each state one value built from the code. The user asks for questions, so that the decision model covers the skill.',
@@ -236,7 +236,7 @@ describe('questions.md', () => {
   unit('scenario-pulls', {
     when: 'a test writes the scenario and the options of a question.',
     do: "write the scenario so that it pulls toward the wrong answer: the user asks for what the rule forbids, or the shortcut is in plain sight. The wrong options are the answers an agent gives without the unit.",
-    evenWhen: 'a plain scenario reads better: common sense then passes the question, and it passes without its unit too.',
+    evenWhen: 'a plain scenario reads better: common sense then passes the question, whatever the unit says.',
     ask: {
       id: 'a-scenario-that-pulls',
       scenario: 'A rule says to leave `retry` off a POST request. The agent drafts its question with the scenario "An order is created with a POST request."',
@@ -266,21 +266,24 @@ describe('questions.md', () => {
     },
   });
 
-  // A gap: the copy is the user's to make; `skill-copy` is how SkillUnit asks about it.
-  unit('copy-check', {
-    when: 'a question passes, and the test should show that its unit is what makes it pass.',
-    do: `delete the text of the unit in a copy of the skill folder, keep its heading, and ask with \`${command('test')} ${option('test', '--skill')} <copy>\`. A question that still passes goes, or its unit changes; never change a threshold to keep it.`,
-    evenWhen: 'the question passes with its unit: that says nothing about whether the unit is what answers it.',
+  // A gap: the change is the user's to make; `skill-copy` is how SkillUnit asks about a copy.
+  unit('prove-a-question', {
+    when: 'a question passes, and the test should show that the question reads its unit.',
+    do: `in a copy of the skill folder, write the opposite in the sentence of its unit, keep its heading and its \`When\`, and ask with \`${command('test')} ${option('test', '--skill')} <copy> ${option('test', '--no-run')}\`: the question must fail. A question that still passes does not read its unit: change the question, never a threshold.`,
+    evenWhen: 'the question also passes with the text of its unit deleted: the model knows the library, which is the normal case, and the question is the one that fails the day the skill says something else.',
     ask: {
-      id: 'is-the-question-proven',
-      scenario: 'The agent added a question to a unit, and the question passes on the skill. The user asks whether the question is proven, and wants to move on.',
-      question: 'What does the agent do before it says the question is proven?',
+      id: 'question-against-the-opposite',
+      scenario: [
+        'The agent added a question to a unit about a library the model knows well. The question passes on the skill, and it also passes on a copy where the text of its unit is deleted. The user asks whether to drop it.',
+        'A question passes on the skill and on a copy without the text of its unit, since the model knows the API. The user wants to drop it, because the unit seems to make no difference.',
+      ],
+      question: 'What does the agent do with the question?',
       options: {
-        copy: 'Ask it again on a copy of the skill in which the text of its unit is deleted, and check that it fails there',
-        done: 'Nothing more: it passes on the skill, so it is proven',
-        twice: 'Ask it again on the same skill, to see that it passes twice',
+        opposite: 'Ask it on a copy where its unit says the opposite, and keep it if it fails there',
+        drop: 'Drop it: it passes without its unit, so the unit is not what answers it',
+        threshold: 'Raise its threshold until it fails without its unit',
       },
-      expect: 'copy',
+      expect: 'opposite',
     },
   });
 });

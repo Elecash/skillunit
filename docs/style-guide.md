@@ -190,8 +190,8 @@ error, a type), the name comes from the code:
 | a class or a function | its `name` | `` `${HttpError.name}` `` |
 
 A function's `name` is the name its code gave it, which is not always the name a module exports
-it under. `export const defu = createDefu()` exports a function whose `name` is another one, or
-empty. For such an export, take the name of the export: `key<typeof module>('defu')` accepts only
+it under. `export const merge = createMerge()` exports a function whose `name` is another one, or
+empty. For such an export, take the name of the export: `key<typeof module>('merge')` accepts only
 a name the module exports.
 
 `module` is the type of the library's entry, imported with `import type * as Tinyfetch from
@@ -284,36 +284,39 @@ when its sentence leaves the reader something to work out: two values to combine
 apply. A fact that states one value from the code gets none.
 
 **The scenario pulls toward the wrong answer.** The user asks for what the rule forbids, or the
-shortcut is in plain sight. A plain scenario lets common sense pass the question, and then it
-passes without its unit too. tinyfetch's `long-upload` needed its unit only once the user in the
-scenario asked for no time limit.
+shortcut is in plain sight. A plain scenario lets common sense pass the question. tinyfetch's
+`long-upload` needed its unit only once the user in the scenario asked for no time limit.
 
 **Do not ask the reader to add up**, or to conclude from a list that what it leaves out does not
 exist. Asked for the total of three waits that grow, the reader multiplied. Shown "these options
 and no other", it would not say there is no connect timeout. What the skill must say is absent,
 a fact says in so many words, in `unknown`.
 
-## The copy check
+## The change that proves a question
 
-A question passes with its unit and fails without it. To tell, copy the skill folder, delete the
-text of the unit in the copy and keep its heading, and ask the questions about the copy:
+A question is proven like a unit, by a change that fails it. Write the opposite in the sentence
+of its unit, ask the question, and it must fail; then undo the change. The question is there for
+the day the skill says something else, and that is the change it has to notice.
 
 ```sh
+cp -R skills/my-skill /tmp/my-skill-copy
+# in the copy, write the opposite in the sentence of the unit, and keep its heading and `When`
 npx skillunit test --skill /tmp/my-skill-copy --no-run
 ```
 
 Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
-threshold can flip from one run to the next, so only a clear failure without the unit counts.
+threshold can flip from one run to the next, so only a clear failure counts. A question that
+still passes with its unit saying the opposite does not read the unit: change the question, never
+a threshold.
 
-A question that passes without its unit goes, or the unit changes; never a threshold. When the
-unit's text changes so that a question passes, note what the agent now reads that it did not.
-When the question was the only reason for a unit with no body, the unit goes with it: the rest of
-the skill, or common sense, already gives the agent that advice.
+Deleting the unit's text instead is a reading, not a test. It says whether the model answers
+right without the skill. For an API the model knows, it does, and that is the normal case: the
+question stays. Measured on 2026-11-26 on 27 questions of three skills, on both models: all 54
+verdicts passed with their unit, 10 passed with its text deleted, and none passed with the unit
+saying the opposite, those 10 included.
 
-On SkillUnit's own skill, the copy check took three gaps out. Two had questions that passed
-without them, since other units already said the same; the third had one that failed even with
-its unit, and its advice was in another unit too. [Questions](questions.md#checking-that-a-question-is-real)
-says where to look when a question stays green.
+[Questions](questions.md#proving-a-question) says where to look when a question passes with its
+unit saying the opposite.
 
 ## What the build writes
 

@@ -11,11 +11,11 @@ A question is for a rule or a decision where an agent would plausibly choose wro
 options are the answers an agent gives without the rule. A unit with a test gets a question only
 when its sentence leaves the reader something to work out: two values to combine, an exception to
 apply. A fact that states one value from the code gets none: its test already proves the value,
-and a question about it passes without its unit or fails on a wording.
+and a question about it adds only a chance to fail on a wording.
 
 A unit with no body, advice that no test can state, is where most questions go. The question is
-then the only thing that shows the advice reaches the reader, and the
-[copy check](#checking-that-a-question-is-real) shows whether it is needed at all.
+then the only thing that shows the advice reaches the reader, and
+[a change that fails it](#proving-a-question) shows that it reads the advice.
 
 Write the scenario so that it pulls toward the wrong answer: the user asks for what the rule
 forbids, or the shortcut is in plain sight. A plain scenario lets common sense pass the question.
@@ -318,36 +318,39 @@ rule does not cover a case, write the general reason that covers it. Copying the
 wording into the skill makes that one question pass and teaches the reader nothing about the next
 phrasing.
 
-## Checking that a question is real
+## Proving a question
 
-A green question proves the reader gave the right answer. To prove it gave it *because of the
-unit*, ask it again without the unit: copy the skill folder, delete the text of the unit in the
-copy and keep its heading, and ask the questions about the copy with `--skill`:
+A green question proves the reader gave the right answer. To prove it read the unit to give it,
+make the unit wrong and ask again: copy the skill folder, write the opposite in the sentence of
+the unit in the copy, keep its heading and its `When`, and ask the questions about the copy with
+`--skill`. The question must fail.
 
 ```sh
 cp -R skills/my-skill /tmp/my-skill-copy
-# delete the text of the unit in /tmp/my-skill-copy, and keep its heading
+# in /tmp/my-skill-copy, write the opposite in the sentence of the unit
 npx skillunit test --skill /tmp/my-skill-copy --no-run
 ```
 
 `--no-run` uses the records the last run of the tests left, so the questions are the same ones.
-With the heading gone too, the question is not asked at all, and the report says the skill folder
-has no such unit.
+Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
+threshold can flip from one run to the next, so only a clear failure counts. Changing the unit in
+its test and building gives the same text; the copy leaves the skill as it is.
 
-Do it for every unit that has questions, on the model CI asks. The question needs its unit when
-it passes with it and fails without it. A verdict within the margin of its threshold can flip from
-one run to the next, so a borderline failure without the unit does not count.
+Deleting the unit's text instead says whether the model answers right without the skill. For a
+library the model knows, it does, and the question stays: it is the one that fails the day the
+skill says something else. Measured on 2026-11-26 on 27 questions, on both models: 54 of 54
+verdicts passed with their unit, 10 with its text deleted, and none with the unit saying the
+opposite, those 10 included.
 
-A question that passes without its unit goes, or the unit changes; never a threshold. When the
-unit's text changes so that the question passes, the change should be something the agent reads
-and did not before. When the question was the only reason for a unit with no body, the unit goes
-with it: the rest of the skill, or common sense, already gives that advice.
-
-If a question stays green, look for the cause in this order:
+A question that passes with its unit saying the opposite does not read the unit. Change the
+question, never a threshold, and look for the cause in this order:
 
 1. An option gives the answer away. Replace it with a wrong answer an agent would really pick.
 2. The scenario contains the answer, such as the rule's reason or its exception. Remove it.
 3. The skill states the rule somewhere else, and the reader found the other copy. Keep the copy
    if it is deliberate, or delete it and save the tokens on every request.
-4. The reader knows the answer without the skill. The question shows the skill agrees with common
-   sense; it cannot show the sentence is needed. Consider whether the sentence is.
+4. The question is about something else than its unit. Point it at what the unit says, or move it
+   to the unit it is about.
+
+The opposite is the strongest change. A sentence made vague, not wrong, is harder to notice: with
+the README's vague rule, one question of three failed in every run on `typesafe`.

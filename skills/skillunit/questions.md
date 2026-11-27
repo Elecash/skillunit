@@ -52,7 +52,7 @@ When: a test decides whether a unit gets a question.
 
 Do: give a question to a rule or a decision an agent would plausibly get wrong, and to a fact whose sentence leaves something to work out: two values to combine, an exception to apply. A fact that states one value from the code gets no question.
 
-Even when: the user asks for a question on every unit: a question about one value passes without its unit, or fails on a wording, and proves nothing either way.
+Even when: the user asks for a question on every unit: a question about one value its test already proves adds only a chance to fail on a wording.
 
 ### rule: scenario-pulls
 
@@ -60,7 +60,7 @@ When: a test writes the scenario and the options of a question.
 
 Do: write the scenario so that it pulls toward the wrong answer: the user asks for what the rule forbids, or the shortcut is in plain sight. The wrong options are the answers an agent gives without the unit.
 
-Even when: a plain scenario reads better: common sense then passes the question, and it passes without its unit too.
+Even when: a plain scenario reads better: common sense then passes the question, whatever the unit says.
 
 ### rule: no-sums-no-absence
 
@@ -70,10 +70,10 @@ Do: do not ask the reader to add numbers up, or to conclude from a list that wha
 
 Even when: the list is complete: shown "these options and no other", a reader still does not say that an option is missing.
 
-### rule: copy-check
+### rule: prove-a-question
 
-When: a question passes, and the test should show that its unit is what makes it pass.
+When: a question passes, and the test should show that the question reads its unit.
 
-Do: delete the text of the unit in a copy of the skill folder, keep its heading, and ask with `test --skill <copy>`. A question that still passes goes, or its unit changes; never change a threshold to keep it.
+Do: in a copy of the skill folder, write the opposite in the sentence of its unit, keep its heading and its `When`, and ask with `test --skill <copy> --no-run`: the question must fail. A question that still passes does not read its unit: change the question, never a threshold.
 
-Even when: the question passes with its unit: that says nothing about whether the unit is what answers it.
+Even when: the question also passes with the text of its unit deleted: the model knows the library, which is the normal case, and the question is the one that fails the day the skill says something else.
