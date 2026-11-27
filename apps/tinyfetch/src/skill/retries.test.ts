@@ -52,7 +52,6 @@ describe('features/retries.md', () => {
     'retry-delay',
     {
       when: `a request with \`${opt('retry')}\` fails and is sent again.`,
-      value: `before the first new attempt tinyfetch waits \`${opt('retryDelay')}\`, ${DEFAULT_RETRY_DELAY} ms by default, and before each next one ${RETRY_TIMES}x the wait before it.`,
       values: { delay: DEFAULT_RETRY_DELAY, times: RETRY_TIMES },
     },
     async (u) => {
