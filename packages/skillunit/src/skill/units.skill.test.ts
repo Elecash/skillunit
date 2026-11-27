@@ -182,6 +182,18 @@ describe('units.md', () => {
     when: `a test writes the text of a \`${setup.name}()\`: the description of its file, the \`${setupKey('when')}\` of its row in the index, the description of the frontmatter.`,
     do: `build each name of the code in it from the code, with \`${key.name}()\` or a \`name\`, as in the sentence of a unit, and declare what it uses before the \`${setup.name}()\`, which runs when the file loads.`,
     evenWhen: 'the text is a short row of the index: one that said "…headers and query" kept `query` after the option and its unit were gone, and every check passed.',
+    // An exception to apply: the text of a file is prose, and the names in it still come from the code.
+    ask: {
+      id: 'names-in-a-row-of-the-index',
+      scenario: `The \`${setupKey('when')}\` of a \`${setup.name}()\` is typed as "Send a request: its method, path, body, headers and query", and \`headers\` and \`query\` are options of the library. The user says a row of the index is plain prose, and asks to leave it as it is.`,
+      question: 'What does the agent do with `headers` and `query` in that text?',
+      options: {
+        code: `Build them from the code, with \`${key.name}()\` on the options type, declared before the \`${setup.name}()\``,
+        typed: 'Leave them typed: the text of a file is not a unit, and nothing in the code backs it',
+        unit: 'Take them out of the row, and say them in a unit of the file instead',
+      },
+      expect: 'code',
+    },
   });
 
   unit(
@@ -619,24 +631,6 @@ describe('units.md', () => {
         leave: 'Leave it as it is: the tests run, and a test fails when a key it names is wrong',
       },
       expect: 'add',
-    },
-  });
-
-  // A gap: the change to make runs on the user's code, not on SkillUnit's.
-  unit('prove-with-a-change', {
-    when: 'a unit and its body are written, and the body passes.',
-    do: `make the smallest change to the code that makes the sentence false, run the tests and \`${command('check')} ${option('check', '--dry-run')}\`, and undo the change: something must go red. A unit where nothing goes red is not done.`,
-    evenWhen: 'the body looks right: two bodies of this skill passed and proved nothing, until a change to the code showed it.',
-    ask: {
-      id: 'break-the-code',
-      scenario: 'The agent wrote a unit, and its body passes. The user asks to move on to the next unit.',
-      question: 'What does the agent do first?',
-      options: {
-        change: 'Change the code so the sentence is false, check that something goes red, and undo the change',
-        next: 'Move on: the body passes, so the code does what the sentence says',
-        reread: 'Read the body again next to the sentence, and move on when they match',
-      },
-      expect: 'change',
     },
   });
 });

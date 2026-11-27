@@ -255,24 +255,35 @@ describe('questions.md', () => {
     },
   });
 
-  // A gap: the change is the user's to make; `skill-copy` is how SkillUnit asks about a copy.
-  unit('prove-a-question', {
-    when: 'a question passes, and the test should show that the question reads its unit.',
-    do: `in a copy of the skill folder, write the opposite in the sentence of its unit, keep its heading and its \`When\`, and ask with \`${command('test')} ${option('test', '--skill')} <copy> ${option('test', '--no-run')}\`: the question must fail. A question that still passes does not read its unit: change the question, never a threshold.`,
-    evenWhen: 'the question also passes with the text of its unit deleted: the model knows the library, which is the normal case, and the question is the one that fails the day the skill says something else.',
-    ask: {
-      id: 'question-against-the-opposite',
-      scenario: [
-        'The agent added a question to a unit about a library the model knows well. The question passes on the skill, and it also passes on a copy where the text of its unit is deleted. The user asks whether to drop it.',
-        'A question passes on the skill and on a copy without the text of its unit, since the model knows the API. The user wants to drop it, because the unit seems to make no difference.',
-      ],
-      question: 'What does the agent do with the question?',
-      options: {
-        opposite: 'Ask it on a copy where its unit says the opposite, and keep it if it fails there',
-        drop: 'Drop it: it passes without its unit, so the unit is not what answers it',
-        threshold: 'Raise its threshold until it fails without its unit',
+  // A gap: what an agent did wrong is outside the code; `how-a-question-passes` and
+  // `borderline` are how its question is judged.
+  unit('when-an-agent-got-it-wrong', {
+    when: 'an agent that used the skill got something wrong, and the skill is to be fixed.',
+    do: `before any change to the skill, write the question that reproduces it: its \`${q('scenario')}\` is the situation the agent was in, its wrong \`${q('options')}\` are what the agent did, and \`${q('expect')}\` is what it should have done. Ask it: it has to fail, or come out borderline. If it passes, the text is clear and the cause is elsewhere: ask that agent why it went wrong, and point the question at what it read, such as the row of the index that should have sent it to the file. Then change the unit until the question passes clear of the threshold, and try the changed skill with an agent on the task that went wrong.`,
+    evenWhen: 'the fix to the skill is plain: a question written after the fix has never been red, so nothing shows that it reproduces the mistake, and a borderline pass on it means the unit does not say it yet.',
+    ask: [
+      {
+        id: 'red-before-the-fix',
+        scenario: 'An agent that used the skill sent a POST again after a timeout, which the skill should have kept it from. The user knows what the skill lacks, and asks the agent to fix it right away.',
+        question: 'What does the agent do first?',
+        options: {
+          red: 'Write a question with the situation of that agent as its scenario and the POST sent again as a wrong option, and ask it on the skill as it is',
+          fix: 'Change the unit the mistake is about, then write a question that passes on the new text',
+          agent: 'Run an agent on the same task again, and change the unit if it still goes wrong',
+        },
+        expect: 'red',
       },
-      expect: 'opposite',
-    },
+      {
+        id: 'green-on-the-old-text',
+        scenario: 'The agent wrote the question that reproduces a mistake another agent made with the skill. Asked on the skill as it is, the question passes at 0.95.',
+        question: 'What does the agent do next?',
+        options: {
+          elsewhere: 'Ask the agent that went wrong why, and point the question at what that agent read, such as the row of the index that should have sent it to the file',
+          done: 'Nothing: the text is right, so the agent made a mistake of its own',
+          rewrite: 'Rewrite the unit all the same, so the question passes by a wider margin',
+        },
+        expect: 'elsewhere',
+      },
+    ],
   });
 });

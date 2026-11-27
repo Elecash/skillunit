@@ -305,7 +305,7 @@ no body shows no block, since only a body calls `u.example()`; a body that only 
 
 The report never calls such a unit proved. Under each unit, proof shows
 `proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:199`,
-and its summary counts both: `25 units · 23 proved by a test · 2 declared without one`.
+and its summary counts both: `26 units · 24 proved by a test · 2 declared without one`.
 
 ## Building and checking
 
@@ -655,8 +655,7 @@ the record, not when pytest runs the test.
 - The rule of assertions catches a body emptied by mistake: a body that makes no assertion and
   calls no `u.value()` fails its test, and one that only calls `u.example()` leaves a unit
   counted as declared, not proved. It does not catch `expect(true).toBe(true)`, which counts as
-  an assertion. What catches it is a change to the code that makes the sentence false: when
-  nothing goes red, the body proves nothing.
+  an assertion; only a reader of the test does.
 - The count of assertions comes from the runner. `skillunit/vitest` counts Vitest's `expect`; a
   helper made with `createUnit` and no `assertions`, and the pytest fixture above, count nothing,
   so a body there that asserts nothing still leaves its unit. A body that counts as asserting can

@@ -183,9 +183,9 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
           let declared = !body;
           if (body) {
             /**
-             * The body built the sentence from what it observed, so its drift shows in the built
-             * skill. A block of `u.example` does not count: a body that only shows blocks leaves a
-             * unit no test proves.
+             * The body built the sentence from the cases it went through, so a change to them
+             * shows in the built skill. A block of `u.example` does not count: a body that only
+             * shows blocks leaves a unit no test proves.
              */
             let built = false;
             const before = options.assertions?.(ctx);

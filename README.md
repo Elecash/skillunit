@@ -29,7 +29,7 @@ Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s,
       test   –
     what-is-retried  fact
       proof  ✓ proved by a test, src/skill/retries.test.ts:81
-      test   ✓ src/skill/retries.test.ts:81  retry-on-429  once 1.00
+      test   ✓ src/skill/retries.test.ts:81  retry-on-429  once 0.99
     …
     retry-idempotent-only  rule
       proof  – declared, no test, src/skill/retries.test.ts:134
@@ -38,11 +38,11 @@ Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s,
       test   ✓ src/skill/retries.test.ts:134  put-may-retry  retry 0.98
   …
 
-  25 units · 5 proof and test · 18 proof only · 2 test only · 0 not covered
-  25 units · 23 proved by a test · 2 declared without one
-  9 tests · 1 borderline: within 0.13 of the threshold · 6,525 in / 474 out tokens
+  26 units · 6 proof and test · 18 proof only · 2 test only · 0 not covered
+  26 units · 24 proved by a test · 2 declared without one
+  10 tests · 6,986 in / 512 out tokens
 
-OK  proof ok · test 9/9 passed (1 borderline)
+OK  proof ok · test 10/10 passed
 ```
 
 Each `test` line is a question for the decision model, with the option it chose and the probability it gave it. A `–` is a layer with nothing on that unit. `retry-idempotent-only` is advice that no test can prove, so it is declared without one and three questions check it.
@@ -187,7 +187,7 @@ unit('retry-idempotent-only', {
       test   ✓ src/skill/retries.test.ts:134  post-no-retry  no-retry 1.00
 ```
 
-A question is proven by a change that fails it: with its unit saying the opposite, it must fail. A rule made vague is harder to catch, and fails some of its questions, not all: see [Make a rule vague](#make-a-rule-vague). [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) says when a unit is worth one, and how to write it.
+When an agent that used the skill gets something wrong, write the question that reproduces it first, and see it fail; then change the unit until it passes: see [When an agent got something wrong](https://github.com/Elecash/skillunit/blob/main/docs/questions.md#when-an-agent-got-something-wrong). [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) also says when a unit is worth one, and how to write it.
 
 ## Try it
 
@@ -205,7 +205,7 @@ npx skillunit check --dry-run
 `--dry-run` does everything except ask the decision model, so it needs no key. It ends with:
 
 ```
-OK  proof ok · test dry run ok, 9 tests ready
+OK  proof ok · test dry run ok, 10 tests ready
 ```
 
 Now break it, one thing at a time. `git checkout .` undoes each change.
@@ -292,7 +292,7 @@ The probabilities change a little from one run to the next: the question about a
 ## Docs
 
 - [Writing the tests of a skill](https://github.com/Elecash/skillunit/blob/main/docs/style-guide.md): which units to write, what their bodies check, and when a unit gets a question
-- [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md): where the questions for the decision model go, how to write one, and the change to its unit that proves it
+- [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md): where the questions for the decision model go, how to write one, and how to fix a skill when an agent got something wrong
 - [The kinds of unit](https://github.com/Elecash/skillunit/blob/main/docs/units.md): a fact, a rule and a decision, each with a test that declares one and the Markdown it becomes
 - [Proof](https://github.com/Elecash/skillunit/blob/main/docs/proof.md): files and units declared in tests, names from the code, which tests `proof.run` runs
 - [Configuration](https://github.com/Elecash/skillunit/blob/main/docs/configuration.md): `skillunit.yaml`, the key, decision models

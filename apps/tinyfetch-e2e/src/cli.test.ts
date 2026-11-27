@@ -127,7 +127,7 @@ describe('the table reporter by unit', () => {
   };
 
   it('names every unit of tinyfetch once, in the order of its files', () => {
-    expect(ids).toHaveLength(25);
+    expect(ids).toHaveLength(26);
     const heads = [...table().matchAll(/^ {4}(\S+) {2}(?:rule|decision|fact)$/gm)].map((m) => m[1]);
     expect(heads).toEqual(ids);
   });

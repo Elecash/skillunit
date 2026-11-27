@@ -175,11 +175,3 @@ When: the tests of the skill use `key()` or an object typed against a type of th
 Do: start `proof.run` with a type-check that includes the test files, as `npx tsc --noEmit && npx vitest run skill.test`: a key renamed in the code fails there, and only there.
 
 Even when: the tests pass: a test run that strips the types, as Vitest does, does not check them.
-
-### rule: prove-with-a-change
-
-When: a unit and its body are written, and the body passes.
-
-Do: make the smallest change to the code that makes the sentence false, run the tests and `check --dry-run`, and undo the change: something must go red. A unit where nothing goes red is not done.
-
-Even when: the body looks right: two bodies of this skill passed and proved nothing, until a change to the code showed it.

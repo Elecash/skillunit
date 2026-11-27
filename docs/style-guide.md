@@ -197,31 +197,6 @@ compiler's error.
 The name of a parameter stays typed, as in "pass the value itself as `body`": arguments go by
 position, so renaming a parameter changes nothing an agent writes.
 
-## The change that proves a unit
-
-A unit is done when a change to the code that makes its sentence false turns something red with
-no test edited. For each unit, make the smallest such change, run the tests and
-`skillunit check --dry-run`, and write down what went red. Then run `skillunit proof --write`,
-write down whether the skill is true, and undo the change. A unit where nothing goes red is not
-done.
-
-| Unit | Change | What went red | After `proof --write` |
-| --- | --- | --- | --- |
-| `retry-delay` | the first new attempt waits the second wait | the text of `retry-delay` | true: "waits 2x `retryDelay`" |
-| `headers` | the client's headers win over the request's | the text of `headers` | true: "…then its own, then the `headers` of its client" |
-| `send-a-body` | a string body is sent as it is | the test of `send-a-body` | still red: a rule, whose test is edited by hand |
-
-The last column tells the two kinds of red apart. A red test is fixed by editing the test, and a
-hurried edit of the assertion leaves the sentence false. A red text is fixed by `--write`, which
-writes what the code does now. On tinyfetch, 23 of 28 such changes end with a true skill after
-`--write`. Of the 5 left, 4 fail the test of a rule, whose body checks the fact the advice rests
-on, and 1 adds a key to `RequestOptions`, which fails the type-check on purpose.
-
-The table finds what review misses. In SkillUnit's own skill, two bodies passed and proved
-nothing until their change turned nothing red: one tried a tie under the threshold, which fails
-anyway, and one could not tell whether `tsconfig.json` was read. It also catches
-`expect(true).toBe(true)`, which the count of assertions takes for a real one.
-
 ## A unit with no body: a gap and its reason
 
 A unit with no body is something an agent needs and no test of this code can state: what a server
@@ -259,31 +234,9 @@ exist. Asked for the total of three waits that grow, the reader multiplied. Show
 and no other", it would not say there is no connect timeout. What the skill must say is absent,
 a fact says in so many words, in `unknown`.
 
-## The change that proves a question
-
-A question is proven like a unit, by a change that fails it. Write the opposite in the sentence
-of its unit, ask the question, and it must fail; then undo the change. The question is there for
-the day the skill says something else, and that is the change it has to notice.
-
-```sh
-cp -R skills/my-skill /tmp/my-skill-copy
-# in the copy, write the opposite in the sentence of the unit, and keep its heading and `When`
-npx skillunit test --skill /tmp/my-skill-copy --no-run
-```
-
-Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
-threshold can flip from one run to the next, so only a clear failure counts. A question that
-still passes with its unit saying the opposite does not read the unit: change the question, never
-a threshold.
-
-Deleting the unit's text instead is a reading, not a test. It says whether the model answers
-right without the skill. For an API the model knows, it does, and that is the normal case: the
-question stays. Measured on 2026-11-26 on 27 questions of three skills, on both models: all 54
-verdicts passed with their unit, 10 passed with its text deleted, and none passed with the unit
-saying the opposite, those 10 included.
-
-[Questions](questions.md#proving-a-question) says where to look when a question passes with its
-unit saying the opposite.
+**When an agent got something wrong with the skill, the fix starts from a question** that
+reproduces it and fails: [Questions](questions.md#when-an-agent-got-something-wrong) has the
+steps.
 
 ## What the build writes
 

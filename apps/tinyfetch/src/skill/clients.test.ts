@@ -3,7 +3,7 @@
 // #region skill:clients
 import { create } from 'tinyfetch';
 // #endregion
-import { tf, type ClientOptions } from 'tinyfetch';
+import { tf, type ClientOptions, type RequestOptions } from 'tinyfetch';
 import { and, code, key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { DEFAULT_BASE, JSON_TYPE } from '../request.js';
@@ -19,11 +19,15 @@ setup('clients', {
 });
 
 const clientOpt = key<ClientOptions>;
+const reqOpt = key<RequestOptions>;
+/** A base URL with a query string, as an agent writes it to set a key once. */
+const KEYED = 'https://api.example.com/v1?api_key=K';
+/** Every option of a client, typed against the type: a key added to `ClientOptions` fails the type-check until it is here. */
+const EVERY: Required<ClientOptions> = { baseUrl: 'https://api.example.com', headers: { 'x-team': 'a' }, timeout: 1_000 };
 
 describe('features/clients.md', () => {
   unit('client-options', { when: `the code makes a client with \`${exported('create')}\`.` }, async (u) => {
-    // Typed against the type: a key added to `ClientOptions` fails the type-check until it is here.
-    const every: Required<ClientOptions> = { baseUrl: 'https://api.example.com', headers: { 'x-team': 'a' }, timeout: 1_000 };
+    const every = EVERY;
     serve({ body: {} });
     // The call as an agent writes it, with every option: a change to the signature changes the example.
     // #region skill:client-options
@@ -84,6 +88,35 @@ describe('features/clients.md', () => {
       u.value(
         `a path that is not a whole URL goes after \`${clientOpt('baseUrl')}\`, with one \`/\` between them, whether or not \`${clientOpt('baseUrl')}\` ends with \`/\` and whether or not the path starts with one; a whole URL, such as \`https://other.example.com/x\`, is sent as it is; a client with no \`${clientOpt('baseUrl')}\`, \`${exported('tf')}\` among them, sends \`/users\` to \`${fallback}\`.`,
       );
+    },
+  );
+  unit(
+    'no-query-in-base-url',
+    {
+      when: `a key or another query parameter goes on every request of a client.`,
+      do: `pass it in the \`${reqOpt('query')}\` of each request, or in the \`${clientOpt('headers')}\` of the client when the API takes it as a header; never put it at the end of \`${clientOpt('baseUrl')}\`. A path is joined after the whole of \`${clientOpt('baseUrl')}\` as text: with \`${clientOpt('baseUrl')}: "${KEYED}"\`, \`${method('get')}("/users")\` goes to \`/v1\` with \`api_key\` set to \`K/users\`.`,
+      evenWhen: `the user asks for the key to be set once, on the client: a client takes ${and(code(Object.keys(EVERY)))}, and no \`${reqOpt('query')}\`.`,
+      // What an agent did: it put a key every request needs at the end of `baseUrl`.
+      ask: {
+        id: 'key-in-the-query',
+        scenario: `Every request to an API needs the query parameter \`api_key\`. The code makes one client with \`${exported('create')}\` for that API, and the user asks for the key to be set once, on the client.`,
+        question: 'Where does the agent put the key?',
+        options: {
+          base: `At the end of \`${clientOpt('baseUrl')}\`: \`"${KEYED}"\``,
+          query: `In the \`${reqOpt('query')}\` of each request: \`{ ${reqOpt('query')}: { api_key: K } }\``,
+        },
+        expect: 'query',
+      },
+    },
+    async () => {
+      serve({ body: [] });
+      await create({ baseUrl: KEYED }).get('/users');
+      const url = new URL(calls[0]!.url);
+      expect([url.pathname, url.searchParams.get('api_key')]).toEqual(['/v1', 'K/users']);
+      serve({ body: [] });
+      await create({ baseUrl: 'https://api.example.com/v1' }).get('/users', { query: { api_key: 'K' } });
+      expect(calls[0]!.url).toBe('https://api.example.com/v1/users?api_key=K');
+      expect(Object.keys(EVERY)).not.toContain(reqOpt('query'));
     },
   );
 });
