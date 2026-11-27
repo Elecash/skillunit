@@ -1,5 +1,5 @@
 // The file `setup.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
-import { existsSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
@@ -50,11 +50,11 @@ describe('setup.md', () => {
     'init',
     {
       when: `the project has no \`${CONFIG_FILE}\` yet.`,
-      value: `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to that folder. It refuses when the file is there already, and it writes no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it.`,
+      value: `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to that folder. It refuses when the file is there already, and it writes no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it. In a folder with no \`package.json\`, it also points at the JSON contract, which a test in another language writes.`,
     },
     () => {
       const dir = scratch('init');
-      init('skills/my-skill', dir);
+      expect(init('skills/my-skill', dir).at(-1)).toContain('the JSON contract');
       expect(loadConfig(join(dir, CONFIG_FILE)).skill).toBe(join(dir, 'skills', 'my-skill'));
       expect(existsSync(join(dir, 'skills', 'my-skill', SKILL_INDEX))).toBe(false);
       expect(() => init('skills/my-skill', dir)).toThrow(`${CONFIG_FILE} already exists`);
@@ -166,7 +166,7 @@ describe('setup.md', () => {
     'api-keys',
     {
       when: 'a command that asks the decision model needs its key.',
-      value: `\`${command('test')}\` and \`${command('check')}\` read the key from the environment, or from a \`.env\` file next to \`${CONFIG_FILE}\` or in a folder above it, up to the root of the git repository. A variable set in the environment wins over a file, and a closer file wins over a farther one. With \`${checkOption('--dry-run')}\`, they need no key.`,
+      value: `\`${command('test')}\` and \`${command('check')}\` read the key from the environment, or from a \`.env\` file next to \`${CONFIG_FILE}\` or in a folder above it, up to the root of the git repository; with no git repository above it, only the \`.env\` next to it. A variable set in the environment wins over a file, and a closer file wins over a farther one. With \`${checkOption('--dry-run')}\`, they need no key.`,
     },
     async () => {
       const variable = PROVIDERS.typesafe.env[0]!;
@@ -178,6 +178,14 @@ describe('setup.md', () => {
       const other: NodeJS.ProcessEnv = {};
       loadEnv(join(repo, 'apps', 'other'), other);
       expect(other[variable]).toBe('root-key');
+      // No git repository above: the `.env` of the folder above is not read.
+      const lone = scratch('no-git');
+      mkdirSync(join(lone, 'app'), { recursive: true });
+      writeFileSync(join(lone, '.env'), 'ABOVE=1\n');
+      writeFileSync(join(lone, 'app', '.env'), `${variable}=lone-key\n`);
+      const alone: NodeJS.ProcessEnv = {};
+      expect(loadEnv(join(lone, 'app'), alone)).toEqual([join(lone, 'app', '.env')]);
+      expect(alone.ABOVE).toBeUndefined();
       const set: NodeJS.ProcessEnv = { [variable]: 'set-key' };
       loadEnv(join(repo, 'apps', 'app'), set);
       expect(set[variable]).toBe('set-key');

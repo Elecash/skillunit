@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -69,6 +70,23 @@ describe('exportNames', () => {
   it('fails on a file the compiler does not find', () => {
     const dir = project({});
     expect(() => exportNames(join(dir, 'missing.ts'))).toThrow(`exportNames: the compiler did not find ${join(dir, 'missing.ts')}`);
+  });
+
+  it("passes over a `typescript` with no compiler API, as TypeScript 7's package is, for SkillUnit's own", () => {
+    const require = createRequire(import.meta.url);
+    const seven = require('typescript-7') as { version: string };
+    expect(seven).not.toHaveProperty('createProgram');
+    const load = (place: string) => (place.startsWith('/project/') ? seven : require('typescript')) as never;
+    const ts = loadTypeScript(['/project/src/index.ts', '/skillunit/dist/typescript.js'], load);
+    expect(typeof ts.createProgram).toBe('function');
+    expect(ts.version).toBe((require('typescript') as { version: string }).version);
+  });
+
+  it('names the version it found when no `typescript` has the compiler API', () => {
+    const load = () => ({ version: '7.0.2' }) as never;
+    expect(() => loadTypeScript(['/project/src/index.ts', '/skillunit/dist/typescript.js'], load)).toThrow(
+      'exportNames needs the compiler API of `typescript`, and the one found, 7.0.2, does not export it from its main entry, as TypeScript 7 does not: install SkillUnit again so that it has its own `typescript`, or add `typescript@6` to the project',
+    );
   });
 
   it('says to install typescript when it is not there', () => {

@@ -55,6 +55,8 @@ export interface Report {
     borderline: number;
     /** Questions a selection (`--changed`) left out. */
     skipped: number;
+    /** Questions left out because the test that declares them failed: they are in no request. */
+    leftOut: number;
     usage: Usage;
   };
 }
@@ -70,6 +72,8 @@ export interface RunOptions {
   run?: RunReport;
   /** Problems found before the questions were asked, such as a run of the tests that failed. */
   problems?: QuestionProblem[];
+  /** How many questions the failed tests declare: they cannot be asked. */
+  leftOut?: number;
 }
 
 export async function runAll(config: Config, model: DecisionModel, collected: Collected, options: RunOptions = {}): Promise<Report> {
@@ -85,7 +89,7 @@ export async function runAll(config: Config, model: DecisionModel, collected: Co
   }
   const problems = [...(options.problems ?? []), ...collected.problems];
 
-  const summary = { tests: 0, passed: 0, borderline: 0, skipped, usage: { input_tokens: 0, output_tokens: 0 } };
+  const summary = { tests: 0, passed: 0, borderline: 0, skipped, leftOut: options.leftOut ?? 0, usage: { input_tokens: 0, output_tokens: 0 } };
   for (const r of requests) {
     summary.tests += r.verdicts.length;
     summary.passed += r.verdicts.filter((v) => v.pass).length;

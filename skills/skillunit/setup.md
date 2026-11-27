@@ -8,7 +8,7 @@ The settings file, the decision model, and its key.
 
 When: the project has no `skillunit.yaml` yet.
 
-Value: `skillunit init <skill folder>` writes `skillunit.yaml` in the current folder, with `skill` set to that folder. It refuses when the file is there already, and it writes no `SKILL.md`: the first `proof --write` builds it.
+Value: `skillunit init <skill folder>` writes `skillunit.yaml` in the current folder, with `skill` set to that folder. It refuses when the file is there already, and it writes no `SKILL.md`: the first `proof --write` builds it. In a folder with no `package.json`, it also points at the JSON contract, which a test in another language writes.
 
 ### fact: settings-keys
 
@@ -45,7 +45,7 @@ Value: SkillUnit ships `typesafe` (key in `TYPESAFE_API_KEY`) and `openai` (key 
 
 When: a command that asks the decision model needs its key.
 
-Value: `test` and `check` read the key from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository. A variable set in the environment wins over a file, and a closer file wins over a farther one. With `--dry-run`, they need no key.
+Value: `test` and `check` read the key from the environment, or from a `.env` file next to `skillunit.yaml` or in a folder above it, up to the root of the git repository; with no git repository above it, only the `.env` next to it. A variable set in the environment wins over a file, and a closer file wins over a farther one. With `--dry-run`, they need no key.
 
 ### fact: own-model
 

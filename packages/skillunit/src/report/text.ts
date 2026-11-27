@@ -111,11 +111,14 @@ export function withOrigin(skill: string, p: Problem, options: ReportOptions): s
   return origin ? `${p.message}\nfrom ${origin}` : p.message;
 }
 
-/** The proof in one line: `12 units · 9 proved by a test · 3 declared without one`, and what is wrong. */
-export function proofSummary(proof: ProofResult): string {
+/**
+ * The proof in one line: `12 units · 9 proved by a test · 3 declared without one`, and what is
+ * wrong. `what` says what the units are, for a report that counts other units too.
+ */
+export function proofSummary(proof: ProofResult, what = ''): string {
   const s = proof.summary;
   return [
-    plural(s.units, 'unit'),
+    `${plural(s.units, 'unit')}${what}`,
     `${s.proved} proved by a test${s.failed ? `, ${s.failed} failed` : ''}`,
     `${s.declared} declared without one`,
     s.written ? `${plural(s.written, 'file')} written` : s.differ ? `${plural(s.differ, 'file')} out of date` : '',
@@ -132,7 +135,7 @@ export function proofSummary(proof: ProofResult): string {
 export function unitOrigin(report: CheckReport, unit: string | undefined, options: ReportOptions): string | null {
   const u = unit === undefined ? undefined : report.units?.find((x) => x.id === unit);
   if (!u?.test) return null;
-  const skill = (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  const skill = (report.proof?.skill) ?? report.test?.skill ?? '';
   const place = `${skillFile(skill, u.test.file, options)}:${u.test.line}`;
   return u.from === 'declared' ? `the unit \`${u.id}\` is declared, with no test, at ${place}` : `the unit \`${u.id}\` comes from its test, ${place}`;
 }
@@ -142,23 +145,21 @@ export function statusLine(report: CheckReport): string {
   const parts: string[] = [];
   const { proof, test } = report;
   if (proof) {
-    if (!proof.configured) parts.push('proof not configured');
-    else {
-      const errors = proof.problems.filter((p) => p.severity === 'error').length;
-      const warnings = proof.problems.length - errors;
-      const wrote = proof.summary.written ? `, wrote ${plural(proof.summary.written, 'file')}` : '';
-      parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${wrote}`);
-    }
+    const errors = proof.problems.filter((p) => p.severity === 'error').length;
+    const warnings = proof.problems.length - errors;
+    const wrote = proof.summary.written ? `, wrote ${plural(proof.summary.written, 'file')}` : '';
+    parts.push(`proof ${errors || warnings ? `${plural(errors, 'error')}, ${plural(warnings, 'warning')}` : 'ok'}${wrote}`);
   }
   if (test) {
     const s = test.summary;
     const errors = test.requests.filter((x) => x.error).length;
     const wrong = [errors ? `${plural(errors, 'request')} could not run` : '', test.problems.length ? plural(test.problems.length, 'problem') : ''].filter(Boolean).join(', ');
     const nothing = test.changed && !s.tests && !wrong ? `no question is about a file changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : null;
+    const left = s.leftOut ? `${plural(s.leftOut, 'question')} left out, from ${s.leftOut === 1 ? 'a test that' : 'tests that'} failed` : '';
     if (test.dryRun) {
-      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}`);
+      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}${left ? `, ${left}` : ''}`);
     } else {
-      const extra = [wrong, s.borderline ? `${s.borderline} borderline` : ''].filter(Boolean);
+      const extra = [wrong, s.borderline ? `${s.borderline} borderline` : '', left].filter(Boolean);
       if (nothing) parts.push(`test asked nothing: ${nothing}`);
       else parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
     }

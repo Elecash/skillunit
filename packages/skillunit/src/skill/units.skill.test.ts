@@ -1,15 +1,16 @@
 // The file `units.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { ask, key, setup, unit, type SetupSpec, type UnitContext } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { fenceLang } from '../build/render.js';
-import { exportNames, type ExportNames } from '../typescript.js';
+import { exportNames, loadTypeScript, type ExportNames } from '../typescript.js';
 import { checkNumbers, checkQuestions, checkSpec, numbersIn, SETUP_KEYS, SKILL_INDEX, SPEC_KEYS, UNIT_CONTRACT, type UnitKind, type UnitRecord, type UnitSpec } from '../unit/contract.js';
 import { createUnit } from '../unit/create.js';
 import { vitestOptions } from '../unit/vitest-options.js';
-import { and, cleanUp, cli, code, command, entry, option, or, PACKAGE, project, report, runner, scratch } from './helpers.js';
+import { and, cleanUp, cli, code, command, entry, memoryWriter, option, or, PACKAGE, project, report, runner, scratch } from './helpers.js';
 import { DEFAULT_RETRY_DELAY, retryWaits } from './retry.js';
 
 afterEach(cleanUp);
@@ -30,6 +31,10 @@ const UNIT = entry('./unit');
 const TYPESCRIPT = entry('./typescript');
 const vitestNames = exportNames(new URL('../vitest.ts', import.meta.url)).values;
 const unitNames = exportNames(new URL('../unit/index.ts', import.meta.url)).values;
+const require = createRequire(import.meta.url);
+/** TypeScript 7, which the repository installs as `typescript-7`: its package exports no compiler API. */
+const seven = require('typescript-7') as { version: string };
+const SEVEN = Number(seven.version.split('.')[0]);
 
 /**
  * `unit()` as `skillunit/vitest` makes it, assertions counted, with a writer of its own so the
@@ -37,8 +42,8 @@ const unitNames = exportNames(new URL('../unit/index.ts', import.meta.url)).valu
  */
 function counted() {
   const tests: ((ctx: never) => unknown)[] = [];
-  const records: UnitRecord[] = [];
-  const made = createUnit((_name: string, fn: (ctx: never) => unknown) => void tests.push(fn), { ...vitestOptions, write: (r: UnitRecord) => void records.push(r) } as never);
+  const { records, write } = memoryWriter();
+  const made = createUnit((_name: string, fn: (ctx: never) => unknown) => void tests.push(fn), { ...vitestOptions, write } as never);
   const run = async (ctx: unknown) => {
     const out: string[] = [];
     for (const t of tests.splice(0)) {
@@ -155,8 +160,8 @@ describe('units.md', () => {
       expect(vitestNames).toEqual(expect.arrayContaining([unit.name, setup.name, ask.name]));
       expect(unitNames).toEqual(expect.arrayContaining([createUnit.name, 'UNIT_CONTRACT']));
       const tests: ((ctx: unknown) => unknown)[] = [];
-      const records: UnitRecord[] = [];
-      const made = createUnit((_name: string, fn: (ctx: unknown) => unknown) => void tests.push(fn), { write: (r) => void records.push(r) });
+      const { records, write } = memoryWriter();
+      const made = createUnit((_name: string, fn: (ctx: unknown) => unknown) => void tests.push(fn), { write });
       expect(Object.keys(made).sort()).toEqual(['ask', 'setup', 'unit']);
       made.unit('own-runner', { when: 'x.', do: 'y.' });
       for (const t of tests) await t({});
@@ -423,7 +428,7 @@ describe('units.md', () => {
     },
   );
 
-  unit('export-names', { when: 'a sentence names what a TypeScript file exports.' }, (u) => {
+  unit('export-names', { when: 'a sentence names what a TypeScript file exports.', values: { 'typescript-major': SEVEN } }, (u) => {
     const dir = scratch('exports');
     const files: Record<string, string> = {
       'tsconfig.json': JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', paths: { retry: ['./src/retry.ts'] } } }),
@@ -439,9 +444,14 @@ describe('units.md', () => {
     const names = exportNames(pathToFileURL(join(dir, 'src', 'index.ts')));
     expect(names).toEqual({ values: ['DEFAULT_RETRY', 'HttpError', 'create'], types: ['Client', 'TimeoutError'] });
     expect(exportNames(join(dir, 'src', 'index.ts'))).toEqual(names);
+    // A project on TypeScript 7: its `typescript` is passed over for SkillUnit's own.
+    const own = fileURLToPath(new URL('../typescript.ts', import.meta.url));
+    const used = loadTypeScript([join(dir, 'src', 'index.ts'), own], (place) => (place === own ? require('typescript') : seven) as never);
+    expect(seven).not.toHaveProperty('createProgram');
+    expect(used.version).toBe((require('typescript') as { version: string }).version);
     const field = key<ExportNames>;
     u.value(
-      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is a type, and \`export *\` brings the names of its module. It takes a path or a \`file:\` URL, and resolves modules with the \`tsconfig.json\` above the file, its \`paths\` included.`,
+      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is a type, and \`export *\` brings the names of its module. It takes a path or a \`file:\` URL, and resolves modules with the \`tsconfig.json\` above the file, its \`paths\` included. It uses the project's \`typescript\` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript ${SEVEN}, which exports only its version from \`typescript\`: nothing to install.`,
     );
   });
 

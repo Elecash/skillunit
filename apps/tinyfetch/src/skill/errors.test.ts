@@ -3,12 +3,14 @@
 // #region skill:errors
 import { isHttpError, tf } from 'tinyfetch';
 // #endregion
-import { HttpError, TimeoutError } from 'tinyfetch';
+import { HttpError, TimeoutError, type RequestOptions } from 'tinyfetch';
 import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
+import { RETRIED_STATUS } from '../retry.js';
 import { reset, serve } from './helpers.js';
 
 const field = key<HttpError>;
+const opt = key<RequestOptions>;
 
 afterEach(reset);
 
@@ -80,8 +82,15 @@ describe('features/errors.md', () => {
       serve({ raw: '{"id": 1' });
       const parse = await tf.get(API).catch((e: unknown) => e);
       expect(parse).toBeInstanceOf(SyntaxError);
+      // With `retry`, every attempt failing: what the last attempt rejected with, a status and no response alike.
+      serve({ status: RETRIED_STATUS, body: 'first' }, { status: RETRIED_STATUS, body: 'last' });
+      const retried = await tf.get(API, { retry: 1, retryDelay: 1 }).catch((e: unknown) => e);
+      expect(retried).toMatchObject({ name: HttpError.name, status: RETRIED_STATUS, body: 'last' });
+      const lost = new TypeError('fetch failed');
+      serve(new TypeError('fetch failed'), lost);
+      expect(await tf.get(API, { retry: 1, retryDelay: 1 }).catch((e: unknown) => e)).toBe(lost);
       u.value(
-        `a response with a status from ${lowest} to ${highest} resolves; any other status rejects with an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses, and its text when it does not; a request that gets no response rejects with the error \`fetch\` threw, such as a \`TypeError\`; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse.`,
+        `a response with a status from ${lowest} to ${highest} resolves; any other status rejects with an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses, and its text when it does not; a request that gets no response rejects with the error \`fetch\` threw, such as a \`TypeError\`; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse. A request with \`${opt('retry')}\` whose every attempt fails rejects the same way, with the error of its last attempt: an \`${(retried as Error).name}\` for a status, the error of \`fetch\` for no response.`,
       );
     },
   );

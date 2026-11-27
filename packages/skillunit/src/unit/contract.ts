@@ -178,6 +178,8 @@ export interface FailedUnit extends RecordBase, Placed {
   kind?: 'question' | 'file';
   /** The message of what the body or the spec threw. */
   error: string;
+  /** The questions of a unit whose test failed, when its spec has them: the report counts them as left out. */
+  ask?: AskedQuestion[];
 }
 
 /** What `ask()` leaves. */

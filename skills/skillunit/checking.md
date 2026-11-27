@@ -20,7 +20,19 @@ Value: without `--write`, `proof` compares the build with the skill folder, and 
 
 When: a test that declares a unit is skipped or deleted.
 
-Value: a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. `--write` takes it out of the skill.
+Value: a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. `--write` takes it out of the skill after a run that passed.
+
+### fact: failed-run
+
+When: `proof.run` fails, and the run left no record of a unit, a file or a row of the index that the skill has.
+
+Value: the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; `--write` takes none of them out until a run passes, and says which files it left as they are.
+
+### fact: unfinished-test
+
+When: the test of a unit does not finish, because it times out or the run stops.
+
+Value: each test writes a failed record when it starts and replaces it when it ends, so a test that does not finish leaves a record whose error is "the test did not finish, because it timed out or the run stopped before it ended". Its unit is reported as a failed test, at the line of the test, and `--write` leaves its file as it is.
 
 ### fact: extra-file
 
@@ -56,7 +68,7 @@ Value: `--changed` asks only the questions about the skill files, or their `with
 
 When: a script or CI reads what `skillunit` exited with.
 
-Value: `skillunit` exits with 0 when every check passed, borderline verdicts included; with 1 when a check failed; and with 2 when the command itself was wrong: an option it does not take, a folder that is not there, no API key, or settings that are not valid.
+Value: `skillunit` exits with 0 when every check passed, borderline verdicts included; with 1 when a check failed; and with 2 when the command itself was wrong: an option it does not take, a folder that is not there, no API key, or settings that are not valid. Settings with no `proof` give 2 to `proof`, `test` and `check`: the skill and its questions both come from the records of `proof.run`.
 
 ### fact: reporters
 

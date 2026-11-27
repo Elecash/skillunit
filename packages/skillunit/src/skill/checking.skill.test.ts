@@ -10,7 +10,7 @@ import { defaultBase, Git } from '../git.js';
 import { REPORT_SCHEMA, REPORTERS } from '../report/types.js';
 import { changedSelection, changedSkillFiles } from '../test/changed.js';
 import { runAll } from '../test/runner.js';
-import { and, BIN, cleanUp, cli, code, collected, command, modelModule, option, project, question, report, skillProject, stub } from './helpers.js';
+import { and, BIN, cleanUp, cli, code, collected, command, modelModule, option, project, question, report, runner, skillProject, stub } from './helpers.js';
 
 afterEach(cleanUp);
 
@@ -99,7 +99,7 @@ describe('checking.md', () => {
     'stale-unit',
     {
       when: 'a test that declares a unit is skipped or deleted.',
-      value: `a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. \`${write}\` takes it out of the skill.`,
+      value: `a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. \`${write}\` takes it out of the skill after a run that passed.`,
     },
     async () => {
       const p = await built();
@@ -110,6 +110,49 @@ describe('checking.md', () => {
       expect(p.read('skill/retries.md')).not.toContain('wait-before-retry');
     },
   );
+
+  unit('failed-run', { when: '`proof.run` fails, and the run left no record of a unit, a file or a row of the index that the skill has.' }, async (u) => {
+    const p = await built();
+    // The run gives back the records of `SKILL.md` only, as when the test file of `retries.md` fails to load, and fails.
+    for (const name of ['0-demo.json', '1-read-the-docs.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
+    p.write('restore.mjs', "import { copyFileSync } from 'node:fs';\nfor (const name of ['0-demo.json', '1-read-the-docs.json']) copyFileSync(`saved/${name}`, `tmp/skill-units/${name}`);\nprocess.exit(1);\n");
+    p.write(CONFIG_FILE, 'skill: ./skill\nproof:\n  run: "node restore.mjs"\n');
+    const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
+    const failed = p.proof();
+    expect(failed.problems[0]).toMatchObject({ run: true, message: expect.stringContaining('`proof.run` (`node restore.mjs`) exited with 1') });
+    const rest = failed.problems.slice(1);
+    expect(rest.map((x) => x.file).sort()).toEqual(['SKILL.md', 'retries.md']);
+    for (const x of rest) expect(x.message).toMatch(/left no record of its `setup\(\)` while `proof\.run` failed: see the finding on the run, first in the report/);
+    for (const x of rest) expect(x.message).not.toContain(`Run \`skillunit proof ${write}\``);
+    const wrote = p.proof({ write: true });
+    expect([p.read('skill/SKILL.md'), p.read('skill/retries.md')]).toEqual(before);
+    expect(wrote.problems).toContainEqual(expect.objectContaining({ file: 'SKILL.md', severity: 'warning', message: expect.stringContaining(`\`${write}\` left \`SKILL.md\` as it is`) }));
+    u.value(
+      `the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; \`${write}\` takes none of them out until a run passes, and says which files it left as they are.`,
+    );
+  });
+
+  unit('unfinished-test', { when: 'the test of a unit does not finish, because it times out or the run stops.' }, async (u) => {
+    const p = await built();
+    // A body the runner abandons: it never ends, so only the record written when it started is left.
+    const r = runner();
+    r.unit('wait-before-retry', { when: 'a request is sent again.', do: 'wait before each new attempt.' }, () => new Promise(() => {}));
+    void r.run();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const left = r.records[0]!;
+    expect(left.status).toBe('failed');
+    const record = JSON.parse(p.read('tmp/skill-units/3-wait-before-retry.json'));
+    p.write('tmp/skill-units/3-wait-before-retry.json', JSON.stringify({ ...left, file: record.file, line: record.line, setup: record.setup, order: record.order }));
+    const before = p.read('skill/retries.md');
+    const result = p.proof({ write: true });
+    expect(result.units.find((x) => x.id === 'wait-before-retry')).toMatchObject({ state: 'failed' });
+    expect(result.files).toContainEqual({ file: 'retries.md', state: 'broken' });
+    expect(p.read('skill/retries.md')).toBe(before);
+    const error = (left as { error: string }).error;
+    u.value(
+      `each test writes a failed record when it starts and replaces it when it ends, so a test that does not finish leaves a record whose error is "${error}". Its unit is reported as a failed test, at the line of the test, and \`${write}\` leaves its file as it is.`,
+    );
+  });
 
   unit(
     'extra-file',
@@ -230,8 +273,14 @@ describe('checking.md', () => {
     expect((await cli(p.root, [command('check')])).status).toBe(EXIT.usage);
     p.write(CONFIG_FILE, 'skil: ./skill\n');
     expect((await cli(p.root, [command('proof')])).status).toBe(EXIT.usage);
+    // With no `proof`, nothing builds the skill or declares its questions.
+    p.write(CONFIG_FILE, 'skill: ./skill\n');
+    const commands = [command('proof'), command('test'), command('check')];
+    const noProof = await Promise.all(commands.map((c) => cli(p.root, c === command('proof') ? [c] : [c, dryRun])));
+    expect(noProof.map((r) => r.status)).toEqual(commands.map(() => EXIT.usage));
+    for (const r of noProof) expect(r.stderr).toContain('no `proof` in');
     u.value(
-      `\`${BIN}\` exits with ${EXIT.passed} when every check passed, borderline verdicts included; with ${EXIT.failed} when a check failed; and with ${EXIT.usage} when the command itself was wrong: an option it does not take, a folder that is not there, no API key, or settings that are not valid.`,
+      `\`${BIN}\` exits with ${EXIT.passed} when every check passed, borderline verdicts included; with ${EXIT.failed} when a check failed; and with ${EXIT.usage} when the command itself was wrong: an option it does not take, a folder that is not there, no API key, or settings that are not valid. Settings with no \`proof\` give ${EXIT.usage} to ${and(code(commands))}: the skill and its questions both come from the records of \`proof.run\`.`,
     );
   });
 

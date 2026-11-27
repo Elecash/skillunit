@@ -143,6 +143,11 @@ error, a type), the name comes from the code:
 | a type a file exports | `exportNames()` from `skillunit/typescript` | `Client`, `RequestOptions` |
 | a class or a function | its `name` | `` `${HttpError.name}` `` |
 
+A function's `name` is the name its code gave it, which is not always the name a module exports
+it under. `export const defu = createDefu()` exports a function whose `name` is another one, or
+empty. For such an export, take the name of the export: `key<typeof module>('defu')` accepts only
+a name the module exports.
+
 With `retryDelay` renamed to `backoff` in tinyfetch's code and in the keys of its tests, as an
 IDE renames it, the tests passed, and after `proof --write` the skill listed `backoff` among the
 options and still said "waits `retryDelay`". With the name from `key<RequestOptions>()`, the

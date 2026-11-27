@@ -73,13 +73,15 @@ export interface UnitTree {
   files: FileNode[];
   /** What has no place in the skill: findings about the settings or a test file, and requests that could not run. */
   elsewhere: Line[];
+  /** The finding that `proof.run` did not exit with 0, apart: the report shows it first. */
+  run: Line[];
   /** Units by coverage, when both layers ran over the whole skill (`check` with `proof`, without `--changed`). */
   coverage: Record<Coverage, number> | null;
 }
 
 export function unitTree(report: CheckReport): UnitTree {
   const { test } = report;
-  const proof = report.proof?.configured ? report.proof : undefined;
+  const proof = report.proof;
   const skill = proof?.skill ?? test?.skill ?? '';
   const partial = Boolean(test && (test.changed || test.summary.skipped));
   const units: ReportUnit[] = report.units ?? [];
@@ -108,6 +110,7 @@ export function unitTree(report: CheckReport): UnitTree {
   /** The unit a finding names, in the finding's file when two units share the id. */
   const unitOf = (id: string | undefined, file?: string) => (id === undefined ? undefined : (all.find((u) => u.id === id && u.file === file) ?? byId.get(id)));
   const elsewhere: Line[] = [];
+  const run: Line[] = [];
   /** A finding about a file that is not Markdown of the skill: the settings, a record, a test file. */
   const outside = (p: Problem) => p.file.startsWith('../') || !p.file.endsWith('.md');
   const severity = (p: Problem): Mark => (p.severity === 'error' ? 'fail' : 'warn');
@@ -125,7 +128,8 @@ export function unitTree(report: CheckReport): UnitTree {
       const line: Line = { kind: 'proof', mark: severity(p), problem: p };
       // A finding about a unit goes under it, even when it is in a test file.
       const node = unitOf(p.unit, p.file);
-      if (node) node.lines.push(line);
+      if (p.run) run.push(line);
+      else if (node) node.lines.push(line);
       else if (outside(p)) elsewhere.push(line);
       else fileNode(p.file).lines.push(line);
     }
@@ -136,7 +140,7 @@ export function unitTree(report: CheckReport): UnitTree {
   if (test) {
     for (const problem of test.problems) {
       const node = unitOf(problem.unit);
-      (node?.lines ?? elsewhere).push({ kind: 'question', mark: 'fail', problem });
+      (problem.run ? run : (node?.lines ?? elsewhere)).push({ kind: 'question', mark: 'fail', problem });
     }
     for (const request of test.requests) {
       if (request.error) elsewhere.push({ kind: 'request', mark: 'fail', request });
@@ -176,5 +180,5 @@ export function unitTree(report: CheckReport): UnitTree {
     .map((f) => ({ ...f, units: partial ? f.units.filter((u) => real(u.lines)) : f.units }))
     .filter((f) => f.lines.length || f.units.length)
     .sort((a, b) => order.get(a.file)! - order.get(b.file)!);
-  return { skill, layers: { proof: proof !== undefined, test: test !== undefined }, partial, files: shown, elsewhere, coverage };
+  return { skill, layers: { proof: proof !== undefined, test: test !== undefined }, partial, files: shown, elsewhere, run, coverage };
 }

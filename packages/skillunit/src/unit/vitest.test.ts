@@ -157,6 +157,26 @@ describe('skillunit/vitest', () => {
     expect(run.byId('only-one')).toEqual([expect.objectContaining({ status: 'passed', file: 'tests/b.test.ts', line: 3 })]);
   });
 
+  it('a unit whose test times out leaves a failed record that says it did not finish, and so does one whose body never ends', () => {
+    const r = vitest(
+      {
+        'tests/a.test.ts': `import { expect } from $API;
+import { unit } from $ENTRY;
+
+unit('slow', { when: 'x.', do: 'y.' }, async () => {
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(1).toBe(1);
+});
+unit('never-ends', { when: 'x.', do: 'y.' }, () => new Promise(() => {}));
+`,
+      },
+      ', testTimeout: 100',
+    );
+    expect(r.status, r.output).toBe(1);
+    expect(r.byId('slow')).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringMatching(/timed out/i), line: 4 })]);
+    expect(r.byId('never-ends')).toEqual([expect.objectContaining({ status: 'failed', error: expect.stringMatching(/timed out|did not finish/) })]);
+  });
+
   it('a body that asserts nothing fails, unless it builds the sentence with `u.value()`; with only `u.example()` it is declared', () => {
     const r = vitest({
       'tests/a.test.ts': `import { beforeEach, describe, expect } from $API;

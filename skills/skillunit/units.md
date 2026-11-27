@@ -117,7 +117,7 @@ Value: its test fails and leaves no unit. The proof reports the test with its er
 
 When: a sentence names what a TypeScript file exports.
 
-Value: `exportNames(entry)` from `skillunit/typescript` gives the names a TypeScript file exports, as the compiler sees them, `values` and `types` apart: a class exported with `export type` is a type, and `export *` brings the names of its module. It takes a path or a `file:` URL, and resolves modules with the `tsconfig.json` above the file, its `paths` included.
+Value: `exportNames(entry)` from `skillunit/typescript` gives the names a TypeScript file exports, as the compiler sees them, `values` and `types` apart: a class exported with `export type` is a type, and `export *` brings the names of its module. It takes a path or a `file:` URL, and resolves modules with the `tsconfig.json` above the file, its `paths` included. It uses the project's `typescript` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript 7, which exports only its version from `typescript`: nothing to install.
 
 ### fact: key
 

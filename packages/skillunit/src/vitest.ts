@@ -9,11 +9,11 @@
 import { it, type TestContext } from 'vitest';
 import { createUnit, ownFile } from './unit/create.js';
 import { vitestOptions } from './unit/vitest-options.js';
-import { writeUnit } from './unit/write.js';
+import { removeUnit, writeUnit } from './unit/write.js';
 
 ownFile(import.meta.url);
 
-export const { unit, ask, setup } = createUnit<TestContext>(it as never, { write: writeUnit, ...vitestOptions });
+export const { unit, ask, setup } = createUnit<TestContext>(it as never, { write: writeUnit, remove: removeUnit, ...vitestOptions });
 
 export { key } from './unit/key.js';
 export type { AskSpec, SetupSpec, UnitContext, UnitQuestion, UnitSpec } from './unit/index.js';

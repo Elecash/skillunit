@@ -61,8 +61,8 @@ export const scenarios: Scenario[] = [
       app.commit('Drop retryDelay');
     },
     // The tests that pass `retryDelay` now wait the default, so the units they declare fail, and
-    // so does the run.
-    expect: { proof: ['retry-delay', 'timeout-per-attempt', '../skillunit.yaml'] },
+    // so does the run. Two of them time out: each keeps the record it wrote when it started.
+    expect: { proof: ['retry-delay', 'timeout-per-attempt', 'what-is-retried', '../skillunit.yaml'] },
   },
   {
     name: 'renamed function',
@@ -101,9 +101,9 @@ export const scenarios: Scenario[] = [
       app.build();
       app.commit('Typo in the package name');
     },
-    // The test file does not load, so it leaves no record: the run fails, and nothing declares the
-    // file of the skill.
-    expect: { proof: ['../skillunit.yaml', 'features/timeouts.md'] },
+    // The test file does not load, so it leaves no record: the run fails, and the file of the skill
+    // and its row in the index are reported with the run. The build kept both, since the run failed.
+    expect: { proof: ['../skillunit.yaml', 'SKILL.md', 'features/timeouts.md'] },
   },
   {
     name: 'contradicting prose',

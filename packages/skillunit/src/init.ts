@@ -7,6 +7,9 @@ import { join, relative, resolve, sep } from 'node:path';
 import { CONFIG_FILE } from './config.js';
 import { ConfigError } from './problems.js';
 
+/** Where the docs give the records a test in another language writes. */
+export const CONTRACT = 'https://github.com/Elecash/skillunit/blob/main/docs/proof.md#the-json-contract';
+
 function config(skill: string): string {
   return `${[
     '# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme',
@@ -33,5 +36,7 @@ export function init(dir: string, cwd = process.cwd()): string[] {
     `next: in a test, declare each file of the skill with \`setup()\` and each unit with \`unit()\`, from \`skillunit/vitest\`, and set \`proof.run\` in ${CONFIG_FILE} to the command that runs those tests`,
     `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
   );
+  // No `package.json`: the tests may be in another language, which writes the records itself.
+  if (!existsSync(join(cwd, 'package.json'))) out.push(`no package.json here: a test in another runner or language writes the records itself, as the JSON contract says: ${CONTRACT}`);
   return out;
 }

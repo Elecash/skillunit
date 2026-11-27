@@ -41,10 +41,10 @@ export const cleanUp = () => folders.splice(0).forEach((d) => rmSync(d, { recurs
  */
 export function runner() {
   const tests: { fn: (ctx: unknown) => unknown }[] = [];
-  const records: UnitRecord[] = [];
+  const { records, write } = memoryWriter();
   const add = (_name: string, fn: (ctx: unknown) => unknown) => void tests.push({ fn });
   const it = Object.assign(add, { skip: () => {}, only: add }) as unknown as RunnerIt<unknown>;
-  const { unit, ask, setup } = createUnit(it, { write: (record) => void records.push(record) });
+  const { unit, ask, setup } = createUnit(it, { write });
   const run = async () => {
     const out: string[] = [];
     for (const t of tests.splice(0)) {
@@ -58,6 +58,21 @@ export function runner() {
     return out;
   };
   return { unit, ask, setup, records, run };
+}
+
+/**
+ * A `write` for `createUnit` that keeps the records in memory as the files would be: a record
+ * written under a key replaces the one written before under it.
+ */
+export function memoryWriter() {
+  const records: UnitRecord[] = [];
+  const keys: string[] = [];
+  const write = (record: UnitRecord, key: string) => {
+    const i = keys.indexOf(key);
+    if (i >= 0) records[i] = record;
+    else keys.push(key), records.push(record);
+  };
+  return { records, write };
 }
 
 /** outside/.env  ·  outside/repo/.git  ·  repo/.env  ·  repo/apps/app/.env  ·  repo/apps/other */

@@ -37,8 +37,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
 
   // ---------------------------------------------------------------- the header
   const header: string[] = [];
-  if (proof && !proof.configured) header.push('proof not configured');
-  else if (proof) header.push(`proof ${runLine(proof.run)}`);
+  if (proof) header.push(`proof ${runLine(proof.run)}`);
   if (test) {
     const model = test.requests.find((s) => s.model)?.model;
     const asked = [test.provider, model].filter(Boolean).join(' · ');
@@ -67,6 +66,11 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     for (const detail of d.details.flatMap((x) => x.split('\n'))) out.push(`${' '.repeat(indent + 9)}${detail}`);
     if (line.mark === 'fail') failed.push([...path, d.short].join(' › '));
   };
+  // A run that failed first: what the tree says about a unit with no record may follow from it.
+  if (tree.run.length) {
+    out.push('', c.bold(c.red('proof.run failed')));
+    for (const line of tree.run) show(line, 2, []);
+  }
   const idOf = (u: UnitNode) => (u.mark === 'fail' ? c.red(u.id) : u.mark === 'warn' ? c.yellow(u.id) : c.green(u.id));
 
   if (options.compact) compactTree(tree, report, c, out, at, show, idOf);
@@ -84,12 +88,15 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
 
   // ---------------------------------------------------------------- the summary
   const notes: string[] = [];
+  // Two counts of units: those of the skill folder, which the questions read, and those the tests
+  // declare, which the build gives. When they differ, each says which it counts.
+  const inFolder = tree.coverage ? Object.values(tree.coverage).reduce((a, b) => a + b, 0) : undefined;
+  const differ = inFolder !== undefined && proof !== undefined && inFolder !== proof.summary.units;
   if (tree.coverage) {
     const n = tree.coverage;
-    const units = n.both + n.proof + n.test + n.none;
-    notes.push(`${plural(units, 'unit')} · ${n.both} proof and test · ${n.proof} proof only · ${n.test} test only · ${n.none} not covered`);
+    notes.push(`${plural(inFolder!, 'unit')}${differ ? ' in the skill folder' : ''} · ${n.both} proof and test · ${n.proof} proof only · ${n.test} test only · ${n.none} not covered`);
   }
-  if (proof?.configured) notes.push(proofSummary(proof));
+  if (proof) notes.push(proofSummary(proof, differ ? ' the tests declare' : ''));
   if (test) {
     const s = test.summary;
     notes.push(
@@ -104,7 +111,7 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
     );
   }
   out.push('', ...notes.map((n) => c.dim(`  ${n}`)));
-  const change = proof?.configured ? buildChange(proof, options) : null;
+  const change = proof ? buildChange(proof, options) : null;
   if (change) out.push(`  ${change}`);
 
   if (tree.elsewhere.length) {
@@ -157,7 +164,7 @@ function compactTree(
 
 /** A line's text after its mark, the details under it, and how the index of failures names it. */
 function describe(line: Line, report: CheckReport, options: ReportOptions, c: Painter): { text: string; details: string[]; short: string } {
-  const skill = (report.proof?.configured ? report.proof.skill : undefined) ?? report.test?.skill ?? '';
+  const skill = (report.proof?.skill) ?? report.test?.skill ?? '';
   switch (line.kind) {
     case 'proof': {
       const place = where(skill, line.problem, options);

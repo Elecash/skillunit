@@ -18,7 +18,7 @@ export function github(report: CheckReport, options: ReportOptions): string {
   const problem = (layer: string, skill: string, p: Problem) =>
     annotate(p.severity, shown(join(skill, p.file), at), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, withOrigin(skill, p, options));
 
-  if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
+  if (report.proof) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     // A question is annotated where it is declared: the line of its `unit()` or `ask()`.
     for (const p of report.test.problems) {
@@ -44,8 +44,8 @@ export function github(report: CheckReport, options: ReportOptions): string {
     }
   }
   const { proof } = report;
-  const change = proof?.configured ? buildChange(proof, options) : null;
-  if (proof?.configured) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
+  const change = proof ? buildChange(proof, options) : null;
+  if (proof) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
   if (change) out.push(`::notice title=SkillUnit proof::${data(change)}`);
   out.push(statusLine(report), '');
   return out.join('\n');

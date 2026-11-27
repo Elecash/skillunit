@@ -171,7 +171,7 @@ describe('runAll', () => {
     expect(report.requests[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8], unit: 'retry-idempotent-only', declared: { file: '/project/src/a.skill.test.ts', line: 10 } });
     expect(report.requests[0]).toMatchObject({ file: 'SKILL.md', sections: ['Retries'], with: [], model: 'stub-1' });
     expect(report.provider).toBe('stub');
-    expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
+    expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, leftOut: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 
   it('asks the questions of two files, or of one file with different `with`, in requests of their own', async () => {

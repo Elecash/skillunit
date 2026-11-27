@@ -12,7 +12,7 @@ import { isHttpError, tf } from "tinyfetch";
 
 When: a request fails, or the server answers it with a status.
 
-Value: a response with a status from 200 to 299 resolves; any other status rejects with an `HttpError` whose `status` is the status and whose `body` is the body parsed as JSON when it says it is JSON and parses, and its text when it does not; a request that gets no response rejects with the error `fetch` threw, such as a `TypeError`; an `ok` response that says it is JSON and does not parse rejects with the `SyntaxError` of the parse.
+Value: a response with a status from 200 to 299 resolves; any other status rejects with an `HttpError` whose `status` is the status and whose `body` is the body parsed as JSON when it says it is JSON and parses, and its text when it does not; a request that gets no response rejects with the error `fetch` threw, such as a `TypeError`; an `ok` response that says it is JSON and does not parse rejects with the `SyntaxError` of the parse. A request with `retry` whose every attempt fails rejects the same way, with the error of its last attempt: an `HttpError` for a status, the error of `fetch` for no response.
 
 ### rule: is-http-error
 

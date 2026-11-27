@@ -108,7 +108,8 @@ describe('the proof of tinyfetch', () => {
     expect(settings.message).toMatch(/^`proof\.run` \(`no-such-test-runner run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-test-runner/s);
     // One error for the run, not two.
     expect(errors(proof).filter((p) => p.file === '../skillunit.yaml')).toHaveLength(1);
-    expect(errors(proof).filter((p) => p.message.startsWith('no `setup()` declares')).map((p) => p.file).sort()).toEqual([
+    // The run failed, so a file with no record is reported with it, not as one to remove.
+    expect(errors(proof).filter((p) => /^the skill has `[^`]+`, and this run left no record of its `setup\(\)` while `proof\.run` failed/.test(p.message)).map((p) => p.file).sort()).toEqual([
       'SKILL.md',
       'features/clients.md',
       'features/errors.md',

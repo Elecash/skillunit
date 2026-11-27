@@ -17,6 +17,8 @@ export interface Problem {
    * message shows. Null on the side that has no line there.
    */
   lines?: { build: string | null; skill: string | null };
+  /** The finding about `proof.run`, which did not exit with 0. It comes first: the others may follow from it. */
+  run?: true;
 }
 
 /**

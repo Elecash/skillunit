@@ -73,9 +73,10 @@ Each provider has its own key: `TYPESAFE_API_KEY` for `typesafe` and `OPENAI_API
 
 The key comes from the environment, or from a `.env` file. SkillUnit reads the
 `.env` next to `skillunit.yaml` (the current folder when there is none), then the `.env` of each
-folder above it, up to the root of the git repository. A variable already set in the
-environment wins over every file, and a closer file wins over a farther one. So one `.env` at the
-root of a repository serves every project in it, and CI sets the key as a secret.
+folder above it, up to the root of the git repository. With no git repository above it, only the
+`.env` next to `skillunit.yaml` is read. A variable already set in the environment wins over
+every file, and a closer file wins over a farther one. So one `.env` at the root of a repository
+serves every project in it, and CI sets the key as a secret.
 
 The key never goes in `skillunit.yaml` or in a test: both are committed.
 

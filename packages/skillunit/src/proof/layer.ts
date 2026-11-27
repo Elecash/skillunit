@@ -10,6 +10,10 @@
  *
  * Every finding about a line of the skill says where that line comes from: the test that declares
  * its unit or its file.
+ *
+ * When `proof.run` did not exit with 0, a unit, a file or a row of the index that the skill has and
+ * no record declares is not called deleted: the run may have stopped before its test. `write` then
+ * leaves a file whose build would take one out as it is.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -20,7 +24,7 @@ import { buildFromRecords } from '../build/from-records.js';
 import { readRecords, type Records } from '../build/records.js';
 import { FORMAT_FILE, type ProofConfig } from '../config.js';
 import type { Origin, Problem } from '../problems.js';
-import type { UnitKind } from '../unit/contract.js';
+import { SKILL_INDEX, type UnitKind } from '../unit/contract.js';
 import { collectRegions, type Regions } from './regions.js';
 import { output, quote } from './shell.js';
 
@@ -95,12 +99,6 @@ export interface ProofResult {
   };
 }
 
-/** What `check` reports when the settings have no `proof`. */
-export interface ProofSkipped {
-  configured: false;
-  ok: true;
-}
-
 /** Where a line of the skill folder comes from: `file` from the skill folder. */
 export type OriginLookup = (file: string, line: number) => Origin | undefined;
 
@@ -171,7 +169,9 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   // A run that did not exit with 0 fails the proof, whatever units it left: a failing test is a
   // failure, whether or not it declares a unit. A unit whose test failed is reported on its test too.
   const failure = runFailure(cfg, { run, ended, tail }, records.units.length + records.questions.length > 0);
-  if (failure) add(settings.file, settings.line('run'), failure);
+  if (failure) add(settings.file, settings.line('run'), failure, { run: true });
+  /** The run failed, so a record it did not leave says nothing about the test that writes it. */
+  const runFailed = failure !== null;
 
   const regions = readRegions(records, fromProject);
   for (const p of regions.problems) add(fromSkill(p.file), p.line, p.message);
@@ -207,11 +207,22 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       files.push({ file: f.file, state: 'same' });
       continue;
     }
-    if (options.write) {
+    const builtLines = formatted.get(f.file)!.split(/\r?\n/);
+    const haveText = have?.toString('utf8') ?? '';
+    const haveLines = haveText.split(/\r?\n/);
+    const found = have ? differences(builtLines, haveLines) : [];
+    /** What the skill has that the build would take out, and no record of this run declares. */
+    const gone = (d: (typeof found)[number]) => (d.expected === undefined ? staleLine(f.file, haveLines, d.line, d.actualEnd ?? d.line, builtIds, builtNames) : undefined);
+    const takenOut = runFailed ? found.map(gone).find((x) => x !== undefined) : undefined;
+    if (options.write && !takenOut) {
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, want);
       files.push({ file: f.file, state: 'written' });
       continue;
+    }
+    if (options.write && takenOut) {
+      const what = takenOut.unit ? `the unit \`${takenOut.unit}\`` : `the row of \`${takenOut.row}\` in the index`;
+      add(f.file, takenOut.line, `\`--write\` left \`${f.file}\` as it is, since \`proof.run\` failed and the build takes out ${what}: ${SEE_RUN}. Fix the run, then write again`, { severity: 'warning' });
     }
     if (!have) {
       files.push({ file: f.file, state: 'missing' });
@@ -222,9 +233,6 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     files.push({ file: f.file, state: 'differs' });
     // One finding per block that differs, so a value in a table and the unit that states it are
     // both named. Where each line comes from is in `origin`, which every reporter shows.
-    const builtLines = formatted.get(f.file)!.split(/\r?\n/);
-    const haveText = have.toString('utf8');
-    const found = differences(builtLines, haveText.split(/\r?\n/));
     if (!found.length) found.push({ line: 1, expected: 'other line ends', actual: 'these' });
     // The origins index the build before the formatter.
     let unformatted: number[] | undefined;
@@ -233,15 +241,23 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       const o = f.origins[Math.min(unformatted[index] ?? index, f.origins.length - 1)];
       return o ? toOrigin(o, fromSkill) : undefined;
     };
-    const haveLines = haveText.split(/\r?\n/);
     for (const d of found.slice(0, MAX_DIFFERENCES)) {
       const line = Math.min(d.line, lineCount(haveText));
-      // Lines only the skill has that hold a unit the build has nowhere: its test is gone. They
-      // belong to no unit of the build, so they are named by their own heading.
-      const stale = d.expected === undefined ? staleUnit(haveLines, d.line, d.actualEnd ?? d.line, builtIds) : undefined;
-      if (stale) {
-        add(f.file, stale.line, `the skill has the unit \`${stale.id}\`, and no test declares it: its test was skipped or deleted, or did not run. Run \`skillunit proof --write\` to take it out of the skill`, {
-          unit: stale.id,
+      // Lines only the skill has that hold a unit the build has nowhere: its test is gone, or did
+      // not run. They belong to no unit of the build, so they are named by their own heading.
+      const stale = gone(d);
+      if (stale?.unit) {
+        const why = runFailed
+          ? `and this run left no record of it while \`proof.run\` failed: ${SEE_RUN}. Its test may not have run: fix the run before you take the unit out; \`--write\` leaves it in the skill until a run exits with 0`
+          : 'and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill';
+        add(f.file, stale.line, `the skill has the unit \`${stale.unit}\`, ${why}`, {
+          unit: stale.unit,
+          lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
+        });
+        continue;
+      }
+      if (stale?.row && runFailed) {
+        add(f.file, stale.line, `the skill has the row of \`${stale.row}\` in the index, and this run left no record of its \`setup()\` while \`proof.run\` failed: ${SEE_RUN}. Fix the run before you take the row out; \`--write\` leaves it until a run exits with 0`, {
           lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
         });
         continue;
@@ -265,7 +281,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     if (builtNames.has(name)) continue;
     files.push({ file: name, state: 'extra' });
     const left = options.write ? '. `--write` leaves it there' : '';
-    add(name, 1, `no \`setup()\` declares \`${name}\`: declare it in a test, or remove it from the skill folder${left}`);
+    if (runFailed) add(name, 1, `the skill has \`${name}\`, and this run left no record of its \`setup()\` while \`proof.run\` failed: ${SEE_RUN}. Fix the run before you remove the file${left}`);
+    else add(name, 1, `no \`setup()\` declares \`${name}\`: declare it in a test, or remove it from the skill folder${left}`);
   }
   files.sort((a, b) => a.file.localeCompare(b.file));
 
@@ -290,7 +307,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     };
   });
 
-  problems.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+  // The run first: when it failed, the other findings may follow from it.
+  problems.sort((a, b) => Number(b.run === true) - Number(a.run === true) || a.file.localeCompare(b.file) || a.line - b.line);
   const count = (s: UnitProofState) => unitResults.filter((u) => u.state === s).length;
   const result: ProofResult = {
     configured: true,
@@ -362,6 +380,9 @@ function lastLines(text: string, n: number): string {
     .join('\n');
 }
 
+/** Where a finding about something no record declares points when the run failed. */
+const SEE_RUN = 'see the finding on the run, first in the report';
+
 /** What to do about a line of the skill folder that is not what the build gives. */
 const WRITE_ADVICE = 'Run `skillunit proof --write` to update the skill. To change this text, change where it comes from: the skill folder is built.';
 
@@ -395,12 +416,19 @@ function shownPair(build: string | undefined, skill: string | undefined): [strin
 }
 
 const UNIT_HEADING = /^#{1,6}\s+(?:rule|decision|fact):\s*(\S+?)\s*#*\s*$/;
+/** A row of the table "Where to look" of `SKILL.md`: `| <when> | [<file>](<file>) |`. */
+const INDEX_ROW = /^\|.*\[[^\]]*\]\(([^)\s]+)\)\s*\|\s*$/;
 
-/** The first unit heading in lines `from` up to `to` (from 1) whose id the build has nowhere. */
-function staleUnit(lines: string[], from: number, to: number, built: Set<string>): { line: number; id: string } | undefined {
+/**
+ * In lines `from` up to `to` (from 1) of `file`, the first unit heading whose id the build has
+ * nowhere, or in `SKILL.md` the first row of the index for a file the build does not give.
+ */
+function staleLine(file: string, lines: string[], from: number, to: number, units: Set<string>, files: Set<string>): { line: number; unit?: string; row?: string } | undefined {
   for (let i = from - 1; i < Math.min(to - 1, lines.length); i++) {
     const id = UNIT_HEADING.exec(lines[i]!)?.[1];
-    if (id !== undefined && !built.has(id)) return { line: i + 1, id };
+    if (id !== undefined && !units.has(id)) return { line: i + 1, unit: id };
+    const row = file === SKILL_INDEX ? INDEX_ROW.exec(lines[i]!)?.[1] : undefined;
+    if (row !== undefined && !files.has(row)) return { line: i + 1, row };
   }
   return undefined;
 }

@@ -200,6 +200,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "passed": 2,
       "borderline": 2,
       "skipped": 0,
+      "leftOut": 0,
       "usage": {
         "input_tokens": 2000,
         "output_tokens": 200
