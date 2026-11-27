@@ -151,8 +151,10 @@ a name the module exports.
 With `retryDelay` renamed to `backoff` in tinyfetch's code and in the keys of its tests, as an
 IDE renames it, the tests passed, and after `proof --write` the skill listed `backoff` among the
 options and still said "waits `retryDelay`". With the name from `key<RequestOptions>()`, the
-rename fails the type-check of the test at that sentence. So run the type-check on the test files
-too, where CI runs it: a test run that strips the types, as Vitest does, does not check them.
+rename fails the type-check of the test at that sentence. A test run that strips the types, as
+Vitest does, does not check them, so put the type-check first in `proof.run`, as
+`npx tsc --noEmit && npx vitest run skill.test`: the proof then fails on the rename, with the
+compiler's error.
 
 The name of a parameter stays typed, as in "pass the value itself as `body`": arguments go by
 position, so renaming a parameter changes nothing an agent writes.

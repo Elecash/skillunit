@@ -17,12 +17,12 @@ npm install --save-dev skillunit
 npx skillunit init skills/my-skill
 ```
 
-`init` writes `skillunit.yaml`. Proof builds the skill from the files and units your tests declare: declare each file with `setup()` and each unit with `unit()`, from `skillunit/vitest`, around the test that checks what it says, or with no body for advice no test can check. Set `proof.run` to the command that runs those tests, build the skill, and commit it:
+`init` writes `skillunit.yaml`. Proof builds the skill from the files and units your tests declare: declare each file with `setup()` and each unit with `unit()`, from `skillunit/vitest`, around the test that checks what it says, or with no body for advice no test can check. Set `proof.run` to the command that type-checks those tests and runs them, build the skill, and commit it:
 
 ```yaml
 skill: ./skills/my-skill
 proof:
-  run: "npx vitest run skill.test"   # the test files that declare the skill: *.skill.test.ts
+  run: "npx tsc --noEmit && npx vitest run skill.test"   # the type-check, then the test files that declare the skill: *.skill.test.ts
 ```
 
 ```sh

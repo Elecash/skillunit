@@ -1,12 +1,14 @@
 // The file `checking.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { spawnSync } from 'node:child_process';
 import { cpSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { COMMON_OPTIONS, EXIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE } from '../config.js';
 import { defaultBase, Git } from '../git.js';
+import { RUN_LINES } from '../proof/layer.js';
 import { REPORT_SCHEMA, REPORTERS } from '../report/types.js';
 import { changedSelection, changedSkillFiles } from '../test/changed.js';
 import { runAll } from '../test/runner.js';
@@ -129,6 +131,28 @@ describe('checking.md', () => {
     expect(wrote.problems).toContainEqual(expect.objectContaining({ file: 'SKILL.md', severity: 'warning', message: expect.stringContaining(`\`${write}\` left \`SKILL.md\` as it is`) }));
     u.value(
       `the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; \`${write}\` takes none of them out until a run passes, and says which files it left as they are.`,
+    );
+  });
+
+  unit('run-left-no-record', { when: '`proof.run` fails before any test writes a record, as when it type-checks the tests first and finds an error.', values: { lines: RUN_LINES } }, async (u) => {
+    const p = await built();
+    const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
+    // The tests would give back the records of the build; the type-check before them fails first.
+    for (const name of ['0-demo.json', '1-read-the-docs.json', '2-retries.json', '3-wait-before-retry.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
+    p.write('tests.mjs', "import { cpSync } from 'node:fs';\ncpSync('saved', 'tmp/skill-units', { recursive: true });\n");
+    p.write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true, "types": [] }, "include": ["a.ts"] }\n');
+    p.write('a.ts', "export const retries: number = 'two';\n");
+    p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "node ${JSON.stringify(tsc).slice(1, -1)} --noEmit --pretty false && node tests.mjs"\n`);
+    const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
+    const failed = p.proof({ write: true });
+    expect(failed.problems).toHaveLength(1);
+    expect(failed.problems[0]).toMatchObject({ run: true, message: expect.stringContaining('left no record in `tmp/skill-units`: it failed before any test wrote one. Its output:\na.ts(1,14): error TS2322') });
+    expect(failed.files).toEqual([]);
+    expect([p.read('skill/SKILL.md'), p.read('skill/retries.md')]).toEqual(before);
+    p.write('a.ts', 'export const retries: number = 2;\n');
+    expect(p.proof().ok).toBe(true);
+    u.value(
+      `the finding on the run is the only one. It shows the start of the run's output, up to ${RUN_LINES} lines, where a type-check prints its errors; proof builds and compares nothing, and \`${write}\` writes nothing.`,
     );
   });
 

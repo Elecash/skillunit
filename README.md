@@ -20,7 +20,7 @@ itself.
 `skillunit check` runs the two and prints each unit of the skill with what each layer found. On [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch), a small HTTP client in this repository, cut to three of its units:
 
 ```
-Units  proof ran `npx vitest run` in 0.6 s, exit 0 · test typesafe · jev-1.14.0
+Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s, exit 0 · test typesafe · jev-1.14.0
   …
   skill/features/retries.md
     …
@@ -235,13 +235,20 @@ A sentence reaches the skill only when its test passes.
 
 ### Rename an option
 
-In `src/types.ts`, rename the option `retryDelay` to `backoff` and run the type-check, `node ../../tools/tsc.mjs --noEmit`. The tests take the names of the options from the types, so the sentence that names this one no longer compiles. Among the errors:
+In `src/types.ts`, rename the option `retryDelay` to `backoff` and run `npx skillunit proof`. The tests take the names of the options from the types, so the sentence that names this one no longer compiles. tinyfetch's `proof.run` type-checks the tests before it runs them, so proof fails on the run alone, with the compiler's errors:
 
 ```
-src/skill/retries.test.ts(54,68): error TS2345: Argument of type '"retryDelay"' is not assignable to parameter of type 'keyof RequestOptions'.
+proof.run failed
+  proof  ✗ skillunit.yaml:7  `proof.run` (`node ../../tools/tsc.mjs --noEmit && npx vitest run`) exited with 2 and left no record in `tmp/skill-units`: it failed before any test wrote one. Its output:
+           src/request.ts(71,13): error TS2339: Property 'retryDelay' does not exist on type 'RequestOptions'.
+           …
+           src/skill/retries.test.ts(54,68): error TS2345: Argument of type '"retryDelay"' is not assignable to parameter of type 'keyof RequestOptions'.
+           …
+
+  nothing built or compared: the run left no record
 ```
 
-The type-check catches this one, and `skillunit check` does not: Vitest runs the tests with their types stripped. Type-check your test files in CI.
+Vitest runs the tests with their types stripped, so without the type-check in `proof.run` this rename passes. Start yours with it too.
 
 ### Edit the skill by hand
 

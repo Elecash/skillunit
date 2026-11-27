@@ -1,12 +1,12 @@
 // The file `setup.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
-import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { INIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE, DEFAULT_PROOF_UNITS, DEFAULT_THRESHOLDS, FORMAT_FILE, loadConfig, PROOF_KEYS, SETTINGS_KEYS, type ModelConfig, type Thresholds } from '../config.js';
 import { loadEnv } from '../env.js';
-import { init } from '../init.js';
+import { init, suggestedRun } from '../init.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type DecisionModel, type ProviderName } from '../models/index.js';
 import { runTests } from '../proof/layer.js';
 import { SKILL_INDEX } from '../unit/contract.js';
@@ -50,11 +50,16 @@ describe('setup.md', () => {
     'init',
     {
       when: `the project has no \`${CONFIG_FILE}\` yet.`,
-      value: `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to that folder. It refuses when the file is there already, and it writes no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it. In a folder with no \`package.json\`, it also points at the JSON contract, which a test in another language writes.`,
+      value: `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to that folder. It refuses when the file is there already, and it writes no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it. In a folder with a \`tsconfig.json\`, the \`${proofKey('run')}\` it suggests in a comment type-checks first: \`${suggestedRun(true)}\`. In a folder with no \`package.json\`, it also points at the JSON contract, which a test in another language writes.`,
     },
     () => {
+      const typed = scratch('init-typed');
+      writeFileSync(join(typed, 'tsconfig.json'), '{}\n');
+      init('skills/my-skill', typed);
+      expect(readFileSync(join(typed, CONFIG_FILE), 'utf8')).toContain(`run: "${suggestedRun(true)}"`);
       const dir = scratch('init');
       expect(init('skills/my-skill', dir).at(-1)).toContain('the JSON contract');
+      expect(readFileSync(join(dir, CONFIG_FILE), 'utf8')).toContain(`run: "${suggestedRun(false)}"`);
       expect(loadConfig(join(dir, CONFIG_FILE)).skill).toBe(join(dir, 'skills', 'my-skill'));
       expect(existsSync(join(dir, 'skills', 'my-skill', SKILL_INDEX))).toBe(false);
       expect(() => init('skills/my-skill', dir)).toThrow(`${CONFIG_FILE} already exists`);
@@ -144,6 +149,18 @@ describe('setup.md', () => {
       expect(failed.problems.map((x) => x.message)).toEqual([expect.stringContaining('exited with 1')]);
       p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "${copy.replace(/"/g, '\\"')}"\n`);
       expect(p.proof().ok).toBe(true);
+    },
+  );
+
+  unit(
+    'type-check-in-run',
+    {
+      when: `the tests take names from the types with \`key()\`, or pass options typed by the code.`,
+      do: `start \`${proofKey('run')}\` with the type-check of the test files, as \`${suggestedRun(true)}\`. Vitest strips the types, so a name the code no longer has fails no test, only the type-check.`,
+    },
+    () => {
+      // At run time `key()` gives back what it is passed: only the type-check knows the keys.
+      expect(key<{ retry: number }>('backoff' as 'retry')).toBe('backoff');
     },
   );
 

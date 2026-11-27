@@ -341,6 +341,16 @@ describe('reporters', () => {
       expect(out.split('\nFailed\n')[1]!.split('\n')[0]).toBe('  proof skillunit.yaml:3');
     });
 
+    it('table: a run that left no record shows the run alone, with no tree of empty units', () => {
+      const run = { file: '../../skillunit.yaml', line: 3, severity: 'error' as const, run: true as const, message: '`proof.run` (`tsc --noEmit && npx vitest run`) exited with 2 and left no record in `tmp/skill-units`: it failed before any test wrote one' };
+      const none = { ...proof, ok: false, units: [], files: [], problems: [run], summary: { ...proof.summary, units: 0, proved: 0, declared: 0, failed: 0, files: 0, differ: 0, written: 0, extra: 0 } };
+      const out = render(buildReport('proof', { units, proof: none }), 'table', options);
+      expect(out).toContain('proof.run failed');
+      expect(out).not.toContain('skills/demo/SKILL.md');
+      expect(out).toContain('\n  nothing built or compared: the run left no record\n');
+      expect(out.split('\nFailed\n')[1]!.trim().split('\n')).toEqual(['proof skillunit.yaml:3', '', 'FAILED  proof 1 error, 0 warnings']);
+    });
+
     it('github: escapes the characters workflow commands use', () => {
       const odd = buildReport('proof', { proof: { ...proof, problems: [{ file: 'a,b:c.md', line: 1, severity: 'error', message: '100% broken\nsecond line' }] } });
       expect(render(odd, 'github', options).split('\n')[0]).toBe('::error file=skills/demo/a%2Cb%3Ac.md,line=1,title=SkillUnit proof::100%25 broken%0Asecond line');

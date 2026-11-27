@@ -1,8 +1,8 @@
 # SkillUnit settings for tinyfetch. From this folder: npx nx skill tinyfetch
 skill: ./skill          # built from the tests alone; what agents read
 context: "tinyfetch is a small HTTP client for JSON APIs, built on fetch."
-# `skillunit proof` runs the tests, writes each file a `setup()` declares with the units after it,
-# and formats the result with Prettier.
+# `skillunit proof` type-checks the tests and runs them, writes each file a `setup()` declares with
+# the units after it, and formats the result with Prettier.
 proof:
-  run: "npx vitest run"
+  run: "node ../../tools/tsc.mjs --noEmit && npx vitest run"
   format: "npx --no-install prettier --write {file}"

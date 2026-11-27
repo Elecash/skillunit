@@ -53,15 +53,15 @@ function unitCall(text: string, id: string): { start: number; end: number } {
 
 export const scenarios: Scenario[] = [
   {
-    name: 'removed option',
-    change: 'delete `retryDelay` from the code, leave the skill',
+    name: 'ignored option',
+    change: 'stop reading `retryDelay` in the code, leave its type and the skill',
     apply(app) {
-      app.edit('src/types.ts', '  /** Milliseconds to wait before the first new attempt; each next wait is `RETRY_TIMES` times the one before. Default `DEFAULT_RETRY_DELAY`. */\n  retryDelay?: number;\n', '');
       app.edit('src/request.ts', '    options.retry,\n    options.retryDelay,\n', '    options.retry,\n    undefined,\n');
-      app.commit('Drop retryDelay');
+      app.commit('Ignore retryDelay');
     },
-    // The tests that pass `retryDelay` now wait the default, so the units they declare fail, and
-    // so does the run. Two of them time out: each keeps the record it wrote when it started.
+    // It type-checks. The tests that pass `retryDelay` now wait the default, so the units they
+    // declare fail, and so does the run. Two of them time out: each keeps the record it wrote when
+    // it started.
     expect: { proof: ['retry-delay', 'timeout-per-attempt', 'what-is-retried', '../skillunit.yaml'] },
   },
   {
@@ -73,8 +73,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/index.ts', 'export { create, tf,', 'export { createClient, tf,');
       app.commit('Rename create to createClient');
     },
-    // Every unit whose body makes a client, or calls each method of `tf`, fails, so the run does.
-    expect: { proof: ['await-every-request', 'base-url', 'client-options', 'content-type', 'default-timeout', 'headers', 'methods', 'retry-any-method', 'timeout-precedence', '../skillunit.yaml'] },
+    // The type-check in `proof.run` fails on each test that calls `create`, before any test runs:
+    // the run is the one finding.
+    expect: { proof: ['../skillunit.yaml'] },
   },
 
   {
@@ -85,9 +86,8 @@ export const scenarios: Scenario[] = [
       app.edit('src/request.ts', '  for (const [key, value] of Object.entries(options.query ?? {})) url.searchParams.set(key, String(value));\n', '');
       app.commit('Drop query');
     },
-    // The test that declares `query` fails without the option, and so does the run. The type-check
-    // of the project fails too, on `request-options` and the region of `query`.
-    expect: { proof: ['query', '../skillunit.yaml'] },
+    // The type-check in `proof.run` fails on the tests that pass `query`, before any test runs.
+    expect: { proof: ['../skillunit.yaml'] },
   },
 
 
@@ -100,6 +100,18 @@ export const scenarios: Scenario[] = [
       app.edit(TESTS.timeouts, "import { tf, TimeoutError } from 'tinyfetch';", "import { tf, TimeoutError } from 'tiny-fetch';");
       app.build();
       app.commit('Typo in the package name');
+    },
+    // The type-check in `proof.run` finds no module `tiny-fetch`, before any test runs, so the
+    // build wrote nothing and the run is the one finding.
+    expect: { proof: ['../skillunit.yaml'] },
+  },
+  {
+    name: 'test file that throws as it loads',
+    change: 'add a statement that throws to the top of the test of a file, which still type-checks',
+    apply(app) {
+      app.edit(TESTS.timeouts, "import { tf, TimeoutError } from 'tinyfetch';\n", "import { tf, TimeoutError } from 'tinyfetch';\n\nnew URL('not a url');\n");
+      app.build();
+      app.commit('A statement that throws');
     },
     // The test file does not load, so it leaves no record: the run fails, and the file of the skill
     // and its row in the index are reported with the run. The build kept both, since the run failed.
@@ -179,9 +191,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
       app.commit('Rename retryDelay to backoff');
     },
-    // Nothing reports it: the example that passes `retryDelay` is a region of a test, and the tests
-    // run without a type-check. The project's type-check of its tests reports it.
-    expect: {},
+    // The type-check in `proof.run` reports it, before any test runs: the run is the one finding,
+    // with the compiler's errors.
+    expect: { proof: ['../skillunit.yaml'] },
   },
   {
     name: 'an example that breaks a rule',
@@ -303,6 +315,8 @@ export const scenarios: Scenario[] = [
       const { start, end } = unitCall(text, 'send-a-body');
       app.write(TESTS.requests, text.slice(0, start) + text.slice(end).replace(/^\n/, ''));
       app.edit(TESTS.requests, "  unit(\n    'response-value',", "  unit.skip(\n    'response-value',");
+      // The deleted unit was the only one to use `or`.
+      app.edit(TESTS.requests, ' methods, or, reset,', ' methods, reset,');
       app.commit('Drop one test, skip another');
     },
     // A unit deleted with its test, and one skipped, leave no record; the skill still has them, and

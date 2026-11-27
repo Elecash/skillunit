@@ -38,6 +38,13 @@ describe('init', () => {
     expect(text).not.toContain('specs');
   });
 
+  it('with a tsconfig.json, the proof.run it suggests type-checks before the tests', () => {
+    const root = project();
+    writeFileSync(join(root, 'tsconfig.json'), '{}\n');
+    init('skills/my-skill', root);
+    expect(readFileSync(join(root, 'skillunit.yaml'), 'utf8')).toContain('\n# proof: { run: "npx tsc --noEmit && npx vitest run skill.test" }   # the type-check, then the test files that declare them: *.skill.test.ts\n');
+  });
+
   it('with no folder, the skill is the current folder', () => {
     const root = project();
     init('.', root);

@@ -3,7 +3,8 @@
 #   npm run skill         the same, and the questions asked to TypeSafe (needs TYPESAFE_API_KEY)
 skill: ./skills/skillunit         # built from the tests: what agents install and read
 context: "SkillUnit is a command-line tool that checks that an agent skill still says what the code it describes does: it builds the skill from the files and units the project's tests declare, and asks a decision model closed questions about the skill's text."
-# `skillunit proof` runs the tests that declare the files and units of the skill, the files named
-# `*.skill.test.ts`, and builds skills/skillunit from them; CI runs the whole suite.
+# `skillunit proof` type-checks the package, runs the tests that declare the files and units of the
+# skill, the files named `*.skill.test.ts`, and builds skills/skillunit from them; CI runs the
+# whole suite.
 proof:
-  run: "cd packages/skillunit && npx vitest run skill.test"
+  run: "cd packages/skillunit && node ../../tools/tsc.mjs --noEmit && npx vitest run skill.test"

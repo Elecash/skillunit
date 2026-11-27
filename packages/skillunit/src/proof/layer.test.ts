@@ -425,7 +425,18 @@ process.exit(${code});
     expect(r.problems).toHaveLength(1);
     expect(r.problems[0]!.file).toBe('../skillunit.yaml');
     expect(r.problems[0]!.line).toBe(3);
-    expect(r.problems[0]!.message).toMatch(/^`proof\.run` \(`no-such-command-here --run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-command-here.*not found/s);
+    expect(r.problems[0]!.message).toMatch(/^`proof\.run` \(`no-such-command-here --run`\) exited with 127 and left no record in `tmp\/skill-units`: it failed before any test wrote one\. Its output:\n.*no-such-command-here.*not found/s);
+  });
+
+  it('a run that failed before any record, as a type-check does: one error, with the start of its output, and the skill folder left as it is', () => {
+    const errorsOf = Array.from({ length: 40 }, (_, i) => `src/a.test.ts(${i + 1},1): error TS2345: line ${i + 1}`);
+    const root = project({ ...GOOD, 'skill/SKILL.md': BUILT, 'skill/other.md': '# Other\n', 'run.mjs': `console.log(${JSON.stringify(errorsOf.join('\n'))});\nprocess.exit(2);\n` });
+    const r = run(root, { run: 'node run.mjs' }, { write: true });
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]!.message).toBe(`\`proof.run\` (\`node run.mjs\`) exited with 2 and left no record in \`tmp/skill-units\`: it failed before any test wrote one. The start of its output:\n${errorsOf.slice(0, 30).join('\n')}\n… and 10 more lines`);
+    expect(r.files).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+    expect(read(root, 'skill/other.md')).toBe('# Other\n');
   });
 
   it('a run that does not finish says so', () => {

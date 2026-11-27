@@ -106,15 +106,15 @@ export type OriginLookup = (file: string, line: number) => Origin | undefined;
  * How many lines of the output of `proof.run` a finding shows: enough for a runner's list of the
  * tests that failed, which comes before the details of each failure.
  */
-const TAIL = 30;
+export const RUN_LINES = 30;
 
 /** What running `proof.run` gave. */
 export interface TestRun {
   run: RunReport;
   /** How the run ended when it did not exit with 0: `exited with 1`, `did not run: …`, `did not finish (SIGTERM)`. */
   ended: string | null;
-  /** The end of its output. */
-  tail: string;
+  /** Its output, without colours and blank lines. */
+  output: string[];
 }
 
 /**
@@ -122,8 +122,8 @@ export interface TestRun {
  * `proof.units` folder of its records. Nothing runs with `noRun` or when `proof.run` is not set.
  */
 export function runTests(cfg: ProofConfig, noRun: boolean): TestRun {
-  if (!cfg.run) return { run: { skipped: 'not-set' }, ended: null, tail: '' };
-  if (noRun) return { run: { skipped: 'no-run' }, ended: null, tail: '' };
+  if (!cfg.run) return { run: { skipped: 'not-set' }, ended: null, output: [] };
+  if (noRun) return { run: { skipped: 'no-run' }, ended: null, output: [] };
   emptyRecords(cfg.units);
   const started = Date.now();
   const done = spawnSync(cfg.run, { shell: true, cwd: cfg.cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -132,16 +132,23 @@ export function runTests(cfg: ProofConfig, noRun: boolean): TestRun {
   if (done.error) ended = `did not run: ${done.error.message}`;
   else if (done.status === null) ended = `did not finish (${done.signal ?? 'stopped'})`;
   else if (done.status !== 0) ended = `exited with ${done.status}`;
-  const tail = lastLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`, TAIL);
-  return { run, ended, tail };
+  const output = outputLines(`${done.stdout ?? ''}${done.stderr ?? ''}${done.error ? `\n${done.error.message}` : ''}`);
+  return { run, ended, output };
 }
 
-/** The error for a run that did not exit with 0, with the end of its output; null for one that did. */
-export function runFailure(cfg: ProofConfig, { ended, tail }: TestRun, leftRecords: boolean): string | null {
+/**
+ * The error for a run that did not exit with 0, with some of its output; null for one that did.
+ * A run that left records ran the tests, and its runner lists the failed ones at the end. A run
+ * that left none failed before them, as a type-check or a file that does not load does, and its
+ * first lines say why.
+ */
+export function runFailure(cfg: ProofConfig, { ended, output }: TestRun, leftRecords: boolean): string | null {
   if (ended === null) return null;
+  const command = `\`proof.run\` (\`${cfg.run}\`) ${ended}`;
+  if (leftRecords) return `${command}: a test failed, or the run did${output.length ? `. The end of its output:\n${output.slice(-RUN_LINES).join('\n')}` : ''}`;
   const units = relative(cfg.cwd, cfg.units).split('\\').join('/') || '.';
-  const what = leftRecords ? `\`proof.run\` (\`${cfg.run}\`) ${ended}: a test failed, or the run did` : `\`proof.run\` (\`${cfg.run}\`) ${ended} and left no unit in \`${units}\``;
-  return `${what}${tail ? `. The end of its output:\n${tail}` : ''}`;
+  const shown = output.length > RUN_LINES ? `. The start of its output:\n${output.slice(0, RUN_LINES).join('\n')}\n… and ${output.length - RUN_LINES} more lines` : output.length ? `. Its output:\n${output.join('\n')}` : '';
+  return `${command} and left no record in \`${units}\`: it failed before any test wrote one${shown}`;
 }
 
 export function proof(options: ProofOptions): ProofResult {
@@ -159,7 +166,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const settings = settingsPlace(options.configFile, skillDir);
 
   // ---------------------------------------------------------------- 1, 2: the tests
-  const { run, ended, tail } = runTests(cfg, options.noRun === true);
+  const tests = runTests(cfg, options.noRun === true);
+  const { run } = tests;
 
   // ---------------------------------------------------------------- 3: the build
   const records = readRecords(cfg.units, cfg.cwd);
@@ -168,7 +176,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   }
   // A run that did not exit with 0 fails the proof, whatever units it left: a failing test is a
   // failure, whether or not it declares a unit. A unit whose test failed is reported on its test too.
-  const failure = runFailure(cfg, { run, ended, tail }, records.units.length + records.questions.length > 0);
+  const leftRecords = records.units.length + records.questions.length + records.files.length > 0;
+  const failure = runFailure(cfg, tests, leftRecords);
   if (failure) add(settings.file, settings.line('run'), failure, { run: true });
   /** The run failed, so a record it did not leave says nothing about the test that writes it. */
   const runFailed = failure !== null;
@@ -277,7 +286,9 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     }
     if (found.length > MAX_DIFFERENCES) add(f.file, found[MAX_DIFFERENCES]!.line, `and ${found.length - MAX_DIFFERENCES} more blocks that differ from the build. Run \`skillunit proof --write\``);
   }
-  for (const name of existsSync(skillDir) ? listFiles(skillDir, { dotMarkdown: true }) : []) {
+  // A run that failed and left no record built nothing: the finding on the run is the only one.
+  const compared = !runFailed || leftRecords;
+  for (const name of compared && existsSync(skillDir) ? listFiles(skillDir, { dotMarkdown: true }) : []) {
     if (builtNames.has(name)) continue;
     files.push({ file: name, state: 'extra' });
     const left = options.write ? '. `--write` leaves it there' : '';
@@ -371,13 +382,11 @@ function emptyRecords(dir: string) {
   }
 }
 
-function lastLines(text: string, n: number): string {
+function outputLines(text: string): string[] {
   return text
     .replace(/\x1b\[[0-9;]*m/g, '')
     .split(/\r?\n/)
-    .filter((l) => l.trim())
-    .slice(-n)
-    .join('\n');
+    .filter((l) => l.trim());
 }
 
 /** Where a finding about something no record declares points when the run failed. */

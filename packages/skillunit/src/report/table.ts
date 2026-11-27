@@ -73,6 +73,14 @@ function byUnit(report: CheckReport, options: ReportOptions, c: Painter, out: st
   }
   const idOf = (u: UnitNode) => (u.mark === 'fail' ? c.red(u.id) : u.mark === 'warn' ? c.yellow(u.id) : c.green(u.id));
 
+  // A run that failed before any test wrote a record, as a type-check does: every unit of the tree
+  // would have nothing under it, so the run is all there is to show.
+  if (tree.run.length && (proof ? proof.summary.files === 0 : test?.summary.tests === 0)) {
+    const what = proof && test ? 'built, compared or asked' : proof ? 'built or compared' : 'asked';
+    out.push('', c.dim(`  nothing ${what}: the run left no record`));
+    return failed;
+  }
+
   if (options.compact) compactTree(tree, report, c, out, at, show, idOf);
   else {
     for (const file of tree.files) {

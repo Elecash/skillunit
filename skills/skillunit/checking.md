@@ -28,6 +28,12 @@ When: `proof.run` fails, and the run left no record of a unit, a file or a row o
 
 Value: the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; `--write` takes none of them out until a run passes, and says which files it left as they are.
 
+### fact: run-left-no-record
+
+When: `proof.run` fails before any test writes a record, as when it type-checks the tests first and finds an error.
+
+Value: the finding on the run is the only one. It shows the start of the run's output, up to 30 lines, where a type-check prints its errors; proof builds and compares nothing, and `--write` writes nothing.
+
 ### fact: unfinished-test
 
 When: the test of a unit does not finish, because it times out or the run stops.

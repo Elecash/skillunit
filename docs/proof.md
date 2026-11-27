@@ -291,10 +291,12 @@ It is an error when:
 - the skill folder holds a Markdown file that no `setup()` declares. `--write` reports it and
   leaves it there;
 - `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, comes first in
-  the report, and says the command, how it ended and the last lines of its output, where the
-  runner names the test that failed. When the run left no record at all, it says that too. A
-  test that declares a unit and fails is reported twice: on its unit, with the assertion's
-  message, and by the run;
+  the report, and says the command, how it ended and the last 30 lines of its output, where the
+  runner names the test that failed. A test that declares a unit and fails is reported twice: on
+  its unit, with the assertion's message, and by the run. A run that left no record at all failed
+  before the tests, as a type-check does: the error says so and shows the first 30 lines of the
+  output instead, where the compiler prints its errors. It is then the only error, since nothing
+  was built or compared, and `--write` writes nothing;
 - a line of the skill folder is not what the build gives. The message says to run
   `skillunit proof --write`, which is all a change to the code needs, and that the skill folder is
   built, so a change to its text is made where the line comes from.
@@ -341,16 +343,39 @@ it.
 `skillunit proof`, `skillunit check` and `skillunit test` all need the records, so all three run
 `proof.run`. It should run the files that declare the skill and nothing else: a test that fails
 anywhere in the run fails the proof, and `--write` then takes nothing out of the skill. Measured
-on SkillUnit's own package on 2026-11-26, on one machine, where Vitest runs the files in parallel:
+on SkillUnit's own package on 2026-11-27, on one machine, where Vitest runs the files in parallel:
 
 | What runs | Tests | Time |
 | --- | --- | --- |
-| the whole suite | 325 | 3.3 s |
-| the 5 files that declare the skill | 61 | 2.9 s |
+| the whole suite | 331 | 4.2 s |
+| the 5 files that declare the skill | 63 | 3.9 s |
 
 Name those files `*.skill.test.ts` and point `proof.run` at the name: `npx vitest run skill.test`.
 A file name keeps the command current, since a new file of units is run as soon as it has the
 name.
+
+### The type-check first
+
+Vitest strips the types, so a test passes with a name the code no longer has, or with an example
+that no longer compiles. In a round of trials with agents, four states of the code passed `check`
+and failed only `tsc`. Put the type-check of the test files before them in `proof.run`, so that
+the proof fails on them:
+
+```yaml
+proof:
+  run: "npx tsc --noEmit && npx vitest run skill.test"
+```
+
+The `tsconfig.json` must include the test files. A type error is then one finding, on
+`proof.run`, with the compiler's errors, and nothing is built, compared or written until the tests
+type-check. `skillunit init` suggests this command when the folder has a `tsconfig.json`.
+
+What it adds to `check --dry-run`, measured on 2026-11-27 on one machine:
+
+| Skill | Without the type-check | With it | The type-check alone |
+| --- | --- | --- | --- |
+| tinyfetch | 0.96 s | 1.25 s | 0.35 s |
+| SkillUnit's own | 4.05 s | 4.75 s | 0.76 s |
 
 The project's CI still runs the whole suite. A unit declared in a file the command does not run
 is not lost without notice: the skill folder has it and no test declares it, and proof says so.
@@ -360,7 +385,7 @@ is not lost without notice: the skill folder has it and no test declares it, and
 ```yaml
 skill: ./skill          # built, committed, what agents read
 proof:
-  run: "npx vitest run skill.test"      # the tests that declare the skill
+  run: "npx tsc --noEmit && npx vitest run skill.test"   # the type-check, then the tests that declare the skill
   units: ./tmp/skill-units              # where tests leave their records (the default)
   format: "npx --no-install prettier --write {file}"
 ```

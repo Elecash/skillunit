@@ -10,13 +10,18 @@ import { ConfigError } from './problems.js';
 /** Where the docs give the records a test in another language writes. */
 export const CONTRACT = 'https://github.com/Elecash/skillunit/blob/main/docs/proof.md#the-json-contract';
 
-function config(skill: string): string {
+/** The `proof.run` `init` suggests. Vitest strips the types, so with a `tsconfig.json` the type-check runs first. */
+export function suggestedRun(typed: boolean): string {
+  return `${typed ? 'npx tsc --noEmit && ' : ''}npx vitest run skill.test`;
+}
+
+function config(skill: string, typed: boolean): string {
   return `${[
     '# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme',
     `skill: ${skill}`.padEnd(32) + '# folder with SKILL.md',
     '# context: "One sentence about what the skill is for."',
     '# To build the skill from the files and units your tests declare:',
-    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts',
+    `# proof: { run: "${suggestedRun(typed)}" }   # ${typed ? 'the type-check, then ' : ''}the test files that declare them: *.skill.test.ts`,
   ].join('\n')}\n`;
 }
 
@@ -28,7 +33,7 @@ export function init(dir: string, cwd = process.cwd()): string[] {
   const skillDir = resolve(cwd, dir);
   const path = relative(cwd, skillDir).split(sep).join('/');
   const skill = path === '' ? '.' : path.startsWith('..') ? path : `./${path}`;
-  writeFileSync(configPath, config(skill));
+  writeFileSync(configPath, config(skill, existsSync(join(cwd, 'tsconfig.json'))));
 
   const out = [`created ${CONFIG_FILE}`];
   if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill} yet: the steps below build it from your tests`);

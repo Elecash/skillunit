@@ -8,7 +8,7 @@ The settings file, the decision model, and its key.
 
 When: the project has no `skillunit.yaml` yet.
 
-Value: `skillunit init <skill folder>` writes `skillunit.yaml` in the current folder, with `skill` set to that folder. It refuses when the file is there already, and it writes no `SKILL.md`: the first `proof --write` builds it. In a folder with no `package.json`, it also points at the JSON contract, which a test in another language writes.
+Value: `skillunit init <skill folder>` writes `skillunit.yaml` in the current folder, with `skill` set to that folder. It refuses when the file is there already, and it writes no `SKILL.md`: the first `proof --write` builds it. In a folder with a `tsconfig.json`, the `proof.run` it suggests in a comment type-checks first: `npx tsc --noEmit && npx vitest run skill.test`. In a folder with no `package.json`, it also points at the JSON contract, which a test in another language writes.
 
 ### fact: settings-keys
 
@@ -34,6 +34,12 @@ Value: `proof` takes `run`, `units` and `format`, and no other key. `proof.run` 
 When: `proof.run` runs tests that fail.
 
 Value: the proof fails when `proof.run` exits with anything but 0, even when its tests left every record the build needs.
+
+### rule: type-check-in-run
+
+When: the tests take names from the types with `key()`, or pass options typed by the code.
+
+Do: start `proof.run` with the type-check of the test files, as `npx tsc --noEmit && npx vitest run skill.test`. Vitest strips the types, so a name the code no longer has fails no test, only the type-check.
 
 ### fact: providers
 

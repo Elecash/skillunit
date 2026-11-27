@@ -229,7 +229,7 @@ async function runCommand(command: Command, args: Args) {
  */
 function recordProblems(cfg: ProofConfig, own: TestRun, records: Records): QuestionProblem[] {
   const out: QuestionProblem[] = [];
-  const failure = runFailure(cfg, own, records.units.length + records.questions.length > 0);
+  const failure = runFailure(cfg, own, records.units.length + records.questions.length + records.files.length > 0);
   if (failure) out.push({ message: failure, run: true });
   for (const p of records.problems) out.push({ ...(p.test?.unit ? { unit: p.test.unit } : {}), declared: p.test ? { file: p.test.file, line: p.test.line } : { file: p.path, line: 1 }, message: p.message });
   for (const r of [...records.units, ...records.questions]) {

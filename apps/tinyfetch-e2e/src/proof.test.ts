@@ -98,25 +98,16 @@ describe('the proof of tinyfetch', () => {
     });
   });
 
-  it('proof.run with a command that does not exist: the end of its output, and every file of the skill without its setup()', () => {
+  it('proof.run with a command that does not exist: one error, with its output, and nothing else', () => {
     const app = App.copy('no-command');
-    app.edit('skillunit.yaml', 'run: "npx vitest run"', 'run: "no-such-test-runner run"');
+    app.edit('skillunit.yaml', 'run: "node ../../tools/tsc.mjs --noEmit && npx vitest run"', 'run: "no-such-test-runner run"');
     const proof = app.run('proof');
     expect(proof.code).toBe(1);
     expect(proof.report.proof.run).toMatchObject({ command: 'no-such-test-runner run', status: 127 });
     const settings = errors(proof).find((p) => p.file === '../skillunit.yaml');
-    expect(settings.message).toMatch(/^`proof\.run` \(`no-such-test-runner run`\) exited with 127 and left no unit in `tmp\/skill-units`\. The end of its output:\n.*no-such-test-runner/s);
-    // One error for the run, not two.
-    expect(errors(proof).filter((p) => p.file === '../skillunit.yaml')).toHaveLength(1);
-    // The run failed, so a file with no record is reported with it, not as one to remove.
-    expect(errors(proof).filter((p) => /^the skill has `[^`]+`, and this run left no record of its `setup\(\)` while `proof\.run` failed/.test(p.message)).map((p) => p.file).sort()).toEqual([
-      'SKILL.md',
-      'features/clients.md',
-      'features/errors.md',
-      'features/requests.md',
-      'features/retries.md',
-      'features/timeouts.md',
-    ]);
+    expect(settings.message).toMatch(/^`proof\.run` \(`no-such-test-runner run`\) exited with 127 and left no record in `tmp\/skill-units`: it failed before any test wrote one\. Its output:\n.*no-such-test-runner/s);
+    // The run left no record, so nothing was built or compared: the run is the one error.
+    expect(errors(proof)).toHaveLength(1);
   });
 
   it('an ordinary test that fails: check fails on proof.run, names the test, and every unit still comes from its test', () => {
@@ -128,8 +119,25 @@ describe('the proof of tinyfetch', () => {
     const found = errors(check);
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ file: '../skillunit.yaml', line: lineOf(app.read('skillunit.yaml'), 'run:') });
-    expect(found[0].message).toMatch(/^`proof\.run` \(`npx vitest run`\) exited with 1: a test failed, or the run did\. The end of its output:\n.*fails on purpose/s);
+    expect(found[0].message).toMatch(/^`proof\.run` \(`node \.\.\/\.\.\/tools\/tsc\.mjs --noEmit && npx vitest run`\) exited with 1: a test failed, or the run did\. The end of its output:\n.*fails on purpose/s);
     expect(check.report.proof.units.filter((u: any) => u.from === 'test').every((u: any) => u.state === 'passed')).toBe(true);
+  });
+
+  it('an option renamed in its type only: check fails on proof.run alone, with the errors of the type-check', () => {
+    const app = App.copy('renamed-type');
+    app.edit('src/types.ts', '  retryDelay?: number;', '  backoff?: number;');
+    const before = app.read('skill/features/retries.md');
+    const check = app.run('check', '--dry-run');
+    expect(check.code).toBe(1);
+    const found = errors(check);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ file: '../skillunit.yaml', run: true });
+    expect(found[0].message).toMatch(/^`proof\.run` \(`node \.\.\/\.\.\/tools\/tsc\.mjs --noEmit && npx vitest run`\) exited with 2 and left no record in `tmp\/skill-units`: it failed before any test wrote one\. Its output:\n/);
+    expect(found[0].message).toContain(`${RETRIES}(${lineOf(app.read(RETRIES), "opt('retryDelay')")},`);
+    expect(found[0].message).toContain(`error TS2345: Argument of type '"retryDelay"' is not assignable to parameter of type 'keyof RequestOptions'.`);
+    expect(check.report.proof.files).toEqual([]);
+    app.run('proof', '--write');
+    expect(app.read('skill/features/retries.md')).toBe(before);
   });
 
   it('a question whose `expect` names no option: the test of its unit fails and says why', () => {
@@ -167,7 +175,7 @@ describe('the proof of tinyfetch', () => {
   it('--no-run uses the units an earlier run left', () => {
     const app = App.copy('no-run');
     expect(app.run('proof').code).toBe(0);
-    app.edit('skillunit.yaml', 'run: "npx vitest run"', 'run: "exit 1"');
+    app.edit('skillunit.yaml', 'run: "node ../../tools/tsc.mjs --noEmit && npx vitest run"', 'run: "exit 1"');
     const proof = app.run('proof', '--no-run');
     expect(proof.code).toBe(0);
     expect(proof.report.proof.run).toEqual({ skipped: 'no-run' });

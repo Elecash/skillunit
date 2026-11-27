@@ -28,7 +28,8 @@ jobs:
 - With `proof.run` in `skillunit.yaml`, `check` runs the tests that declare the skill
   itself and goes on when they fail, so a failing test is reported on the unit it declares, then
   fails: a run that did not exit with 0 is an error, with the end of its output. Point
-  `proof.run` at those tests only, such as `npx vitest run skill.test`, and let the project's own
+  `proof.run` at those tests only, after their type-check, such as
+  `npx tsc --noEmit && npx vitest run skill.test`, and let the project's own
   test job run the whole suite. A project that runs those tests in a step of its own runs
   `check --no-run` after it, with `if: always()` on the `check` step so a red test step does not
   skip it.
