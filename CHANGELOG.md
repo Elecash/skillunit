@@ -1,3 +1,13 @@
+## 0.5.1 (2026-11-27)
+
+### 🩹 Fixes
+
+- export names error ([#13](https://github.com/Elecash/skillunit/pull/13))
+
+### ❤️ Thank You
+
+- Raúl Jiménez @Elecash
+
 ## 0.5.0 (2026-11-26)
 
 ### 🚀 Features
