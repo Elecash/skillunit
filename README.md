@@ -25,17 +25,17 @@ Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s,
   skill/features/retries.md
     …
     retry-delay  fact
-      proof  ✓ proved by a test, src/skill/retries.test.ts:50
+      proof  ✓ proved by a test, src/skill/retries.test.ts:51
       test   –
     what-is-retried  fact
-      proof  ✓ proved by a test, src/skill/retries.test.ts:81
-      test   ✓ src/skill/retries.test.ts:81  retry-on-429  once 0.99
+      proof  ✓ proved by a test, src/skill/retries.test.ts:94
+      test   ✓ src/skill/retries.test.ts:94  retry-on-429  once 0.99
     …
     retry-idempotent-only  rule
-      proof  – declared, no test, src/skill/retries.test.ts:134
-      test   ✓ src/skill/retries.test.ts:134  post-no-retry  no-retry 1.00
-      test   ✓ src/skill/retries.test.ts:134  patch-no-retry  no-retry 1.00
-      test   ✓ src/skill/retries.test.ts:134  put-may-retry  retry 0.98
+      proof  – declared, no test, src/skill/retries.test.ts:161
+      test   ✓ src/skill/retries.test.ts:161  post-no-retry  no-retry 1.00
+      test   ✓ src/skill/retries.test.ts:161  patch-no-retry  no-retry 1.00
+      test   ✓ src/skill/retries.test.ts:161  put-may-retry  retry 0.98
   …
 
   24 units · 5 proof and test · 17 proof only · 2 test only · 0 not covered
@@ -180,8 +180,8 @@ unit('retry-idempotent-only', {
 
 ```
     retry-idempotent-only  rule
-      proof  – declared, no test, src/skill/retries.test.ts:134
-      test   ✓ src/skill/retries.test.ts:134  post-no-retry  no-retry 1.00
+      proof  – declared, no test, src/skill/retries.test.ts:161
+      test   ✓ src/skill/retries.test.ts:161  post-no-retry  no-retry 1.00
 ```
 
 A rule too vague to decide with fails its question. [Questions](https://github.com/Elecash/skillunit/blob/main/docs/questions.md) says when a unit is worth one, and how to write it.
@@ -224,14 +224,16 @@ FAILED  proof 1 error, 0 warnings
 
 ### Change what the code does
 
-In `src/request.ts`, swap the first two terms of `options.timeout ?? client.timeout ?? DEFAULT_TIMEOUT`, so that the timeout of the client wins over the one of the request. Run `npx skillunit proof`. The fact `timeout-precedence` says the opposite, and its test fails:
+In `src/request.ts`, swap the first two terms of `options.timeout ?? client.timeout ?? DEFAULT_TIMEOUT`, so that the timeout of the client wins over the one of the request. Run `npx skillunit proof`. The test of `timeout-precedence` builds its sentence from the timeouts it observes, so it passes, and the sentence it builds is not the one the skill has:
 
 ```
     timeout-precedence  fact
-      proof  ✗ src/skill/timeouts.test.ts:50  the test of `timeout-precedence` (src/skill/timeouts.test.ts:50) failed, so it left no unit: expected [ 2500, 2500, 10000 ] to deeply equal [ 2500, 5000, 10000 ]
+      proof  ✓ proved by a test, src/skill/timeouts.test.ts:60
+      proof  ✗ skill/features/timeouts.md:21  this line is not what the build gives: the build has `… that sets one too, waits for the 'timeout' of its client; a request that sets none waits for the 't…`, the skill has `… that sets one too, waits for its own 'timeout'; a request that sets none waits for the 'timeout' of…`. Run `skillunit proof --write` to update the skill. …
+               from the test of `timeout-precedence`, src/skill/timeouts.test.ts:60
 ```
 
-A sentence reaches the skill only when its test passes.
+`npx skillunit proof --write` writes what the code does now. With the sentence typed above an assertion, the test would fail instead, and the assertion is what a hurried fix edits, leaving the sentence false.
 
 ### Rename an option
 
@@ -242,7 +244,7 @@ proof.run failed
   proof  ✗ skillunit.yaml:7  `proof.run` (`node ../../tools/tsc.mjs --noEmit && npx vitest run`) exited with 2 and left no record in `tmp/skill-units`: it failed before any test wrote one. Its output:
            src/request.ts(71,13): error TS2339: Property 'retryDelay' does not exist on type 'RequestOptions'.
            …
-           src/skill/retries.test.ts(54,68): error TS2345: Argument of type '"retryDelay"' is not assignable to parameter of type 'keyof RequestOptions'.
+           src/skill/retries.test.ts(55,68): error TS2345: Argument of type '"retryDelay"' is not assignable to parameter of type 'keyof RequestOptions'.
            …
 
   nothing built or compared: the run left no record
@@ -256,9 +258,9 @@ In `skill/features/retries.md`, change "300 ms" to "500 ms" and run `npx skillun
 
 ```
     retry-delay  fact
-      proof  ✓ proved by a test, src/skill/retries.test.ts:50
+      proof  ✓ proved by a test, src/skill/retries.test.ts:51
       proof  ✗ skill/features/retries.md:21  this line is not what the build gives: … To change this text, change where it comes from: the skill folder is built.
-               from the test of `retry-delay`, src/skill/retries.test.ts:50
+               from the test of `retry-delay`, src/skill/retries.test.ts:51
 ```
 
 The `skill` folder is an output. The text of a unit changes in its test, and the error says which test that is.
@@ -275,7 +277,7 @@ Run `npx skillunit proof --write` to build the skill, then `npx skillunit test`.
 
 ```
     retry-idempotent-only  rule
-      test   ✗ src/skill/retries.test.ts:134  put-may-retry  none 0.58
+      test   ✗ src/skill/retries.test.ts:161  put-may-retry  none 0.58
                scenario:  A settings document is replaced with `tf.put`, and the API sometimes answers 503.
                question:  Should the agent pass `retry` to that call?
                expected:  retry

@@ -36,7 +36,7 @@ await tf.post("https://api.example.com/users", { name: "Ada" });
 
 When: the code sets `content-type` in `headers`.
 
-Value: a request with a body sends `content-type: application/json`, which replaces a `content-type` of `headers`, so tinyfetch sends no other kind of body; a request with no body sends the `content-type` of `headers` as it is.
+Value: a request with a body sends `content-type: application/json`, which replaces a `content-type` of `headers`, so tinyfetch sends no other kind of body; a request with no body sends the `content-type` of `headers` as it is, and none when it sets none.
 
 ### fact: headers
 

@@ -260,8 +260,9 @@ export const scenarios: Scenario[] = [
       app.edit('src/retry.ts', '(isHttpError(error) && error.status >= RETRIED_STATUS)', '(isHttpError(error) && (error.status >= RETRIED_STATUS || error.status === 429))');
       app.commit('Retry 429');
     },
-    // The body samples 429 among the statuses under the constant, and they no longer agree.
-    expect: { proof: ['what-is-retried', '../skillunit.yaml'] },
+    // The body samples 429 among the statuses under the constant: the sentence it builds says that
+    // only the one the example lists is retried, so the built line differs from the skill.
+    expect: { proof: ['what-is-retried'] },
   },
   {
     name: 'body that asserts nothing',
@@ -270,12 +271,13 @@ export const scenarios: Scenario[] = [
       const text = app.read(TESTS.requests);
       const { start, end } = unitCall(text, 'response-value');
       const call = text.slice(start, end);
-      const body = call.slice(call.indexOf('    async () => {\n'), call.lastIndexOf('    },\n'));
-      app.write(TESTS.requests, text.slice(0, start) + call.replace(body, '    async () => {\n      serve({ body: { id: 1 } });\n      await tf.get(API);\n') + text.slice(end));
+      const body = call.slice(call.indexOf('    async (u) => {\n'), call.lastIndexOf('    },\n'));
+      // The names the sentence used stay used, so the type-check passes and the run reaches the test.
+      app.write(TESTS.requests, text.slice(0, start) + call.replace(body, '    async () => {\n      serve({ body: { id: 1 } });\n      await tf.get(API);\n      void [PARSED_TYPE, method];\n') + text.slice(end));
       app.commit('Assert nothing');
     },
-    // `skillunit/vitest` counts the assertions of the body: none, so the test fails and the unit
-    // is not built.
+    // The body neither asserts nor builds the sentence, and the spec gives no `value`: the test
+    // fails and the unit is not built.
     expect: { proof: ['response-value', '../skillunit.yaml'] },
   },
   {
@@ -292,7 +294,7 @@ export const scenarios: Scenario[] = [
     name: 'no value typed twice 2: a number typed into a sentence',
     change: 'type a number into the Value of `cancel-with-signal`',
     apply(app) {
-      app.edit(TESTS.timeouts, "no attempt starts after the abort.',", "no attempt starts after the abort, within 5 ms.',");
+      app.edit(TESTS.timeouts, "'no attempt starts after the abort'}", "'no attempt starts after the abort, within 5 ms'}");
       app.commit('Type a number');
     },
     // The test of the unit fails on the number, so the unit is not built, and the run fails.

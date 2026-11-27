@@ -74,7 +74,7 @@ Value: a spec takes `when`, `do`, `value`, `decide`, `paths`, `unknown`, `evenWh
 
 When: a test gives the id of a file, a unit or a question.
 
-Value: an id is kebab-case, such as `retry-delay`. Files and units share one space of ids, and each is declared once across the tests; so is each question id. A unit's first question takes the unit's id unless it gives `id`, and the next ones `<id>.2`, `<id>.3`.
+Value: an id is kebab-case, such as `retry-delay`. Files and units share one space of ids, and each is declared once across the tests; so is each question id. A unit's first question takes the unit's id unless it gives `id`, and the next ones `<id>.2` and `<id>.3`.
 
 ### fact: body-asserts
 
@@ -93,6 +93,14 @@ Value: `unit(id, spec)` with no body declares a unit no test proves. The build w
 When: the body of a fact observes the value it states.
 
 Value: `u.value(text)` in a body sets the value of a fact from what the body observed, in place of `value` in the spec. A rule or a decision refuses it.
+
+### rule: sentence-from-observation
+
+When: a test writes the sentence of a fact about what the code does.
+
+Do: build it from what the body observed, with `u.value()`, and assert only what holds whatever the code does: there is then no expected value to edit, so a change to the behaviour changes the built line, the proof reports it with its test, and `proof --write` writes what the code does now.
+
+Even when: the body asserts the value already: a sentence typed above an assertion stays when the assertion is edited to match a new behaviour, and the tests, the type-check and the proof all pass with the skill false.
 
 ### fact: u-example
 

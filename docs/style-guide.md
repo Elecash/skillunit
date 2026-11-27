@@ -82,10 +82,55 @@ body that goes through every case, or a sentence that names the cases the body t
 of tinyfetch's `base-url` now tries the four forms: a base with and without `/` at its end, and
 a path with and without `/` at its start.
 
-**A sentence can be built from what the body observes.** Which statuses are retried, what each
-method resolves to: the body tries each case and builds the sentence with `u.value()`, so a
-change to the code changes the sentence. The proof then fails on the difference, and someone
-reads it in the pull request.
+**A sentence about what the code does is built from what the body observed**, with
+`u.value()`. A sentence typed in `value` above an assertion is the weak form. When the behaviour
+changes, the test goes red, someone edits the assertion to match, and the sentence stays: the
+tests, the type-check and the proof all pass, and the skill is false. In a round of trials, 7 of
+12 changes that left a skill wrong ended with everything green, and in each the false text was
+typed in a test.
+
+tinyfetch's `timeout-precedence` was the weak form:
+
+```ts
+unit(
+  'timeout-precedence',
+  {
+    when: `a client or a request sets \`${opt('timeout')}\`.`,
+    value: `a request's own \`${opt('timeout')}\` wins over the \`${key<ClientOptions>('timeout')}\` of its client, and the client's over the default.`,
+  },
+  async () => {
+    // … three requests that time out …
+    expect(await outcomes([…])).toEqual([DEFAULT_TIMEOUT / 4, DEFAULT_TIMEOUT / 2, DEFAULT_TIMEOUT]);
+  },
+);
+```
+
+With the client's `timeout` made to win, the test failed, and the fix that made it pass changed
+`DEFAULT_TIMEOUT / 2` to `DEFAULT_TIMEOUT / 4` and left the sentence. Built from the observation,
+there is no expected value to edit:
+
+```ts
+async (u) => {
+  // … three requests that time out: one that sets `timeout` on a client that sets one, one that
+  // sets none, and one on a client that sets none either …
+  const [both, client, neither] = (await Promise.all(pending)).map((e) => (e as TimeoutError).timeout);
+  const source = (ms) => ({ [ofRequest]: 'its own `timeout`', [ofClient]: 'the `timeout` of its client', [DEFAULT_TIMEOUT]: 'the default' })[ms];
+  expect([both, client, neither].every((ms) => [ofRequest, ofClient, DEFAULT_TIMEOUT].includes(ms))).toBe(true);
+  u.value(`a request that sets \`timeout\`, on a client that sets one too, waits for ${source(both)}; …`);
+},
+```
+
+The body asserts only what holds whatever the code does: each request timed out after one of the
+three times. The same change now passes the tests, and the proof fails on the built line, with
+the test it comes from. `skillunit proof --write` writes "…waits for the `timeout` of its
+client", which is what the code does.
+
+It does not reach the words around the observed value: "waits for" and "on a client that sets
+one too" are typed. Where no value can carry a claim, put what the body saw in the sentence or in
+an example, so the skill at least shows what happened. tinyfetch's `what-is-retried` lists in an
+example the statuses of a case that are not all retried alike, and `base-url` lists the URLs it
+sent when they are not the one it expects. A number the body observes must still be in `values`,
+so a sentence names the setting that won, in words, rather than the number it gave.
 
 **An example is a region with code of the library only.** The lines between `#region
 skill:<id>` and `#endregion` are copied into the skill as they are. Set up the fake server
@@ -189,14 +234,21 @@ position, so renaming a parameter changes nothing an agent writes.
 
 A unit is done when a change to the code that makes its sentence false turns something red with
 no test edited. For each unit, make the smallest such change, run the tests and
-`skillunit check --dry-run`, write down what went red, and undo the change. A unit where nothing
-goes red is not done.
+`skillunit check --dry-run`, and write down what went red. Then run `skillunit proof --write`,
+write down whether the skill is true, and undo the change. A unit where nothing goes red is not
+done.
 
-| Unit | Change | What went red |
-| --- | --- | --- |
-| `retry-delay` | the first new attempt waits the second wait | the test of `retry-delay` |
-| `headers` | the client's headers win over the request's | the test of `headers` |
-| `exports` | one name more exported | the text of `exports`, in the proof |
+| Unit | Change | What went red | After `proof --write` |
+| --- | --- | --- | --- |
+| `retry-delay` | the first new attempt waits the second wait | the text of `retry-delay` | true: "waits 2x `retryDelay`" |
+| `headers` | the client's headers win over the request's | the text of `headers` | true: "…then its own, then the `headers` of its client" |
+| `send-a-body` | a string body is sent as it is | the test of `send-a-body` | still red: a rule, whose test is edited by hand |
+
+The last column tells the two kinds of red apart. A red test is fixed by editing the test, and a
+hurried edit of the assertion leaves the sentence false. A red text is fixed by `--write`, which
+writes what the code does now. On tinyfetch, 23 of 28 such changes end with a true skill after
+`--write`. Of the 5 left, 4 fail the test of a rule, whose body checks the fact the advice rests
+on, and 1 adds a key to `RequestOptions`, which fails the type-check on purpose.
 
 The table finds what review misses. In SkillUnit's own skill, two bodies passed and proved
 nothing until their change turned nothing red: one tried a tie under the threshold, which fails

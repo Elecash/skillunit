@@ -18,13 +18,13 @@ Value: the request waits 10 seconds (`timeout: 10_000`), whatever its method, th
 
 When: a client or a request sets `timeout`.
 
-Value: a request's own `timeout` wins over the `timeout` of its client, and the client's over the default.
+Value: a request that sets `timeout`, on a client that sets one too, waits for its own `timeout`; a request that sets none waits for the `timeout` of its client, and one whose client sets none either, for the default.
 
 ### fact: timeout-off
 
 When: a request sets `timeout` to turn it off.
 
-Value: `timeout: 0` turns the timeout off, and so does a negative `timeout`: tinyfetch sets no timer for the request, which then waits for the server as long as it takes.
+Value: `timeout: 0` and a negative `timeout` turn the timeout off: tinyfetch sets no timer for the request, which then waits for the server as long as it takes.
 
 ### fact: timeout-per-attempt
 
@@ -36,7 +36,7 @@ Value: `timeout` is the time of one attempt, and each attempt gets its own: with
 
 When: the code passes `signal` to a request, and aborts it.
 
-Value: the request rejects with the reason given to `abort()`, or with an `AbortError` when `abort()` is given none, whether the signal was aborted before the request, during an attempt, or while the request waits before a new attempt; no attempt starts after the abort.
+Value: the request rejects with the reason given to `abort()`, or with an `AbortError` when `abort()` is given none, whether the signal was aborted before the request, during an attempt or while the request waits before a new attempt; no attempt starts after the abort.
 
 ```ts
 const controller = new AbortController();

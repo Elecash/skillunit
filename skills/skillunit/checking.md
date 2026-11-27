@@ -86,7 +86,7 @@ Value: `--reporter` takes `table`, `json`, `junit` and `github`; `table` is the 
 
 When: the proof reports a line of the skill.
 
-Value: each finding about a line of the skill names the test that declares it: in `origin`, in the JSON report, and after the finding in the table.
+Value: each finding about a line of the skill names the test that declares it: in `origin`, in the JSON report and after the finding in the table.
 
 ### rule: when-a-test-fails
 

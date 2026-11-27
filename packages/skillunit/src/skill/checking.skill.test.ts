@@ -1,6 +1,6 @@
 // The file `checking.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { spawnSync } from 'node:child_process';
-import { cpSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { and, code, setup, unit } from 'skillunit/vitest';
@@ -77,23 +77,26 @@ describe('checking.md', () => {
     'proof-compares',
     {
       when: `\`${command('proof')}\` runs.`,
-      value: `without \`${write}\`, \`${command('proof')}\` compares the build with the skill folder, and reports each block of a file that differs and each file the folder lacks. With \`${write}\`, it writes them to the folder instead.`,
     },
-    async () => {
+    async (u) => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('wait-before-retry', { when: 'a request is sent again.', do: 'wait before each new attempt.' });
       });
       const missing = p.proof();
-      expect(missing.files).toEqual([{ file: 'SKILL.md', state: 'missing' }]);
-      expect(missing.problems.map((x) => x.message)).toEqual([expect.stringContaining('the skill folder has no `SKILL.md`')]);
-      expect(p.proof({ write: true }).files).toEqual([{ file: 'SKILL.md', state: 'written' }]);
+      const lacks = missing.files[0]?.state === 'missing' && missing.problems.some((x) => x.message.includes('the skill folder has no `SKILL.md`'));
+      p.proof({ write: true });
+      const wroteMissing = existsSync(join(p.skill, 'SKILL.md'));
+      expect(wroteMissing || !lacks, 'the file the folder lacks is there after a write, or was never reported').toBe(true);
+      // Two blocks edited by hand, apart: the title and a line of the unit.
       p.write('skill/SKILL.md', p.read('skill/SKILL.md').replace('# Demo', '# A demo').replace('wait before', 'wait just before'));
       const differs = p.proof();
-      expect(differs.files).toEqual([{ file: 'SKILL.md', state: 'differs' }]);
-      expect(differs.problems).toHaveLength(2);
-      expect(p.proof({ write: true }).files).toEqual([{ file: 'SKILL.md', state: 'written' }]);
-      expect(p.proof().ok).toBe(true);
+      const blocks = differs.problems.length === 2 ? 'each block of a file that differs' : 'a file that differs, not block by block';
+      p.proof({ write: true });
+      const wrote = p.proof().ok;
+      u.value(
+        `without \`${write}\`, \`${command('proof')}\` compares the build with the skill folder, and reports ${blocks}${lacks ? ' and each file the folder lacks' : ''}. With \`${write}\`, it ${wrote && wroteMissing ? 'writes them to the folder instead' : 'does not write them all'}.`,
+      );
     },
   );
 
@@ -101,15 +104,18 @@ describe('checking.md', () => {
     'stale-unit',
     {
       when: 'a test that declares a unit is skipped or deleted.',
-      value: `a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. \`${write}\` takes it out of the skill after a run that passed.`,
     },
-    async () => {
+    async (u) => {
       const p = await built();
+      expect(p.read('skill/retries.md')).toContain('wait-before-retry');
       rmSync(join(p.root, 'tmp/skill-units/3-wait-before-retry.json'));
       const stale = p.proof();
-      expect(stale.problems).toEqual([expect.objectContaining({ file: 'retries.md', unit: 'wait-before-retry', message: expect.stringContaining('no test declares it: its test was skipped or deleted, or did not run') })]);
+      const named = stale.problems.some((x) => x.unit === 'wait-before-retry' && x.message.includes('no test declares it: its test was skipped or deleted, or did not run'));
       p.proof({ write: true });
-      expect(p.read('skill/retries.md')).not.toContain('wait-before-retry');
+      const out = !p.read('skill/retries.md').includes('wait-before-retry');
+      u.value(
+        `a unit the skill folder has and no test declares is ${named ? 'reported: its test was skipped or deleted, or did not run' : 'not reported'}. \`${write}\` ${out ? 'takes it out of the skill' : 'leaves it in the skill'} after a run that passed.`,
+      );
     },
   );
 
@@ -182,14 +188,16 @@ describe('checking.md', () => {
     'extra-file',
     {
       when: 'the skill folder has a Markdown file of its own.',
-      value: `a Markdown file in the skill folder that no \`${setup.name}()\` declares is reported, and \`${write}\` leaves it there.`,
     },
-    async () => {
+    async (u) => {
       const p = await built();
       p.write('skill/notes.md', '# Notes\n');
-      expect(p.proof().problems.map((x) => [x.file, x.message])).toEqual([['notes.md', expect.stringContaining('no `setup()` declares `notes.md`')]]);
+      const found = p.proof().problems;
+      expect(found.every((x) => x.file === 'notes.md'), 'the one file is all it can report').toBe(true);
+      const reported = found.some((x) => x.message.includes('no `setup()` declares `notes.md`'));
       p.proof({ write: true });
-      expect(p.read('skill/notes.md')).toBe('# Notes\n');
+      const left = existsSync(join(p.skill, 'notes.md')) && p.read('skill/notes.md') === '# Notes\n';
+      u.value(`a Markdown file in the skill folder that no \`${setup.name}()\` declares is ${reported ? 'reported' : 'not reported'}, and \`${write}\` ${left ? 'leaves it there' : 'does not leave it as it was'}.`);
     },
   );
 
@@ -197,16 +205,18 @@ describe('checking.md', () => {
     'no-run',
     {
       when: `a command runs with \`${option('proof', '--no-run')}\`.`,
-      value: `with \`${option('proof', '--no-run')}\`, a command runs no \`proof.run\`, and builds from the records the last run left in \`proof.units\`.`,
     },
-    async () => {
+    async (u) => {
       const p = await built();
+      // A run that fails and would empty the records: with `--no-run`, neither happens.
       p.write(CONFIG_FILE, 'skill: ./skill\nproof:\n  run: "exit 1"\n');
       const result = p.proof({ noRun: true });
-      expect(result.ok).toBe(true);
-      expect(result.run).toEqual({ skipped: 'no-run' });
-      expect(result.summary.units).toBe(2);
-      expect(p.proof().ok).toBe(false);
+      expect(p.proof().ok, 'the run fails when it runs').toBe(false);
+      const ran = !('skipped' in result.run);
+      const fromRecords = result.ok && result.summary.units === 2;
+      u.value(
+        `with \`${option('proof', '--no-run')}\`, a command ${ran ? 'still runs' : 'runs no'} \`proof.run\`, and ${fromRecords ? 'builds from the records the last run left' : 'does not build from the records the last run left'} in \`proof.units\`.`,
+      );
     },
   );
 
@@ -214,16 +224,18 @@ describe('checking.md', () => {
     'dry-run',
     {
       when: `\`${command('test')}\` or \`${command('check')}\` runs with \`${dryRun}\`.`,
-      value: `with \`${dryRun}\`, nothing is sent to the decision model: the command checks that each question can be asked, that its headings are in its file, and that each request fits the model's limits, and the report gives an estimate of each request's tokens.`,
     },
-    async () => {
-      const model = stub(() => new Error('nothing should be sent'));
+    async (u) => {
+      const model = stub(() => ({}));
       const config = skillProject();
       const ran = await runAll(config, model.model, collected(question('retry-get'), question('missing-heading', { sections: ['Timeouts'] })), { dryRun: true });
-      expect(model.calls).toHaveLength(0);
-      expect(ran.requests[0]).toMatchObject({ verdicts: [{ id: 'retry-get', answer: '(dry run)' }] });
-      expect(ran.requests[0]!.estimatedTokens).toBeGreaterThan(0);
-      expect(ran.requests[1]!.error).toContain('no heading "Timeouts"');
+      expect(ran.requests).toHaveLength(2);
+      const sent = model.calls.length > 0;
+      const headings = ran.requests[1]!.error?.includes('no heading "Timeouts"') === true;
+      const estimate = (ran.requests[0]!.estimatedTokens ?? 0) > 0;
+      u.value(
+        `with \`${dryRun}\`, ${sent ? 'the questions are still sent to the decision model' : 'nothing is sent to the decision model'}: the command checks that each question can be asked, ${headings ? 'that its headings are in its file' : 'but not that its headings are in its file'}, and that each request fits the model's limits${estimate ? ", and the report gives an estimate of each request's tokens" : ''}.`,
+      );
     },
   );
 
@@ -231,16 +243,20 @@ describe('checking.md', () => {
     'skill-copy',
     {
       when: 'a command should read another folder than the skill of the settings, such as a copy.',
-      value: `\`${option('check', '--skill')} <dir>\` makes a command read that folder instead of \`skill\` in the settings: \`${command('test')} ${option('check', '--skill')} <copy>\` asks the questions about the copy, and \`${command('proof')} ${option('check', '--skill')} <copy>\` compares the build with it.`,
     },
-    async () => {
+    async (u) => {
       const p = await built();
       cpSync(p.skill, join(p.root, 'copy'), { recursive: true });
       p.write('copy/retries.md', `${p.read('copy/retries.md')}\nA line only the copy has.\n`);
       expect(report(await cli(p.root, [command('proof'), '--json'])).ok).toBe(true);
-      expect(report(await cli(p.root, [command('proof'), option('proof', '--skill'), 'copy', '--json'])).ok).toBe(false);
+      const compares = !report(await cli(p.root, [command('proof'), option('proof', '--skill'), 'copy', '--json'])).ok;
       const chars = async (...args: string[]) => report(await cli(p.root, [command('test'), dryRun, ...args, '--json'])).test!.requests.find((r) => r.file === 'retries.md')!.chars;
-      expect(await chars(option('test', '--skill'), 'copy')).toBeGreaterThan(await chars());
+      const asks = (await chars(option('test', '--skill'), 'copy')) > (await chars());
+      u.value(
+        compares && asks
+          ? `\`${option('check', '--skill')} <dir>\` makes a command read that folder instead of \`skill\` in the settings: \`${command('test')} ${option('check', '--skill')} <copy>\` asks the questions about the copy, and \`${command('proof')} ${option('check', '--skill')} <copy>\` compares the build with it.`
+          : `\`${option('check', '--skill')} <dir>\` does not make every command read that folder: \`${command('test')}\` ${asks ? 'asks about the copy' : 'still asks about the skill of the settings'}, and \`${command('proof')}\` ${compares ? 'compares the build with the copy' : 'still compares the build with the skill of the settings'}.`,
+      );
     },
   );
 
@@ -329,16 +345,18 @@ describe('checking.md', () => {
     'origin',
     {
       when: 'the proof reports a line of the skill.',
-      value: 'each finding about a line of the skill names the test that declares it: in `origin`, in the JSON report, and after the finding in the table.',
     },
-    async () => {
+    async (u) => {
       const p = await built();
       edit(p);
       const ran = report(await cli(p.root, [command('proof'), option('proof', '--json')]));
       const problem = ran.proof?.configured ? ran.proof.problems[0] : undefined;
+      expect(problem, 'the edit is reported').toBeDefined();
       const unitLine = JSON.parse(p.read('tmp/skill-units/3-wait-before-retry.json')).line;
-      expect(problem?.origin).toEqual({ kind: 'test', file: '../skill.test.ts', line: unitLine, unit: 'wait-before-retry' });
-      expect((await cli(p.root, [command('proof')])).stdout).toContain(`skill.test.ts:${unitLine}`);
+      const json = JSON.stringify(problem?.origin) === JSON.stringify({ kind: 'test', file: '../skill.test.ts', line: unitLine, unit: 'wait-before-retry' });
+      const table = (await cli(p.root, [command('proof')])).stdout.includes(`skill.test.ts:${unitLine}`);
+      const where = [json ? 'in `origin`, in the JSON report' : '', table ? 'after the finding in the table' : ''].filter(Boolean);
+      u.value(where.length ? `each finding about a line of the skill names the test that declares it: ${and(where)}.` : 'a finding about a line of the skill does not name the test that declares it.');
     },
   );
 

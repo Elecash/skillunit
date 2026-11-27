@@ -1,7 +1,7 @@
 // The file `setup.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { and, code, key, setup, unit } from 'skillunit/vitest';
+import { and, code, key, or, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { INIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE, DEFAULT_PROOF_UNITS, DEFAULT_THRESHOLDS, FORMAT_FILE, loadConfig, PROOF_KEYS, SETTINGS_KEYS, type ModelConfig, type Thresholds } from '../config.js';
@@ -134,21 +134,20 @@ describe('setup.md', () => {
     'proof-run-must-pass',
     {
       when: `\`${proofKey('run')}\` runs tests that fail.`,
-      value: `the proof fails when \`${proofKey('run')}\` exits with anything but 0, even when its tests left every record the build needs.`,
       values: { exit: 0 },
     },
-    async () => {
+    async (u) => {
       const copy = "node -e \"require('fs').cpSync('saved', 'tmp/skill-units', { recursive: true })\"";
       const p = await withQuestion();
       p.write('saved/.keep', '');
       for (const name of ['0-demo.json', '1-wait-before-retry.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
       p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "${copy.replace(/"/g, '\\"')} && exit 1"\n`);
       const failed = p.proof();
-      expect(failed.ok).toBe(false);
-      expect(failed.files).toEqual([{ file: 'SKILL.md', state: 'same' }]);
-      expect(failed.problems.map((x) => x.message)).toEqual([expect.stringContaining('exited with 1')]);
+      expect(failed.files, 'the run left every record: the file is the same').toEqual([{ file: 'SKILL.md', state: 'same' }]);
       p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "${copy.replace(/"/g, '\\"')}"\n`);
-      expect(p.proof().ok).toBe(true);
+      expect(p.proof().ok, 'with a run that exits with 0, the proof passes').toBe(true);
+      const fails = !failed.ok && failed.problems.some((x) => x.message.includes('exited with 1'));
+      u.value(`the proof ${fails ? 'fails' : 'passes'} when \`${proofKey('run')}\` exits with anything but 0${fails ? ', even when its tests left every record the build needs' : ', as long as its tests left every record the build needs'}.`);
     },
   );
 
@@ -171,32 +170,33 @@ describe('setup.md', () => {
     'api-keys',
     {
       when: 'a command that asks the decision model needs its key.',
-      value: `\`${command('test')}\` and \`${command('check')}\` read the key from the environment, or from a \`.env\` file next to \`${CONFIG_FILE}\` or in a folder above it, up to the root of the git repository; with no git repository above it, only the \`.env\` next to it. A variable set in the environment wins over a file, and a closer file wins over a farther one. With \`${checkOption('--dry-run')}\`, they need no key.`,
     },
-    async () => {
+    async (u) => {
       const variable = PROVIDERS.typesafe.env[0]!;
       const { repo } = envLayout();
       const env: NodeJS.ProcessEnv = {};
-      expect(loadEnv(join(repo, 'apps', 'app'), env)).toEqual([join(repo, 'apps', 'app', '.env'), join(repo, '.env')]);
-      expect(env[variable]).toBe('app-key');
-      expect(env.OUTSIDE).toBeUndefined();
+      const read = loadEnv(join(repo, 'apps', 'app'), env);
+      expect(read.length, 'a file is read').toBeGreaterThan(0);
+      const upToRepo = read.join() === [join(repo, 'apps', 'app', '.env'), join(repo, '.env')].join() && env.OUTSIDE === undefined;
+      const closer = env[variable] === 'app-key';
       const other: NodeJS.ProcessEnv = {};
       loadEnv(join(repo, 'apps', 'other'), other);
-      expect(other[variable]).toBe('root-key');
+      const fromRoot = other[variable] === 'root-key';
       // No git repository above: the `.env` of the folder above is not read.
       const lone = scratch('no-git');
       mkdirSync(join(lone, 'app'), { recursive: true });
       writeFileSync(join(lone, '.env'), 'ABOVE=1\n');
       writeFileSync(join(lone, 'app', '.env'), `${variable}=lone-key\n`);
       const alone: NodeJS.ProcessEnv = {};
-      expect(loadEnv(join(lone, 'app'), alone)).toEqual([join(lone, 'app', '.env')]);
-      expect(alone.ABOVE).toBeUndefined();
+      const onlyHere = loadEnv(join(lone, 'app'), alone).join() === join(lone, 'app', '.env') && alone.ABOVE === undefined;
       const set: NodeJS.ProcessEnv = { [variable]: 'set-key' };
       loadEnv(join(repo, 'apps', 'app'), set);
-      expect(set[variable]).toBe('set-key');
+      const environmentWins = set[variable] === 'set-key';
       const p = await withQuestion();
-      expect((await cli(p.root, ['check'])).status).toBe(2);
-      expect((await cli(p.root, ['check', checkOption('--dry-run')])).status).toBe(0);
+      const [needs, dry] = [(await cli(p.root, ['check'])).status, (await cli(p.root, ['check', checkOption('--dry-run')])).status];
+      u.value(
+        `\`${command('test')}\` and \`${command('check')}\` read the key from the environment, or from a \`.env\` file next to \`${CONFIG_FILE}\` or in a folder above it, ${upToRepo && fromRoot ? 'up to the root of the git repository' : 'not only up to the root of the git repository'}; with no git repository above it, ${onlyHere ? 'only the `.env` next to it' : 'the `.env` files above it too'}. ${environmentWins ? 'A variable set in the environment wins over a file' : 'A file wins over a variable set in the environment'}, and ${closer ? 'a closer file wins over a farther one' : 'a farther file wins over a closer one'}. With \`${checkOption('--dry-run')}\`, they ${dry === 0 && needs === 2 ? 'need no key' : 'need a key all the same'}.`,
+      );
     },
   );
 
@@ -204,19 +204,25 @@ describe('setup.md', () => {
     'own-model',
     {
       when: 'the decision model is not one SkillUnit ships.',
-      value: `\`${setting('model')}\` can be the path of a module, starting with \`./\` or \`/\`. The module exports, as its default export or as \`model\`, an object with \`${key<DecisionModel>('id')}\`, \`${key<DecisionModel>('limits')}\` and \`${key<DecisionModel>('decide')}\`, or a function that returns one.`,
     },
-    async () => {
+    async (u) => {
       const dir = scratch('model');
       const model = "{ id: 'mine', limits: { perQuestionTokens: 1000, perRequestTokens: 2000 }, async decide() { return { answers: {}, usage: { inputTokens: 0, outputTokens: 0 }, model: 'mine-1' }; } }";
       const modules = { 'default.mjs': `export default ${model};`, 'named.mjs': `export const model = ${model};`, 'function.mjs': `export default () => (${model});`, 'none.mjs': 'export const other = 1;' };
       for (const [name, text] of Object.entries(modules)) writeFileSync(join(dir, name), text);
       writeFileSync(join(dir, CONFIG_FILE), 'model: ./default.mjs\n');
       expect(loadConfig(join(dir, CONFIG_FILE)).model).toEqual({ provider: 'module', module: join(dir, 'default.mjs') });
-      for (const name of ['default.mjs', 'named.mjs', 'function.mjs']) expect((await loadModel({ provider: 'module', module: join(dir, name) })).id).toBe('mine');
+      const loads = async (name: string) => (await loadModel({ provider: 'module', module: join(dir, name) }).catch(() => undefined))?.id === 'mine';
+      const ways: string[] = [];
+      if (await loads('default.mjs')) ways.push('as its default export');
+      if (await loads('named.mjs')) ways.push('as `model`');
+      const fn = await loads('function.mjs');
       await expect(loadModel({ provider: 'module', module: join(dir, 'none.mjs') })).rejects.toBeInstanceOf(ModelError);
       writeFileSync(join(dir, CONFIG_FILE), 'model: default.mjs\n');
       expect(() => loadConfig(join(dir, CONFIG_FILE))).toThrow('starting with `./` or `/`');
+      u.value(
+        `\`${setting('model')}\` can be the path of a module, starting with \`./\` or \`/\`. The module exports, ${or(ways)}, an object with \`${key<DecisionModel>('id')}\`, \`${key<DecisionModel>('limits')}\` and \`${key<DecisionModel>('decide')}\`${fn ? ', or a function that returns one' : ''}.`,
+      );
     },
   );
 

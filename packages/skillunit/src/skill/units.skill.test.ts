@@ -1,6 +1,6 @@
 // The file `units.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -13,7 +13,7 @@ import { createUnit } from '../unit/create.js';
 import type * as UnitEntry from '../unit/index.js';
 import { suggestedRun } from '../init.js';
 import { vitestOptions } from '../unit/vitest-options.js';
-import { cleanUp, cli, command, entry, memoryWriter, option, PACKAGE, project, report, runner, scratch } from './helpers.js';
+import { cleanUp, cli, command, entry, memoryWriter, option, PACKAGE, project, report, runner, scratch, TEST_FILE } from './helpers.js';
 import { DEFAULT_RETRY_DELAY, retryWaits } from './retry.js';
 
 afterEach(cleanUp);
@@ -124,9 +124,8 @@ describe('units.md', () => {
     'units-belong',
     {
       when: `a test file declares units and questions after a \`${setup.name}()\`.`,
-      value: `each unit and question belongs to the file of the last \`${setup.name}()\` before it in its test file, in the order they are declared. A unit with no \`${setup.name}()\` before it fails the build.`,
     },
-    async () => {
+    async (u) => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('first-rule', { when: 'one.', do: 'a.' });
@@ -135,14 +134,19 @@ describe('units.md', () => {
         r.unit('third-rule', { when: 'three.', do: 'c.' });
       });
       p.proof({ write: true });
-      const headings = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### '));
-      expect(headings('skill/SKILL.md')).toEqual(['### rule: first-rule', '### rule: second-rule']);
-      expect(headings('skill/retries.md')).toEqual(['### rule: third-rule']);
+      const headings = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### ')).sort().join();
+      const order = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### ')).join();
+      const belongs = headings('skill/SKILL.md') === '### rule: first-rule,### rule: second-rule' && headings('skill/retries.md') === '### rule: third-rule';
+      expect(p.read('skill/SKILL.md'), 'the units are built').toContain('first-rule');
+      const inOrder = order('skill/SKILL.md') === '### rule: first-rule,### rule: second-rule';
       const lost = await project((r) => {
         r.unit('lost-rule', { when: 'one.', do: 'a.' });
         r.setup('demo', INDEX);
       });
-      expect(lost.proof({ write: true }).problems.map((x) => x.message)).toEqual([expect.stringContaining('the unit `lost-rule` belongs to no file of the skill')]);
+      const fails = lost.proof({ write: true }).problems.some((x) => x.message.includes('the unit `lost-rule` belongs to no file of the skill'));
+      u.value(
+        `each unit and question belongs to ${belongs ? `the file of the last \`${setup.name}()\` before it in its test file` : `another file than the one of the last \`${setup.name}()\` before it`}, ${inOrder ? 'in the order they are declared' : 'not in the order they are declared'}. A unit with no \`${setup.name}()\` before it ${fails ? 'fails the build' : 'does not fail the build'}.`,
+      );
     },
   );
 
@@ -273,25 +277,29 @@ describe('units.md', () => {
     'ids',
     {
       when: 'a test gives the id of a file, a unit or a question.',
-      value: `an id is kebab-case, such as \`retry-delay\`. Files and units share one space of ids, and each is declared once across the tests; so is each question id. A unit's first question takes the unit's id unless it gives \`id\`, and the next ones \`<id>.2\`, \`<id>.3\`.`,
     },
-    async () => {
+    async (u) => {
       const first = async (declare: (r: ReturnType<typeof runner>) => void) => {
         const r = runner();
         declare(r);
         return (await r.run()).find((m) => m !== 'ok');
       };
-      expect(await first((r) => r.unit('Retry_Delay', { when: 'x.', do: 'y.' }))).toContain('the id must be kebab-case');
-      expect(await first((r) => (r.setup('retries', INDEX), r.unit('retries', { when: 'x.', do: 'y.' })))).toContain('files of the skill and units share one space of ids');
+      const kebab = (await first((r) => r.unit('Retry_Delay', { when: 'x.', do: 'y.' })))?.includes('the id must be kebab-case') === true;
+      const shared = (await first((r) => (r.setup('retries', INDEX), r.unit('retries', { when: 'x.', do: 'y.' }))))?.includes('files of the skill and units share one space of ids') === true;
       const ask = { scenario: 's.', question: 'q?', expect: 'yes' };
-      expect(await first((r) => (r.unit('a', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }), r.unit('b', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } })))).toContain('has the id of a question');
-      expect(checkQuestions('retry-delay', [ask, ask, ask]).map((q) => q.id)).toEqual(['retry-delay', 'retry-delay.2', 'retry-delay.3']);
+      const questionOnce = (await first((r) => (r.unit('a', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }), r.unit('b', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }))))?.includes('has the id of a question') === true;
+      const ids = checkQuestions('retry-delay', [ask, ask, ask]).map((q) => q.id);
+      expect(ids).toHaveLength(3);
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('twice', { when: 'x.', do: 'y.' });
         r.unit('twice', { when: 'x.', do: 'z.' });
       });
-      expect(p.proof({ write: true }).problems.map((x) => x.message)).toEqual([expect.stringContaining('the unit `twice` is also declared at')]);
+      const once = p.proof({ write: true }).problems.some((x) => x.message.includes('the unit `twice` is also declared at'));
+      const space = shared ? 'Files and units share one space of ids' : 'A file and a unit may have the same id';
+      u.value(
+        `an id ${kebab ? 'is' : 'need not be'} kebab-case, such as \`retry-delay\`. ${space}, and each is ${once ? 'declared once' : 'not always declared once'} across the tests; so is each question id${questionOnce ? '' : ', which is not checked'}. A unit's first question takes ${ids[0] === 'retry-delay' ? "the unit's id" : `\`${ids[0]}\``} unless it gives \`id\`, and the next ones ${and(code(ids.slice(1).map((id) => id.replace('retry-delay', '<id>'))))}.`,
+      );
     },
   );
 
@@ -354,6 +362,52 @@ describe('units.md', () => {
       r.unit('a-rule', { when: 'x.', do: 'y.' }, (u) => u.value('observed.'));
       expect((await r.run())[1]).toContain('sets the Value of a fact, and this is a rule');
       expect(r.records[0]).toMatchObject({ id: 'observed', value: 'observed.' });
+    },
+  );
+
+  unit(
+    'sentence-from-observation',
+    {
+      when: 'a test writes the sentence of a fact about what the code does.',
+      do: `build it from what the body observed, with \`u.${ctx('value')}()\`, and assert only what holds whatever the code does: there is then no expected value to edit, so a change to the behaviour changes the built line, the proof reports it with its test, and \`${command('proof')} ${option('proof', '--write')}\` writes what the code does now.`,
+      evenWhen: 'the body asserts the value already: a sentence typed above an assertion stays when the assertion is edited to match a new behaviour, and the tests, the type-check and the proof all pass with the skill false.',
+    },
+    async () => {
+      // The code is `winner`, which a change to it turns from the request's own timeout to the client's.
+      const typed = (winner: string, expected: string) => (r: ReturnType<typeof runner>) => {
+        r.setup('demo', INDEX);
+        r.unit('timeout-precedence', { when: 'a request sets a timeout.', value: "a request's own timeout wins over its client's." }, () => expect(winner).toBe(expected));
+      };
+      const observed = (winner: string) => (r: ReturnType<typeof runner>) => {
+        r.setup('demo', INDEX);
+        r.unit('timeout-precedence', { when: 'a request sets a timeout.' }, (u) => {
+          expect(['its own', "its client's"]).toContain(winner);
+          u.value(`a request waits for ${winner} timeout.`);
+        });
+      };
+      /** `p` with the records a run of `declare` leaves, as when the tests run again after a change. */
+      const rerun = async (p: Awaited<ReturnType<typeof project>>, declare: (r: ReturnType<typeof runner>) => void) => {
+        const next = await project(declare);
+        rmSync(join(p.root, 'tmp/skill-units'), { recursive: true, force: true });
+        cpSync(join(next.root, 'tmp/skill-units'), join(p.root, 'tmp/skill-units'), { recursive: true });
+      };
+      // Typed: the change fails the test; the assertion edited to match passes everything, and the skill is false.
+      const t = await project(typed('its own', 'its own'));
+      t.proof({ write: true });
+      await rerun(t, typed("its client's", 'its own'));
+      expect(t.proof().units[0]).toMatchObject({ state: 'failed' });
+      await rerun(t, typed("its client's", "its client's"));
+      expect(t.proof().ok).toBe(true);
+      expect(t.read('skill/SKILL.md')).toContain("a request's own timeout wins");
+      // Observed: the change passes the test and fails the proof on the line, which `--write` makes true.
+      const o = await project(observed('its own'));
+      o.proof({ write: true });
+      await rerun(o, observed("its client's"));
+      const found = o.proof();
+      expect(found.ok).toBe(false);
+      expect(found.problems[0]).toMatchObject({ unit: 'timeout-precedence', origin: { kind: 'test', file: `../${TEST_FILE}` } });
+      o.proof({ write: true });
+      expect(o.read('skill/SKILL.md')).toContain("a request waits for its client's timeout.");
     },
   );
 
@@ -440,11 +494,11 @@ describe('units.md', () => {
     'number-rule',
     {
       when: 'the text of a unit with a body has a number.',
-      value: `a number in the text of a unit with a body must be one of its \`${spec('values')}\`, named in the spec, or its test fails; a unit with no body is not checked. A number is digits that do not follow a letter, a digit, \`_\` or \`.\`: \`utf8\` and \`h2\` have none, and \`2x\` has one.`,
       values: { example: '2x' },
     },
-    async () => {
-      expect([numbersIn('utf8'), numbersIn('h2'), numbersIn('2x'), numbersIn('v1.5')]).toEqual([[], [], ['2'], []]);
+    async (u) => {
+      const none = ['utf8', 'h2', 'v1.5'].filter((w) => numbersIn(w).length === 0);
+      const some = ['utf8', 'h2', '2x'].filter((w) => numbersIn(w).length > 0);
       expect(() => checkNumbers('a', { when: 'x.', value: `waits ${DEFAULT_RETRY_DELAY} ms.` })).toThrow(`the number ${DEFAULT_RETRY_DELAY} in \`Value\` is none of the unit's \`values\``);
       expect(() => checkNumbers('a', { when: 'x.', value: `waits ${DEFAULT_RETRY_DELAY} ms.`, values: { delay: DEFAULT_RETRY_DELAY } })).not.toThrow();
       const r = runner();
@@ -453,6 +507,9 @@ describe('units.md', () => {
       const [typed, advice] = await r.run();
       expect(typed).toContain(`the number ${DEFAULT_RETRY_DELAY}`);
       expect(advice).toBe('ok');
+      u.value(
+        `a number in the text of a unit with a body must be one of its \`${spec('values')}\`, named in the spec, or its test fails; a unit with no body is not checked. A number is digits that do not follow a letter, a digit, \`_\` or \`.\`: ${[...(none.filter((w) => w !== 'v1.5').length ? [`${and(code(none.filter((w) => w !== 'v1.5')))} ${none.length > 2 ? 'have' : 'has'} none`] : []), `${and(code(some))} ${some.length > 1 ? 'have' : 'has'} one`].join(', and ')}.`,
+      );
     },
   );
 

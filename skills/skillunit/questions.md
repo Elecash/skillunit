@@ -38,7 +38,7 @@ Value: the model reads the built file that holds the question's unit, or the fil
 
 When: a question is missing from the verdicts.
 
-Value: a question is not asked, and the report says why, when the skill folder does not have its unit yet (run `proof --write`), when the test of its unit failed, or when its file is not in the skill folder.
+Value: a question is not asked, and the report says why, when the skill folder does not have its unit yet (run `proof --write`), when the test of its unit failed or when its file is not in the skill folder.
 
 ### fact: request-limits
 
