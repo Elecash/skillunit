@@ -59,44 +59,37 @@ describe('features/errors.md', () => {
       // Each answer is given again to every attempt, so the outcome is the same whatever the default of `retry`.
       const again = (...replies: Reply[]) => serve(...replies.flatMap((r) => Array.from({ length: 5 }, () => r)));
       // A wait of 1 ms before a new attempt, so the outcome comes at once if the default of `retry` sends one.
-      const outcome = (options?: RequestOptions) =>
-        tf.get(API, { retryDelay: 1, ...options }).then(
+      const outcome = () =>
+        tf.get(API, { retryDelay: 1 }).then(
           () => null,
           (e: unknown) => e,
         );
       const resolved: number[] = [];
-      /** Whether each status that rejects does so with an `HttpError` of that status, with the body parsed. */
-      let asHttp = true;
       for (const status of STATUSES) {
         const body = bodiless(status) ? '' : { status };
         again(body === '' ? { status } : { status, body });
         const e = await outcome();
         if (e === null) resolved.push(status);
-        else asHttp &&= isHttpError(e) && e.status === status && JSON.stringify(e.body) === JSON.stringify(body);
+        else expect(e).toMatchObject({ name: HttpError.name, status, body });
       }
-      // The statuses `fetch` calls `ok` are one run, from the lowest to the highest.
+      // The statuses that resolve are the ones `fetch` calls `ok`, one run from the lowest to the highest.
+      expect(resolved).toEqual(OK);
       expect(OK).toEqual(STATUSES.filter((s) => s >= lowest && s <= highest));
-      expect(resolved.length).toBeGreaterThan(0);
-      // A body that is not JSON, and one that says it is and does not parse.
+      // A body that is not JSON, and one that says it is and does not parse: the status stays, with the text.
       again({ status: 503, body: 'down', type: 'text/plain' });
-      const text = await outcome();
+      expect(await outcome()).toMatchObject({ name: HttpError.name, status: 503, body: 'down' });
       again({ status: 404, raw: '<html>not found</html>' });
-      const broken = await outcome();
-      const keepsText = [[text, 'down'], [broken, '<html>not found</html>']].every(([e, body]) => isHttpError(e) && e.body === body);
-      // No response at all, once and after each attempt of a retry.
+      expect(await outcome()).toMatchObject({ name: HttpError.name, status: 404, body: '<html>not found</html>' });
+      // No response at all: what `fetch` threw.
       const down = new TypeError('fetch failed');
       again(down);
-      const network = await outcome();
+      expect(await outcome()).toBe(down);
+      // An `ok` response that says it is JSON and does not parse.
       again({ raw: '{"id": 1' });
       const parse = await outcome();
-      for (const e of [network, parse]) expect(e).toBeInstanceOf(Error);
-      /** What a request rejected with, said from the error `fetch` threw. */
-      const name = (e: unknown) => `${(e as Error).name === HttpError.name ? 'an' : 'a'} \`${(e as Error).name}\``;
-      const fromFetch = (e: unknown, thrown: unknown) => (e === thrown ? 'the error `fetch` threw, such as a `TypeError`' : `${name(e)}${(e as Error).cause === thrown ? ' whose `cause` is the error `fetch` threw' : ''}`);
-      const statuses = resolved.length === OK.length && resolved.every((s, i) => s === OK[i]) ? `a status from ${lowest} to ${highest}` : 'a status the example lists';
-      if (statuses !== `a status from ${lowest} to ${highest}`) u.example('text', `resolves: ${resolved.join(', ')}`);
+      expect(parse).toBeInstanceOf(SyntaxError);
       u.value(
-        `a response with ${statuses} resolves; any other status rejects with ${asHttp ? `an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses${keepsText ? ', and its text when it does not' : ''}` : `an error that is not always an \`${HttpError.name}\` with that status and that body`}${keepsText ? '' : `; one whose body is not JSON rejects with ${isHttpError(broken) ? `an \`${HttpError.name}\` whose \`${field('body')}\` is not its text` : name(broken)}`}; a request that gets no response rejects with ${fromFetch(network, down)}; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse.`,
+        `a response with a status from ${lowest} to ${highest} resolves; any other status rejects with an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses, and its text when it does not; a request that gets no response rejects with the error \`fetch\` threw, such as a \`TypeError\`; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse.`,
       );
     },
   );

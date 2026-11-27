@@ -82,55 +82,22 @@ body that goes through every case, or a sentence that names the cases the body t
 of tinyfetch's `base-url` now tries the four forms: a base with and without `/` at its end, and
 a path with and without `/` at its start.
 
-**A sentence about what the code does is built from what the body observed**, with
-`u.value()`. A sentence typed in `value` above an assertion is the weak form. When the behaviour
-changes, the test goes red, someone edits the assertion to match, and the sentence stays: the
-tests, the type-check and the proof all pass, and the skill is false. In a round of trials, 7 of
-12 changes that left a skill wrong ended with everything green, and in each the false text was
-typed in a test.
+**A sentence about what the code does is typed in `value`, and the body asserts what it says.**
+Its numbers come from constants and its names from the types, as in `retry-delay` above. When the
+behaviour changes, the test goes red, and that red test is the signal: it says the code no longer
+does what the skill says.
 
-tinyfetch's `timeout-precedence` was the weak form:
+**When a test goes red, fix the code.** If the change is meant, change the sentence and the body
+together, then run `skillunit proof --write`. Never edit the assertion alone to make it pass: the
+sentence above it stays, and the skill is then false with every check green. The tests are what
+SkillUnit builds the skill from, so they have to be right.
 
-```ts
-unit(
-  'timeout-precedence',
-  {
-    when: `a client or a request sets \`${opt('timeout')}\`.`,
-    value: `a request's own \`${opt('timeout')}\` wins over the \`${key<ClientOptions>('timeout')}\` of its client, and the client's over the default.`,
-  },
-  async () => {
-    // … three requests that time out …
-    expect(await outcomes([…])).toEqual([DEFAULT_TIMEOUT / 4, DEFAULT_TIMEOUT / 2, DEFAULT_TIMEOUT]);
-  },
-);
-```
-
-With the client's `timeout` made to win, the test failed, and the fix that made it pass changed
-`DEFAULT_TIMEOUT / 2` to `DEFAULT_TIMEOUT / 4` and left the sentence. Built from the observation,
-there is no expected value to edit:
-
-```ts
-async (u) => {
-  // … three requests that time out: one that sets `timeout` on a client that sets one, one that
-  // sets none, and one on a client that sets none either …
-  const [both, client, neither] = (await Promise.all(pending)).map((e) => (e as TimeoutError).timeout);
-  const source = (ms) => ({ [ofRequest]: 'its own `timeout`', [ofClient]: 'the `timeout` of its client', [DEFAULT_TIMEOUT]: 'the default' })[ms];
-  expect([both, client, neither].every((ms) => [ofRequest, ofClient, DEFAULT_TIMEOUT].includes(ms))).toBe(true);
-  u.value(`a request that sets \`timeout\`, on a client that sets one too, waits for ${source(both)}; …`);
-},
-```
-
-The body asserts only what holds whatever the code does: each request timed out after one of the
-three times. The same change now passes the tests, and the proof fails on the built line, with
-the test it comes from. `skillunit proof --write` writes "…waits for the `timeout` of its
-client", which is what the code does.
-
-It does not reach the words around the observed value: "waits for" and "on a client that sets
-one too" are typed. Where no value can carry a claim, put what the body saw in the sentence or in
-an example, so the skill at least shows what happened. tinyfetch's `what-is-retried` lists in an
-example the statuses of a case that are not all retried alike, and `base-url` lists the URLs it
-sent when they are not the one it expects. A number the body observes must still be in `values`,
-so a sentence names the setting that won, in words, rather than the number it gave.
+**`u.value()` is for a sentence that lists what a body found by going through cases.** Which
+failures are retried, which methods a client has: the body tries each case and writes which did
+what. Its words come from the list it went through or from a constant, never from an outcome the
+code does not have. A body that writes prose for an outcome it only imagines stops going red when
+the behaviour changes, and `--write` then writes the new behaviour into the skill as if it were
+meant.
 
 **An example is a region with code of the library only.** The lines between `#region
 skill:<id>` and `#endregion` are copied into the skill as they are. Set up the fake server

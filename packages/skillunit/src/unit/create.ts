@@ -28,7 +28,7 @@ import { checkAsk, checkNumbers, checkQuestions, checkSetup, checkSpec, FENCE_LA
 
 /** What the body of a unit gets, besides the runner's own context. */
 export interface UnitContext {
-  /** Sets the `Value` of a fact from what the body observed. It replaces `value` of the spec. */
+  /** Sets the `Value` of a fact from what the body found going through a list of cases. It replaces `value` of the spec. */
   value(text: string): void;
   /** Adds a block the body produced: an output, a config, a table of outcomes. */
   example(lang: string, text: string): void;

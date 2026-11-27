@@ -4,7 +4,7 @@ A unit is one instruction of the skill. It is a fact, a rule or a decision, and 
 
 | Kind | Use it for | Its sentence | The agent reads |
 | --- | --- | --- | --- |
-| [Fact](#a-fact) | what the code does, for the agent to state or rely on as it is | `value`, or `u.value()` in the body | `When`, `Value`, `Unknown` |
+| [Fact](#a-fact) | what the code does, for the agent to state or rely on as it is | `value`, or `u.value()` in a body that goes through a list of cases | `When`, `Value`, `Unknown` |
 | [Rule](#a-rule) | what the agent must do, or must not | `do` | `When`, `Do`, `Even when`, `Right` |
 | [Decision](#a-decision) | a choice between ways that are all right somewhere | `decide`, and a `when` for each of `paths` | `When`, `Decide`, one item per path, `Even when` |
 
@@ -47,7 +47,7 @@ const users = tf.get("https://api.example.com/users", {
 ```
 ````
 
-- `value` is the sentence. The body can set it instead, with `u.value(text)`, from what it observed: tinyfetch's `what-is-retried` tries each kind of failure and writes which ones were sent again.
+- `value` is the sentence, and the body asserts what it says: a change to the waits turns this test red. A body that goes through a list of cases sets the sentence instead, with `u.value(text)`: tinyfetch's `what-is-retried` tries each kind of failure and writes which ones were sent again.
 - `values` names each number the sentence states. A number that is not there fails the test; see [No value typed twice](proof.md#no-value-typed-twice).
 - `unknown` says, in so many words, what is not there: an option the library does not have, a case the fact does not cover. It becomes the `Unknown` label.
 - The example is the region of the body, and goes under the value.

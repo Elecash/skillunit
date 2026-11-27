@@ -35,11 +35,13 @@ describe('features/clients.md', () => {
     serve({ body: {} }, { body: {} });
     await tf.get('/users');
     await create().get('/users');
-    const [ofTf, ofNone] = calls.map((c) => JSON.stringify([c.url, Object.fromEntries(new Headers(c.init.headers))]));
-    expect(ofNone).toBe(JSON.stringify([`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }]));
+    expect(calls.map((c) => [c.url, Object.fromEntries(new Headers(c.init.headers))])).toEqual([
+      [`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }],
+      [`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }],
+    ]);
+    expect(tf.create).toBe(create);
     const [made, byDefault] = [exported('create'), exported('tf')];
-    const tfIs = ofTf === ofNone ? 'a client made with none' : `a client made with options of its own, which sends \`${ofTf}\``;
-    u.value(`\`${made}\` makes a client whose requests share the options ${and(code(Object.keys(every)))}, as in the example; \`${byDefault}\` is ${tfIs}, and \`${byDefault}.${made}\` ${tf.create === create ? 'is' : 'is not'} \`${made}\`.`);
+    u.value(`\`${made}\` makes a client whose requests share the options ${and(code(Object.keys(every)))}, as in the example; \`${byDefault}\` is a client made with none, and \`${byDefault}.${made}\` is \`${made}\`.`);
   });
 
   unit(
@@ -72,17 +74,15 @@ describe('features/clients.md', () => {
           sent.push(calls[0]!.url);
         }
       }
-      expect(sent).toHaveLength(4);
-      const joined = new Set(sent).size === 1 && sent[0] === 'https://api.example.com/v1/users';
-      if (!joined) u.example('text', sent.join('\n'));
+      expect(sent).toEqual(Array.from({ length: 4 }, () => 'https://api.example.com/v1/users'));
       serve({ body: [] });
       await api.get('https://other.example.com/x');
-      const whole = calls[0]!.url;
+      expect(calls[0]!.url).toBe('https://other.example.com/x');
       serve({ body: [] });
       await tf.get('/users');
       const fallback = calls[0]!.url;
       u.value(
-        `${joined ? `a path that is not a whole URL goes after \`${clientOpt('baseUrl')}\`, with one \`/\` between them, whether or not \`${clientOpt('baseUrl')}\` ends with \`/\` and whether or not the path starts with one` : `a path that is not a whole URL is joined to \`${clientOpt('baseUrl')}\` as the example shows, for \`${clientOpt('baseUrl')}\` with and without \`/\` at its end and a path with and without one at its start`}; a whole URL, such as \`https://other.example.com/x\`, ${whole === 'https://other.example.com/x' ? 'is sent as it is' : `is sent to \`${whole}\``}; a client with no \`${clientOpt('baseUrl')}\`, \`${exported('tf')}\` among them, sends \`/users\` to \`${fallback}\`.`,
+        `a path that is not a whole URL goes after \`${clientOpt('baseUrl')}\`, with one \`/\` between them, whether or not \`${clientOpt('baseUrl')}\` ends with \`/\` and whether or not the path starts with one; a whole URL, such as \`https://other.example.com/x\`, is sent as it is; a client with no \`${clientOpt('baseUrl')}\`, \`${exported('tf')}\` among them, sends \`/users\` to \`${fallback}\`.`,
       );
     },
   );

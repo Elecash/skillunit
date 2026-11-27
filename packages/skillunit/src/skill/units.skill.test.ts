@@ -90,9 +90,8 @@ describe('units.md', () => {
       const { setup, unit } = r;
       // #region skill:units
       setup('retries', { file: 'features/retries.md', title: 'Retries', when: 'Retry a request that failed', description: 'Which requests the client sends again.' });
-      unit('retry-delay', { when: 'a request is sent again.', values: { delay: DEFAULT_RETRY_DELAY } }, (u) => {
+      unit('retry-delay', { when: 'a request is sent again.', value: `the client waits ${DEFAULT_RETRY_DELAY} ms before the first new attempt.`, values: { delay: DEFAULT_RETRY_DELAY } }, () => {
         expect(retryWaits(1)).toEqual([DEFAULT_RETRY_DELAY]);
-        u.value(`the client waits ${DEFAULT_RETRY_DELAY} ms before the first new attempt.`);
       });
       // #endregion
     }
@@ -104,10 +103,10 @@ describe('units.md', () => {
       return (await t.run())[0];
     };
     const { frontmatter, ...noFrontmatter } = INDEX;
-    const needsFrontmatter = (await refused('a', noFrontmatter))?.includes('needs `frontmatter: { name, description }`') === true;
-    const noWhen = (await refused('b', { ...INDEX, when: 'Read it' }))?.includes('has no row in it and no `when`') === true;
-    const needsWhen = (await refused('c', { file: 'retries.md', title: 'Retries', description: 'How requests are retried.' }))?.includes('`when` must be text') === true;
-    const noNumber = (await refused('d', { file: 'retries.md', title: 'Retries in 2 steps', when: 'Retry a request', description: 'How requests are retried.' }))?.includes('the number 2 in `title`') === true;
+    expect(await refused('a', noFrontmatter)).toContain('needs `frontmatter: { name, description }`');
+    expect(await refused('b', { ...INDEX, when: 'Read it' })).toContain('has no row in it and no `when`');
+    expect(await refused('c', { file: 'retries.md', title: 'Retries', description: 'How requests are retried.' })).toContain('`when` must be text');
+    expect(await refused('d', { file: 'retries.md', title: 'Retries in 2 steps', when: 'Retry a request', description: 'How requests are retried.' })).toContain('the number 2 in `title`');
     const p = await project((r) => {
       r.setup('demo', INDEX);
       r.setup('retries', { file: 'retries.md', title: 'Retries', when: 'Retry a request that failed', description: 'How requests are retried.' });
@@ -116,7 +115,7 @@ describe('units.md', () => {
     expect(p.read('skill/SKILL.md')).toContain('| Retry a request that failed | [retries.md](retries.md) |');
     void frontmatter;
     u.value(
-      `\`${setup.name}(id, spec)\` declares a file of the skill; its spec takes ${and(code(SETUP_KEYS))}. \`${SKILL_INDEX}\` ${needsFrontmatter ? 'needs' : 'may leave out'} \`${setupKey('frontmatter')}\`, the name and description of the skill, and ${noWhen ? 'takes no' : 'may take a'} \`${setupKey('when')}\`. Any other file ${needsWhen ? 'needs' : 'may leave out'} \`${setupKey('when')}\`: the task its row in the table of \`${SKILL_INDEX}\` names. The text of a \`${setup.name}()\` ${noNumber ? 'has no number' : 'may have a number'}.`,
+      `\`${setup.name}(id, spec)\` declares a file of the skill; its spec takes ${and(code(SETUP_KEYS))}. \`${SKILL_INDEX}\` needs \`${setupKey('frontmatter')}\`, the name and description of the skill, and takes no \`${setupKey('when')}\`. Any other file needs \`${setupKey('when')}\`: the task its row in the table of \`${SKILL_INDEX}\` names. The text of a \`${setup.name}()\` has no number.`,
     );
   });
 
@@ -124,8 +123,9 @@ describe('units.md', () => {
     'units-belong',
     {
       when: `a test file declares units and questions after a \`${setup.name}()\`.`,
+      value: `each unit and question belongs to the file of the last \`${setup.name}()\` before it in its test file, in the order they are declared. A unit with no \`${setup.name}()\` before it fails the build.`,
     },
-    async (u) => {
+    async () => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('first-rule', { when: 'one.', do: 'a.' });
@@ -134,19 +134,14 @@ describe('units.md', () => {
         r.unit('third-rule', { when: 'three.', do: 'c.' });
       });
       p.proof({ write: true });
-      const headings = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### ')).sort().join();
-      const order = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### ')).join();
-      const belongs = headings('skill/SKILL.md') === '### rule: first-rule,### rule: second-rule' && headings('skill/retries.md') === '### rule: third-rule';
-      expect(p.read('skill/SKILL.md'), 'the units are built').toContain('first-rule');
-      const inOrder = order('skill/SKILL.md') === '### rule: first-rule,### rule: second-rule';
+      const headings = (file: string) => p.read(file).split('\n').filter((l) => l.startsWith('### '));
+      expect(headings('skill/SKILL.md')).toEqual(['### rule: first-rule', '### rule: second-rule']);
+      expect(headings('skill/retries.md')).toEqual(['### rule: third-rule']);
       const lost = await project((r) => {
         r.unit('lost-rule', { when: 'one.', do: 'a.' });
         r.setup('demo', INDEX);
       });
-      const fails = lost.proof({ write: true }).problems.some((x) => x.message.includes('the unit `lost-rule` belongs to no file of the skill'));
-      u.value(
-        `each unit and question belongs to ${belongs ? `the file of the last \`${setup.name}()\` before it in its test file` : `another file than the one of the last \`${setup.name}()\` before it`}, ${inOrder ? 'in the order they are declared' : 'not in the order they are declared'}. A unit with no \`${setup.name}()\` before it ${fails ? 'fails the build' : 'does not fail the build'}.`,
-      );
+      expect(lost.proof({ write: true }).problems.map((x) => x.message)).toEqual([expect.stringContaining('the unit `lost-rule` belongs to no file of the skill')]);
     },
   );
 
@@ -234,13 +229,8 @@ describe('units.md', () => {
     ];
     const made = kinds.map(([keys, s]) => `${keys} a ${checkSpec('a', s)}`);
     expect(made).toHaveLength(kinds.length);
-    let refused = false;
-    try {
-      checkSpec('a', { when: 'x.', do: 'y.', value: 'z.' });
-    } catch (e) {
-      refused = (e as Error).message.includes('are two kinds');
-    }
-    u.value(`the keys of its spec make the kind of a unit: ${and(made)}. A spec with two of them is ${refused ? 'refused' : 'taken'}.`);
+    expect(() => checkSpec('a', { when: 'x.', do: 'y.', value: 'z.' })).toThrow('are two kinds');
+    u.value(`the keys of its spec make the kind of a unit: ${and(made)}. A spec with two of them is refused.`);
   });
 
   unit('unit-spec', { when: 'a test writes the spec of a unit.' }, (u) => {
@@ -283,29 +273,25 @@ describe('units.md', () => {
     'ids',
     {
       when: 'a test gives the id of a file, a unit or a question.',
+      value: `an id is kebab-case, such as \`retry-delay\`. Files and units share one space of ids, and each is declared once across the tests; so is each question id. A unit's first question takes the unit's id unless it gives \`id\`, and the next ones \`<id>.2\` and \`<id>.3\`.`,
     },
-    async (u) => {
+    async () => {
       const first = async (declare: (r: ReturnType<typeof runner>) => void) => {
         const r = runner();
         declare(r);
         return (await r.run()).find((m) => m !== 'ok');
       };
-      const kebab = (await first((r) => r.unit('Retry_Delay', { when: 'x.', do: 'y.' })))?.includes('the id must be kebab-case') === true;
-      const shared = (await first((r) => (r.setup('retries', INDEX), r.unit('retries', { when: 'x.', do: 'y.' }))))?.includes('files of the skill and units share one space of ids') === true;
+      expect(await first((r) => r.unit('Retry_Delay', { when: 'x.', do: 'y.' }))).toContain('the id must be kebab-case');
+      expect(await first((r) => (r.setup('retries', INDEX), r.unit('retries', { when: 'x.', do: 'y.' })))).toContain('files of the skill and units share one space of ids');
       const ask = { scenario: 's.', question: 'q?', expect: 'yes' };
-      const questionOnce = (await first((r) => (r.unit('a', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }), r.unit('b', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }))))?.includes('has the id of a question') === true;
-      const ids = checkQuestions('retry-delay', [ask, ask, ask]).map((q) => q.id);
-      expect(ids).toHaveLength(3);
+      expect(await first((r) => (r.unit('a', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } }), r.unit('b', { when: 'x.', do: 'y.', ask: { ...ask, id: 'same' } })))).toContain('has the id of a question');
+      expect(checkQuestions('retry-delay', [ask, ask, ask]).map((q) => q.id)).toEqual(['retry-delay', 'retry-delay.2', 'retry-delay.3']);
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('twice', { when: 'x.', do: 'y.' });
         r.unit('twice', { when: 'x.', do: 'z.' });
       });
-      const once = p.proof({ write: true }).problems.some((x) => x.message.includes('the unit `twice` is also declared at'));
-      const space = shared ? 'Files and units share one space of ids' : 'A file and a unit may have the same id';
-      u.value(
-        `an id ${kebab ? 'is' : 'need not be'} kebab-case, such as \`retry-delay\`. ${space}, and each is ${once ? 'declared once' : 'not always declared once'} across the tests; so is each question id${questionOnce ? '' : ', which is not checked'}. A unit's first question takes ${ids[0] === 'retry-delay' ? "the unit's id" : `\`${ids[0]}\``} unless it gives \`id\`, and the next ones ${and(code(ids.slice(1).map((id) => id.replace('retry-delay', '<id>'))))}.`,
-      );
+      expect(p.proof({ write: true }).problems.map((x) => x.message)).toEqual([expect.stringContaining('the unit `twice` is also declared at')]);
     },
   );
 
@@ -313,8 +299,9 @@ describe('units.md', () => {
     'body-asserts',
     {
       when: `the body of a unit makes no assertion.`,
+      value: `with \`${VITEST}\`, a body proves its unit when it makes an assertion or calls \`u.${ctx('value')}\`. A body that only calls \`u.${ctx('example')}\` builds its unit, counted as declared: no test proves it. A body that does none of the three fails its test, so its unit is not built.`,
     },
-    async (u, outer) => {
+    async (_u, outer) => {
       const made = counted();
       made.unit('asserts-nothing', { when: 'x.', do: 'y.' }, () => {});
       made.unit('only-an-example', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'a command typed here'));
@@ -322,14 +309,10 @@ describe('units.md', () => {
       made.unit('builds-its-value', { when: 'x.' }, (u) => u.value('y.'));
       made.unit('asserts-and-shows', { when: 'x.', do: 'y.' }, (u) => (expect(1).toBe(1), u.example('bash', 'ls')));
       const results = await made.run(outer);
-      expect(results.slice(2), 'a body that asserts or builds its value passes').toEqual(['ok', 'ok', 'ok']);
-      const declared = (id: string) => (made.records.find((r) => r.id === id) as { body?: false } | undefined)?.body === false;
-      const nothingFails = results[0]!.includes('the body made no assertion');
-      const exampleDeclared = results[1] === 'ok' && declared('only-an-example');
-      const proved = ['asserts', 'builds-its-value', 'asserts-and-shows'].every((id) => !declared(id));
-      u.value(
-        `with \`${VITEST}\`, a body proves its unit when it makes an assertion or calls \`u.${ctx('value')}\`${proved ? '' : ', though not always'}. A body that only calls \`u.${ctx('example')}\` ${exampleDeclared ? 'builds its unit, counted as declared: no test proves it' : 'is counted as one that proves its unit'}. A body that does none of the three ${nothingFails ? 'fails its test, so its unit is not built' : 'passes, and its unit is built'}.`,
-      );
+      expect(results[0]).toContain('the body made no assertion');
+      expect(results.slice(1)).toEqual(['ok', 'ok', 'ok', 'ok']);
+      const declared = (id: string) => (made.records.find((r) => r.id === id) as { body?: false }).body === false;
+      expect(['only-an-example', 'asserts', 'builds-its-value', 'asserts-and-shows'].map(declared)).toEqual([true, false, false, false]);
     },
   );
 
@@ -337,35 +320,33 @@ describe('units.md', () => {
     'no-body',
     {
       when: 'a unit is something no test can state, such as advice.',
+      value: `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives \`${spec('value')}\` in its spec. A unit with no body shows no block, since only a body calls \`u.${ctx('example')}\`; a body that only shows blocks is how advice shows one.`,
     },
-    async (u) => {
+    async () => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('advice', { when: 'x.', do: 'y.' });
       });
       const result = p.proof({ write: true });
-      expect(result.summary.units).toBe(1);
-      const declared = result.summary.declared === 1 && result.summary.proved === 0 && result.units[0]?.from === 'declared';
-      const written = p.read('skill/SKILL.md').includes('### rule: advice\n\nWhen: x.\n\nDo: y.');
+      expect(result.summary).toMatchObject({ units: 1, proved: 0, declared: 1 });
+      expect(result.units[0]).toMatchObject({ id: 'advice', from: 'declared' });
+      expect(p.read('skill/SKILL.md')).toContain('### rule: advice\n\nWhen: x.\n\nDo: y.');
       const r = runner();
       r.unit('no-value', { when: 'x.' });
-      const needsValue = (await r.run())[0]!.includes('a unit with no body gives `value` in its spec');
+      expect((await r.run())[0]).toContain('a unit with no body gives `value` in its spec');
       expect(() => checkSpec('a', { when: 'x.', do: 'y.', examples: [{ lang: 'bash', text: 'ls' }] })).toThrow('unknown key `examples`');
       const advice = counted();
       advice.unit('advice-with-a-block', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'ls'));
       expect(await advice.run({ expect, task: {} })).toEqual(['ok']);
-      const shows = JSON.stringify(advice.records[0]).includes('"examples":[{"lang":"bash","text":"ls"}]') && (advice.records[0] as { body?: false }).body === false;
-      u.value(
-        `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build ${written ? 'writes it as it writes any unit' : 'does not write it as it writes any unit'}, and the proof counts it as ${declared ? 'declared, not proved' : 'proved'}. A fact with no body ${needsValue ? 'gives' : 'may leave out'} \`${spec('value')}\` in its spec. A unit with no body shows no block, since only a body calls \`u.${ctx('example')}\`; ${shows ? 'a body that only shows blocks is how advice shows one' : 'a body that only shows blocks does not make advice show one'}.`,
-      );
+      expect(advice.records[0]).toMatchObject({ body: false, examples: [{ lang: 'bash', text: 'ls' }] });
     },
   );
 
   unit(
     'u-value',
     {
-      when: 'the body of a fact observes the value it states.',
-      value: `\`u.${ctx('value')}(text)\` in a body sets the value of a fact from what the body observed, in place of \`${spec('value')}\` in the spec. A rule or a decision refuses it.`,
+      when: 'the body of a fact goes through a list of cases and says which did what.',
+      value: `\`u.${ctx('value')}(text)\` in a body sets the value of a fact from what the body found, in place of \`${spec('value')}\` in the spec. A rule or a decision refuses it.`,
     },
     async () => {
       const r = runner();
@@ -377,48 +358,28 @@ describe('units.md', () => {
   );
 
   unit(
-    'sentence-from-observation',
+    'sentence-and-assertion',
     {
       when: 'a test writes the sentence of a fact about what the code does.',
-      do: `build it from what the body observed, with \`u.${ctx('value')}()\`, and assert only what holds whatever the code does: there is then no expected value to edit, so a change to the behaviour changes the built line, the proof reports it with its test, and \`${command('proof')} ${option('proof', '--write')}\` writes what the code does now.`,
-      evenWhen: 'the body asserts the value already: a sentence typed above an assertion stays when the assertion is edited to match a new behaviour, and the tests, the type-check and the proof all pass with the skill false.',
+      do: `put the sentence in \`${spec('value')}\`, its numbers from constants and its names from the types, and assert in the body what it says. Build it with \`u.${ctx('value')}()\` only when the body goes through a list of cases and the sentence says which did what; its words then come from that list or from a constant, never from an outcome the code does not have.`,
+      evenWhen: 'a sentence built from the outcome would be shorter to write: a test that goes red when the behaviour changes is what tells a regression from a change that is meant.',
     },
     async () => {
-      // The code is `winner`, which a change to it turns from the request's own timeout to the client's.
-      const typed = (winner: string, expected: string) => (r: ReturnType<typeof runner>) => {
+      // The code is `winner`; a change to it turns the request's own timeout into the client's.
+      const typed = (winner: string) => (r: ReturnType<typeof runner>) => {
         r.setup('demo', INDEX);
-        r.unit('timeout-precedence', { when: 'a request sets a timeout.', value: "a request's own timeout wins over its client's." }, () => expect(winner).toBe(expected));
+        r.unit('timeout-precedence', { when: 'a request sets a timeout.', value: "a request's own timeout wins over its client's." }, () => expect(winner).toBe('its own'));
       };
-      const observed = (winner: string) => (r: ReturnType<typeof runner>) => {
-        r.setup('demo', INDEX);
-        r.unit('timeout-precedence', { when: 'a request sets a timeout.' }, (u) => {
-          expect(['its own', "its client's"]).toContain(winner);
-          u.value(`a request waits for ${winner} timeout.`);
-        });
-      };
-      /** `p` with the records a run of `declare` leaves, as when the tests run again after a change. */
-      const rerun = async (p: Awaited<ReturnType<typeof project>>, declare: (r: ReturnType<typeof runner>) => void) => {
-        const next = await project(declare);
-        rmSync(join(p.root, 'tmp/skill-units'), { recursive: true, force: true });
-        cpSync(join(next.root, 'tmp/skill-units'), join(p.root, 'tmp/skill-units'), { recursive: true });
-      };
-      // Typed: the change fails the test; the assertion edited to match passes everything, and the skill is false.
-      const t = await project(typed('its own', 'its own'));
-      t.proof({ write: true });
-      await rerun(t, typed("its client's", 'its own'));
-      expect(t.proof().units[0]).toMatchObject({ state: 'failed' });
-      await rerun(t, typed("its client's", "its client's"));
-      expect(t.proof().ok).toBe(true);
-      expect(t.read('skill/SKILL.md')).toContain("a request's own timeout wins");
-      // Observed: the change passes the test and fails the proof on the line, which `--write` makes true.
-      const o = await project(observed('its own'));
-      o.proof({ write: true });
-      await rerun(o, observed("its client's"));
-      const found = o.proof();
-      expect(found.ok).toBe(false);
-      expect(found.problems[0]).toMatchObject({ unit: 'timeout-precedence', origin: { kind: 'test', file: `../${TEST_FILE}` } });
-      o.proof({ write: true });
-      expect(o.read('skill/SKILL.md')).toContain("a request waits for its client's timeout.");
+      const p = await project(typed('its own'));
+      p.proof({ write: true });
+      const before = p.read('skill/SKILL.md');
+      // The tests run again after the change: the test is red, and the skill is left as it was.
+      const next = await project(typed("its client's"));
+      rmSync(join(p.root, 'tmp/skill-units'), { recursive: true, force: true });
+      cpSync(join(next.root, 'tmp/skill-units'), join(p.root, 'tmp/skill-units'), { recursive: true });
+      const result = p.proof({ write: true });
+      expect(result.units[0]).toMatchObject({ id: 'timeout-precedence', state: 'failed' });
+      expect(p.read('skill/SKILL.md')).toBe(before);
     },
   );
 
@@ -447,8 +408,11 @@ describe('units.md', () => {
     const units = report(await cli(shown.root, [command('proof'), '--json'])).units!;
     expect(units.map((x) => x.id).sort()).toEqual(['install-the-server', 'show-the-command']);
     const printed = async (reporter: string) => (await cli(shown.root, [command('proof'), option('proof', '--reporter'), reporter])).stdout;
-    const countedDeclared = built.summary.proved === 1 && built.summary.declared === 1 && units.find((x) => x.id === 'show-the-command')?.from === 'declared';
-    const everyReport = /declared, no test/.test(await printed('table')) && /name="from" value="declared"/.test(await printed('junit')) && (await printed('github')).includes('1 declared without one');
+    expect(built.summary).toMatchObject({ proved: 1, declared: 1 });
+    expect(units.find((x) => x.id === 'show-the-command')?.from).toBe('declared');
+    expect(await printed('table')).toMatch(/declared, no test/);
+    expect(await printed('junit')).toMatch(/name="from" value="declared"/);
+    expect(await printed('github')).toContain('1 declared without one');
     const p = await project(
       (r) => {
         r.setup('demo', INDEX);
@@ -471,11 +435,11 @@ describe('units.md', () => {
     const rule = section('### rule: a-rule');
     const label = rule.split('\n').find((l) => l.endsWith(':') && !l.startsWith('#'))!;
     expect(rule.indexOf(label), 'the blocks are under the label').toBeLessThan(Math.min(rule.indexOf('region();'), rule.indexOf('from the body')));
-    const afterRegions = rule.indexOf('region();') < rule.indexOf('from the body');
+    expect(rule.indexOf('region();'), 'the regions come first').toBeLessThan(rule.indexOf('from the body'));
     const fact = section('### fact: a-fact');
     expect(fact).toMatch(/Value: v\.\n\n```text\nfrom the body\n```/);
     u.value(
-      `\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, ${afterRegions ? 'after' : 'before'} the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it. \`u.${ctx('example')}\` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared${countedDeclared ? `, in the proof's summary${everyReport ? ' and in every report' : ''}` : ''}.`,
+      `\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, after the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it. \`u.${ctx('example')}\` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared, in the proof's summary and in every report.`,
     );
   });
 
@@ -509,12 +473,12 @@ describe('units.md', () => {
     'number-rule',
     {
       when: 'the text of a unit with a body has a number.',
+      value: `a number in the text of a unit with a body must be one of its \`${spec('values')}\`, named in the spec, or its test fails; a unit with no body is not checked. A number is digits that do not follow a letter, a digit, \`_\` or \`.\`: \`utf8\` and \`h2\` have none, and \`2x\` has one.`,
       // The words the sentence shows as examples, so the sentence states them whatever the rule counts in them.
       values: { example: '2x', letters: 'utf8', short: 'h2' },
     },
-    async (u) => {
-      const none = ['utf8', 'h2', 'v1.5'].filter((w) => numbersIn(w).length === 0);
-      const some = ['utf8', 'h2', '2x'].filter((w) => numbersIn(w).length > 0);
+    async () => {
+      expect([numbersIn('utf8'), numbersIn('h2'), numbersIn('2x'), numbersIn('v1.5')]).toEqual([[], [], ['2'], []]);
       expect(() => checkNumbers('a', { when: 'x.', value: `waits ${DEFAULT_RETRY_DELAY} ms.` })).toThrow(`the number ${DEFAULT_RETRY_DELAY} in \`Value\` is none of the unit's \`values\``);
       expect(() => checkNumbers('a', { when: 'x.', value: `waits ${DEFAULT_RETRY_DELAY} ms.`, values: { delay: DEFAULT_RETRY_DELAY } })).not.toThrow();
       const r = runner();
@@ -523,9 +487,6 @@ describe('units.md', () => {
       const [typed, advice] = await r.run();
       expect(typed).toContain(`the number ${DEFAULT_RETRY_DELAY}`);
       expect(advice).toBe('ok');
-      u.value(
-        `a number in the text of a unit with a body must be one of its \`${spec('values')}\`, named in the spec, or its test fails; a unit with no body is not checked. A number is digits that do not follow a letter, a digit, \`_\` or \`.\`: ${[...(none.filter((w) => w !== 'v1.5').length ? [`${and(code(none.filter((w) => w !== 'v1.5')))} ${none.length > 2 ? 'have' : 'has'} none`] : []), `${and(code(some))} ${some.length > 1 ? 'have' : 'has'} one`].join(', and ')}.`,
-      );
     },
   );
 
@@ -533,8 +494,9 @@ describe('units.md', () => {
     'failed-body',
     {
       when: 'the body of a unit throws, or fails an assertion.',
+      value: 'its test fails and leaves no unit. The proof reports the test with its error, and leaves the file the unit belongs to as it is: it neither compares nor writes it.',
     },
-    async (u) => {
+    async () => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('broken', { when: 'x.', do: 'y.' }, () => {
@@ -542,12 +504,9 @@ describe('units.md', () => {
         });
       });
       const result = p.proof({ write: true });
-      expect(result.ok, 'the proof fails').toBe(false);
-      const reported = result.problems.some((x) => /the test of `broken` .* failed, so it left no unit: the code changed/.test(x.message));
-      const left = result.files.every((f) => f.state === 'broken') && !existsSync(join(p.skill, 'SKILL.md'));
-      u.value(
-        `its test fails and leaves no unit. The proof ${reported ? 'reports the test with its error' : 'does not report the test with its error'}, and ${left ? 'leaves the file the unit belongs to as it is: it neither compares nor writes it' : 'builds and writes the file the unit belongs to all the same'}.`,
-      );
+      expect(result.problems.map((x) => x.message)).toEqual([expect.stringMatching(/the test of `broken` .* failed, so it left no unit: the code changed/)]);
+      expect(result.files).toEqual([{ file: 'SKILL.md', state: 'broken' }]);
+      expect(existsSync(join(p.skill, 'SKILL.md'))).toBe(false);
     },
   );
 
@@ -566,9 +525,9 @@ describe('units.md', () => {
     }
     const names = exportNames(pathToFileURL(join(dir, 'src', 'index.ts')));
     expect(names.values, 'a value it exports by name').toContain('HttpError');
-    const withPaths = names.values.includes('DEFAULT_RETRY');
-    const typeOnly = names.types.includes('TimeoutError') && !names.values.includes('TimeoutError');
-    const star = names.values.includes('create') && names.types.includes('Client');
+    expect(names.values, 'a module the `paths` of the tsconfig name').toContain('DEFAULT_RETRY');
+    expect([names.types, names.values]).toEqual([expect.arrayContaining(['TimeoutError']), expect.not.arrayContaining(['TimeoutError'])]);
+    expect([names.values, names.types]).toEqual([expect.arrayContaining(['create']), expect.arrayContaining(['Client'])]);
     expect(exportNames(join(dir, 'src', 'index.ts'))).toEqual(names);
     // A project on TypeScript 7: its `typescript` is passed over for SkillUnit's own.
     const own = fileURLToPath(new URL('../typescript.ts', import.meta.url));
@@ -577,7 +536,7 @@ describe('units.md', () => {
     expect(used.version).toBe((require('typescript') as { version: string }).version);
     const field = key<ExportNames>;
     u.value(
-      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is ${typeOnly ? 'a type' : 'a value'}, and \`export *\` ${star ? 'brings' : 'does not bring'} the names of its module. It takes a path or a \`file:\` URL, and ${withPaths ? 'resolves modules with the `tsconfig.json` above the file, its `paths` included' : 'does not resolve a module that only the `paths` of the `tsconfig.json` above the file name'}. It uses the project's \`typescript\` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript ${SEVEN}, which exports only its version from \`typescript\`: nothing to install.`,
+      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is a type, and \`export *\` brings the names of its module. It takes a path or a \`file:\` URL, and resolves modules with the \`tsconfig.json\` above the file, its \`paths\` included. It uses the project's \`typescript\` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript ${SEVEN}, which exports only its version from \`typescript\`: nothing to install.`,
     );
   });
 

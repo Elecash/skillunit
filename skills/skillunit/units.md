@@ -4,9 +4,8 @@ How a test declares the files of the skill and the units in them, and what the b
 
 ```ts
 setup('retries', { file: 'features/retries.md', title: 'Retries', when: 'Retry a request that failed', description: 'Which requests the client sends again.' });
-unit('retry-delay', { when: 'a request is sent again.', values: { delay: DEFAULT_RETRY_DELAY } }, (u) => {
+unit('retry-delay', { when: 'a request is sent again.', value: `the client waits ${DEFAULT_RETRY_DELAY} ms before the first new attempt.`, values: { delay: DEFAULT_RETRY_DELAY } }, () => {
   expect(retryWaits(1)).toEqual([DEFAULT_RETRY_DELAY]);
-  u.value(`the client waits ${DEFAULT_RETRY_DELAY} ms before the first new attempt.`);
 });
 ```
 
@@ -90,17 +89,17 @@ Value: `unit(id, spec)` with no body declares a unit no test proves. The build w
 
 ### fact: u-value
 
-When: the body of a fact observes the value it states.
+When: the body of a fact goes through a list of cases and says which did what.
 
-Value: `u.value(text)` in a body sets the value of a fact from what the body observed, in place of `value` in the spec. A rule or a decision refuses it.
+Value: `u.value(text)` in a body sets the value of a fact from what the body found, in place of `value` in the spec. A rule or a decision refuses it.
 
-### rule: sentence-from-observation
+### rule: sentence-and-assertion
 
 When: a test writes the sentence of a fact about what the code does.
 
-Do: build it from what the body observed, with `u.value()`, and assert only what holds whatever the code does: there is then no expected value to edit, so a change to the behaviour changes the built line, the proof reports it with its test, and `proof --write` writes what the code does now.
+Do: put the sentence in `value`, its numbers from constants and its names from the types, and assert in the body what it says. Build it with `u.value()` only when the body goes through a list of cases and the sentence says which did what; its words then come from that list or from a constant, never from an outcome the code does not have.
 
-Even when: the body asserts the value already: a sentence typed above an assertion stays when the assertion is edited to match a new behaviour, and the tests, the type-check and the proof all pass with the skill false.
+Even when: a sentence built from the outcome would be shorter to write: a test that goes red when the behaviour changes is what tells a regression from a change that is meant.
 
 ### fact: u-example
 

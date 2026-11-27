@@ -1,6 +1,6 @@
 // The file `checking.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { and, code, or, setup, unit } from 'skillunit/vitest';
@@ -12,7 +12,8 @@ import { RUN_LINES } from '../proof/layer.js';
 import { REPORT_SCHEMA, REPORTERS } from '../report/types.js';
 import { changedSelection, changedSkillFiles } from '../test/changed.js';
 import { runAll } from '../test/runner.js';
-import { BIN, cleanUp, cli, collected, command, modelModule, option, project, question, report, runner, skillProject, stub, TEST_FILE } from './helpers.js';
+import { UNFINISHED } from '../unit/create.js';
+import { BIN, cleanUp, cli, collected, command, modelModule, option, project, question, report, runner, skillProject, stub, TEST_FILE, type Ran } from './helpers.js';
 
 afterEach(cleanUp);
 
@@ -63,43 +64,38 @@ describe('checking.md', () => {
     };
     const commands = Object.keys(OPTIONS) as (keyof typeof OPTIONS)[];
     const runs = commands.flatMap((c) => [...COMMON_OPTIONS, ...OPTIONS[c]].map(async (flag) => [c, flag, await cli(p.root, [c, flag, ...(values[flag] ? [values[flag]] : []), ...(c === 'proof' ? [] : [dryRun])])] as const));
-    const wrong: string[] = [];
-    for (const [c, flag, ran] of await Promise.all(runs)) if (ran.stderr.includes('does not take')) wrong.push(`\`${c} ${flag}\``);
+    for (const [c, flag, ran] of await Promise.all(runs)) expect(ran.stderr, `${c} ${flag}`).not.toContain('does not take');
     const refused = await cli(p.root, [command('test'), write]);
-    expect(refused.status, 'the command ends').not.toBeNull();
-    const refuses = refused.status === EXIT.usage && refused.stderr.includes(`test does not take ${write}`);
+    expect(refused.status).toBe(EXIT.usage);
+    expect(refused.stderr).toContain(`test does not take ${write}`);
     const groups = new Map<string, string[]>();
     for (const c of commands) groups.set(OPTIONS[c].join(' '), [...(groups.get(OPTIONS[c].join(' ')) ?? []), c]);
     const takes = [...groups.values()].map((same) => `${and(code(same))} ${same.length > 1 ? 'take' : 'takes'} ${and(code(OPTIONS[same[0] as keyof typeof OPTIONS]))}.`);
-    u.value(
-      `${takes.join(' ')} Each of them also takes ${and(code(COMMON_OPTIONS))}${wrong.length ? `, though ${and(wrong)} ${wrong.length > 1 ? 'are' : 'is'} refused` : ''}. ${refuses ? `Any other option is refused, with exit code ${EXIT.usage}` : 'An option a command does not take is not refused'}.`,
-    );
+    u.value(`${takes.join(' ')} Each of them also takes ${and(code(COMMON_OPTIONS))}. Any other option is refused, with exit code ${EXIT.usage}.`);
   });
 
   unit(
     'proof-compares',
     {
       when: `\`${command('proof')}\` runs.`,
+      value: `without \`${write}\`, \`${command('proof')}\` compares the build with the skill folder, and reports each block of a file that differs and each file the folder lacks. With \`${write}\`, it writes them to the folder instead.`,
     },
-    async (u) => {
+    async () => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('wait-before-retry', { when: 'a request is sent again.', do: 'wait before each new attempt.' });
       });
       const missing = p.proof();
-      const lacks = missing.files[0]?.state === 'missing' && missing.problems.some((x) => x.message.includes('the skill folder has no `SKILL.md`'));
-      p.proof({ write: true });
-      const wroteMissing = existsSync(join(p.skill, 'SKILL.md'));
-      expect(wroteMissing || !lacks, 'the file the folder lacks is there after a write, or was never reported').toBe(true);
+      expect(missing.files).toEqual([{ file: 'SKILL.md', state: 'missing' }]);
+      expect(missing.problems.map((x) => x.message)).toEqual([expect.stringContaining('the skill folder has no `SKILL.md`')]);
+      expect(p.proof({ write: true }).files).toEqual([{ file: 'SKILL.md', state: 'written' }]);
       // Two blocks edited by hand, apart: the title and a line of the unit.
       p.write('skill/SKILL.md', p.read('skill/SKILL.md').replace('# Demo', '# A demo').replace('wait before', 'wait just before'));
       const differs = p.proof();
-      const blocks = differs.problems.length === 2 ? 'each block of a file that differs' : 'a file that differs, not block by block';
-      p.proof({ write: true });
-      const wrote = p.proof().ok;
-      u.value(
-        `without \`${write}\`, \`${command('proof')}\` compares the build with the skill folder, and reports ${blocks}${lacks ? ' and each file the folder lacks' : ''}. With \`${write}\`, it ${wrote && wroteMissing ? 'writes them to the folder instead' : 'does not write them all'}.`,
-      );
+      expect(differs.files).toEqual([{ file: 'SKILL.md', state: 'differs' }]);
+      expect(differs.problems).toHaveLength(2);
+      expect(p.proof({ write: true }).files).toEqual([{ file: 'SKILL.md', state: 'written' }]);
+      expect(p.proof().ok).toBe(true);
     },
   );
 
@@ -107,106 +103,112 @@ describe('checking.md', () => {
     'stale-unit',
     {
       when: 'a test that declares a unit is skipped or deleted.',
+      value: `a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. \`${write}\` takes it out of the skill only when the proof has no other error, such as a failed run.`,
     },
-    async (u) => {
+    async () => {
       const p = await built();
-      expect(p.read('skill/retries.md')).toContain('wait-before-retry');
       rmSync(join(p.root, 'tmp/skill-units/3-wait-before-retry.json'));
-      const stale = p.proof();
-      const named = stale.problems.some((x) => x.unit === 'wait-before-retry' && x.message.includes('no test declares it: its test was skipped or deleted, or did not run'));
-      // An error elsewhere, as a test left out by \`.only\` leaves: a region of the test file that belongs to no unit.
+      expect(p.proof().problems).toEqual([expect.objectContaining({ file: 'retries.md', unit: 'wait-before-retry', message: expect.stringContaining('no test declares it: its test was skipped or deleted, or did not run') })]);
+      // An error elsewhere, as a test left out by `.only` leaves: a region of the test file that belongs to no unit.
       p.write(TEST_FILE, `// ${'#'}region skill:nobody\nx;\n// ${'#'}endregion\n`);
       p.proof({ write: true });
-      const held = p.read('skill/retries.md').includes('wait-before-retry');
+      expect(p.read('skill/retries.md')).toContain('wait-before-retry');
       p.write(TEST_FILE, '');
       p.proof({ write: true });
-      const out = !p.read('skill/retries.md').includes('wait-before-retry');
-      u.value(
-        `a unit the skill folder has and no test declares is ${named ? 'reported: its test was skipped or deleted, or did not run' : 'not reported'}. \`${write}\` ${out ? 'takes it out of the skill' : 'leaves it in the skill'}${held ? ' only when the proof has no other error, such as a failed run' : ', whatever else the proof reports'}.`,
-      );
+      expect(p.read('skill/retries.md')).not.toContain('wait-before-retry');
     },
   );
 
-  unit('failed-run', { when: '`proof.run` fails, and the run left no record of a unit, a file or a row of the index that the skill has.' }, async (u) => {
-    const p = await built();
-    // The run gives back the records of `SKILL.md` only, as when the test file of `retries.md` fails to load, and fails.
-    for (const name of ['0-demo.json', '1-read-the-docs.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
-    p.write('restore.mjs', "import { copyFileSync } from 'node:fs';\nfor (const name of ['0-demo.json', '1-read-the-docs.json']) copyFileSync(`saved/${name}`, `tmp/skill-units/${name}`);\nprocess.exit(1);\n");
-    p.write(CONFIG_FILE, 'skill: ./skill\nproof:\n  run: "node restore.mjs"\n');
-    const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
-    const failed = p.proof();
-    expect(failed.problems.length, 'the proof reports something').toBeGreaterThan(0);
-    const first = failed.problems[0]!.run === true && failed.problems[0]!.message.includes('`proof.run` (`node restore.mjs`) exited with 1');
-    const rest = failed.problems.filter((x) => !x.run);
-    const pointed = rest.map((x) => x.file).sort().join() === 'SKILL.md,retries.md' && rest.every((x) => /left no record of its `setup\(\)` while `proof\.run` failed: see the finding on the run, first in the report/.test(x.message) && !x.message.includes(`Run \`skillunit proof ${write}\``));
-    const wrote = p.proof({ write: true });
-    const kept = [p.read('skill/SKILL.md'), p.read('skill/retries.md')].join() === before.join();
-    const says = wrote.problems.some((x) => x.file === 'SKILL.md' && x.severity === 'warning' && x.message.includes(`\`${write}\` left \`SKILL.md\` as it is`));
-    u.value(
-      `${first ? 'the finding on the run comes first, with the end of its output' : 'the run is not the first finding'}. A unit, a file or a row of the index that the skill has and that run left no record of is ${pointed ? 'reported as such, and points at the run' : 'not reported as one that points at the run'}; \`${write}\` ${kept ? `takes none of them out until a run passes and the proof has no error${says ? ', and says which files it left as they are' : ''}` : 'takes them out all the same'}.`,
-    );
-  });
+  unit(
+    'failed-run',
+    {
+      when: '`proof.run` fails, and the run left no record of a unit, a file or a row of the index that the skill has.',
+      value: `the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; \`${write}\` takes none of them out until a run passes and the proof has no error, and says which files it left as they are.`,
+    },
+    async () => {
+      const p = await built();
+      // The run gives back the records of `SKILL.md` only, as when the test file of `retries.md` fails to load, and fails.
+      for (const name of ['0-demo.json', '1-read-the-docs.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
+      p.write('restore.mjs', "import { copyFileSync } from 'node:fs';\nfor (const name of ['0-demo.json', '1-read-the-docs.json']) copyFileSync(`saved/${name}`, `tmp/skill-units/${name}`);\nconsole.log('the end of the output');\nprocess.exit(1);\n");
+      p.write(CONFIG_FILE, 'skill: ./skill\nproof:\n  run: "node restore.mjs"\n');
+      const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
+      const failed = p.proof();
+      expect(failed.problems[0]).toMatchObject({ run: true, message: expect.stringMatching(/^`proof\.run` \(`node restore\.mjs`\) exited with 1: .*The end of its output:\nthe end of the output$/s) });
+      const rest = failed.problems.filter((x) => !x.run);
+      expect(rest.map((x) => x.file).sort()).toEqual(['SKILL.md', 'retries.md']);
+      for (const x of rest) {
+        expect(x.message).toMatch(/left no record of its `setup\(\)` while `proof\.run` failed: see the finding on the run, first in the report/);
+        expect(x.message).not.toContain(`Run \`skillunit proof ${write}\``);
+      }
+      const wrote = p.proof({ write: true });
+      expect([p.read('skill/SKILL.md'), p.read('skill/retries.md')]).toEqual(before);
+      expect(wrote.problems).toContainEqual(expect.objectContaining({ file: 'SKILL.md', severity: 'warning', message: expect.stringContaining(`\`${write}\` left \`SKILL.md\` as it is`) }));
+    },
+  );
 
-  unit('run-left-no-record', { when: '`proof.run` fails before any test writes a record, as when it type-checks the tests first and finds an error.', values: { lines: RUN_LINES } }, async (u) => {
-    const p = await built();
-    const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
-    // The tests would give back the records of the build; the type-check before them fails first.
-    for (const name of ['0-demo.json', '1-read-the-docs.json', '2-retries.json', '3-wait-before-retry.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
-    p.write('tests.mjs', "import { cpSync } from 'node:fs';\ncpSync('saved', 'tmp/skill-units', { recursive: true });\n");
-    p.write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true, "types": [] }, "include": ["a.ts"] }\n');
-    p.write('a.ts', "export const retries: number = 'two';\n");
-    p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "node ${JSON.stringify(tsc).slice(1, -1)} --noEmit --pretty false && node tests.mjs"\n`);
-    const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
-    const failed = p.proof({ write: true });
-    expect(failed.ok, 'the type error fails the proof').toBe(false);
-    const only = failed.problems.length === 1 && failed.problems[0]!.run === true;
-    const start = failed.problems[0]!.message.includes('left no record in `tmp/skill-units`: it failed before any test wrote one. Its output:\na.ts(1,14): error TS2322');
-    const nothing = failed.files.length === 0;
-    const kept = [p.read('skill/SKILL.md'), p.read('skill/retries.md')].join() === before.join();
-    p.write('a.ts', 'export const retries: number = 2;\n');
-    expect(p.proof().ok, 'with no type error, the proof passes').toBe(true);
-    u.value(
-      `the finding on the run is ${only ? 'the only one' : 'not the only one'}. It shows ${start ? "the start of the run's output" : "another part of the run's output"}, up to ${RUN_LINES} lines, where a type-check prints its errors; proof ${nothing ? 'builds and compares nothing' : 'still compares the skill folder'}, and \`${write}\` ${kept ? 'writes nothing' : 'writes the skill all the same'}.`,
-    );
-  });
+  unit(
+    'run-left-no-record',
+    {
+      when: '`proof.run` fails before any test writes a record, as when it type-checks the tests first and finds an error.',
+      value: `the finding on the run is the only one. It shows the start of the run's output, up to ${RUN_LINES} lines, where a type-check prints its errors; proof builds and compares nothing, and \`${write}\` writes nothing.`,
+      values: { lines: RUN_LINES },
+    },
+    async () => {
+      const p = await built();
+      const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
+      // The tests would give back the records of the build; the type-check before them fails first.
+      for (const name of ['0-demo.json', '1-read-the-docs.json', '2-retries.json', '3-wait-before-retry.json']) p.write(`saved/${name}`, p.read(`tmp/skill-units/${name}`));
+      p.write('tests.mjs', "import { cpSync } from 'node:fs';\ncpSync('saved', 'tmp/skill-units', { recursive: true });\n");
+      p.write('tsconfig.json', '{ "compilerOptions": { "strict": true, "noEmit": true, "types": [] }, "include": ["a.ts"] }\n');
+      p.write('a.ts', "export const retries: number = 'two';\n");
+      p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "node ${JSON.stringify(tsc).slice(1, -1)} --noEmit --pretty false && node tests.mjs"\n`);
+      const before = [p.read('skill/SKILL.md'), p.read('skill/retries.md')];
+      const failed = p.proof({ write: true });
+      expect(failed.problems).toEqual([expect.objectContaining({ run: true, message: expect.stringContaining('left no record in `tmp/skill-units`: it failed before any test wrote one. Its output:\na.ts(1,14): error TS2322') })]);
+      expect(failed.files).toEqual([]);
+      expect([p.read('skill/SKILL.md'), p.read('skill/retries.md')]).toEqual(before);
+      p.write('a.ts', 'export const retries: number = 2;\n');
+      expect(p.proof().ok, 'with no type error, the proof passes').toBe(true);
+    },
+  );
 
-  unit('unfinished-test', { when: 'the test of a unit does not finish, because it times out or the run stops.' }, async (u) => {
-    const p = await built();
-    // A body the runner abandons: it never ends, so only the record written when it started is left.
-    const r = runner();
-    r.unit('wait-before-retry', { when: 'a request is sent again.', do: 'wait before each new attempt.' }, () => new Promise(() => {}));
-    void r.run();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const left = r.records[0]!;
-    expect(left, 'a record is there before the test ends').toBeDefined();
-    const record = JSON.parse(p.read('tmp/skill-units/3-wait-before-retry.json'));
-    p.write('tmp/skill-units/3-wait-before-retry.json', JSON.stringify({ ...left, file: record.file, line: record.line, setup: record.setup, order: record.order }));
-    const before = p.read('skill/retries.md');
-    const result = p.proof({ write: true });
-    const failedUnit = result.units.find((x) => x.id === 'wait-before-retry')?.state === 'failed' && result.files.some((f) => f.file === 'retries.md' && f.state === 'broken');
-    const kept = p.read('skill/retries.md') === before;
-    const error = (left as { error?: string }).error;
-    u.value(
-      left.status === 'failed'
-        ? `each test writes a failed record when it starts and replaces it when it ends, so a test that does not finish leaves a record whose error is "${error}". Its unit is ${failedUnit ? 'reported as a failed test, at the line of the test' : 'not reported as a failed test'}, and \`${write}\` ${kept ? 'leaves its file as it is' : 'writes its file all the same'}.`
-        : `a test writes no failed record when it starts, so a test that does not finish leaves a record that says it ${left.status}, and \`${write}\` ${kept ? 'leaves its file as it is' : 'writes its file all the same'}.`,
-    );
-  });
+  unit(
+    'unfinished-test',
+    {
+      when: 'the test of a unit does not finish, because it times out or the run stops.',
+      value: `each test writes a failed record when it starts and replaces it when it ends, so a test that does not finish leaves a record whose error is "${UNFINISHED}". Its unit is reported as a failed test, at the line of the test, and \`${write}\` leaves its file as it is.`,
+    },
+    async () => {
+      const p = await built();
+      // A body the runner abandons: it never ends, so only the record written when it started is left.
+      const r = runner();
+      r.unit('wait-before-retry', { when: 'a request is sent again.', do: 'wait before each new attempt.' }, () => new Promise(() => {}));
+      void r.run();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const left = r.records[0]!;
+      expect(left).toMatchObject({ status: 'failed', error: UNFINISHED });
+      const record = JSON.parse(p.read('tmp/skill-units/3-wait-before-retry.json'));
+      p.write('tmp/skill-units/3-wait-before-retry.json', JSON.stringify({ ...left, file: record.file, line: record.line, setup: record.setup, order: record.order }));
+      const before = p.read('skill/retries.md');
+      const result = p.proof({ write: true });
+      expect(result.units.find((x) => x.id === 'wait-before-retry')).toMatchObject({ state: 'failed', test: { line: record.line } });
+      expect(result.files).toContainEqual({ file: 'retries.md', state: 'broken' });
+      expect(p.read('skill/retries.md')).toBe(before);
+    },
+  );
 
   unit(
     'extra-file',
     {
       when: 'the skill folder has a Markdown file of its own.',
+      value: `a Markdown file in the skill folder that no \`${setup.name}()\` declares is reported, and \`${write}\` leaves it there.`,
     },
-    async (u) => {
+    async () => {
       const p = await built();
       p.write('skill/notes.md', '# Notes\n');
-      const found = p.proof().problems;
-      expect(found.every((x) => x.file === 'notes.md'), 'the one file is all it can report').toBe(true);
-      const reported = found.some((x) => x.message.includes('no `setup()` declares `notes.md`'));
+      expect(p.proof().problems.map((x) => [x.file, x.message])).toEqual([['notes.md', expect.stringContaining('no `setup()` declares `notes.md`')]]);
       p.proof({ write: true });
-      const left = existsSync(join(p.skill, 'notes.md')) && p.read('skill/notes.md') === '# Notes\n';
-      u.value(`a Markdown file in the skill folder that no \`${setup.name}()\` declares is ${reported ? 'reported' : 'not reported'}, and \`${write}\` ${left ? 'leaves it there' : 'does not leave it as it was'}.`);
+      expect(p.read('skill/notes.md')).toBe('# Notes\n');
     },
   );
 
@@ -214,18 +216,17 @@ describe('checking.md', () => {
     'no-run',
     {
       when: `a command runs with \`${option('proof', '--no-run')}\`.`,
+      value: `with \`${option('proof', '--no-run')}\`, a command runs no \`proof.run\`, and builds from the records the last run left in \`proof.units\`.`,
     },
-    async (u) => {
+    async () => {
       const p = await built();
       // A run that fails and would empty the records: with `--no-run`, neither happens.
       p.write(CONFIG_FILE, 'skill: ./skill\nproof:\n  run: "exit 1"\n');
       const result = p.proof({ noRun: true });
-      expect(p.proof().ok, 'the run fails when it runs').toBe(false);
-      const ran = !('skipped' in result.run);
-      const fromRecords = result.ok && result.summary.units === 2;
-      u.value(
-        `with \`${option('proof', '--no-run')}\`, a command ${ran ? 'still runs' : 'runs no'} \`proof.run\`, and ${fromRecords ? 'builds from the records the last run left' : 'does not build from the records the last run left'} in \`proof.units\`.`,
-      );
+      expect(result.ok).toBe(true);
+      expect(result.run).toEqual({ skipped: 'no-run' });
+      expect(result.summary.units).toBe(2);
+      expect(p.proof().ok).toBe(false);
     },
   );
 
@@ -233,18 +234,16 @@ describe('checking.md', () => {
     'dry-run',
     {
       when: `\`${command('test')}\` or \`${command('check')}\` runs with \`${dryRun}\`.`,
+      value: `with \`${dryRun}\`, nothing is sent to the decision model: the command checks that each question can be asked, that its headings are in its file, and that each request fits the model's limits, and the report gives an estimate of each request's tokens.`,
     },
-    async (u) => {
-      const model = stub(() => ({}));
+    async () => {
+      const model = stub(() => new Error('nothing should be sent'));
       const config = skillProject();
       const ran = await runAll(config, model.model, collected(question('retry-get'), question('missing-heading', { sections: ['Timeouts'] })), { dryRun: true });
-      expect(ran.requests).toHaveLength(2);
-      const sent = model.calls.length > 0;
-      const headings = ran.requests[1]!.error?.includes('no heading "Timeouts"') === true;
-      const estimate = (ran.requests[0]!.estimatedTokens ?? 0) > 0;
-      u.value(
-        `with \`${dryRun}\`, ${sent ? 'the questions are still sent to the decision model' : 'nothing is sent to the decision model'}: the command checks that each question can be asked, ${headings ? 'that its headings are in its file' : 'but not that its headings are in its file'}, and that each request fits the model's limits${estimate ? ", and the report gives an estimate of each request's tokens" : ''}.`,
-      );
+      expect(model.calls).toHaveLength(0);
+      expect(ran.requests[0]).toMatchObject({ verdicts: [{ id: 'retry-get', answer: '(dry run)' }] });
+      expect(ran.requests[0]!.estimatedTokens).toBeGreaterThan(0);
+      expect(ran.requests[1]!.error).toContain('no heading "Timeouts"');
     },
   );
 
@@ -252,20 +251,16 @@ describe('checking.md', () => {
     'skill-copy',
     {
       when: 'a command should read another folder than the skill of the settings, such as a copy.',
+      value: `\`${option('check', '--skill')} <dir>\` makes a command read that folder instead of \`skill\` in the settings: \`${command('test')} ${option('check', '--skill')} <copy>\` asks the questions about the copy, and \`${command('proof')} ${option('check', '--skill')} <copy>\` compares the build with it.`,
     },
-    async (u) => {
+    async () => {
       const p = await built();
       cpSync(p.skill, join(p.root, 'copy'), { recursive: true });
       p.write('copy/retries.md', `${p.read('copy/retries.md')}\nA line only the copy has.\n`);
       expect(report(await cli(p.root, [command('proof'), '--json'])).ok).toBe(true);
-      const compares = !report(await cli(p.root, [command('proof'), option('proof', '--skill'), 'copy', '--json'])).ok;
+      expect(report(await cli(p.root, [command('proof'), option('proof', '--skill'), 'copy', '--json'])).ok).toBe(false);
       const chars = async (...args: string[]) => report(await cli(p.root, [command('test'), dryRun, ...args, '--json'])).test!.requests.find((r) => r.file === 'retries.md')!.chars;
-      const asks = (await chars(option('test', '--skill'), 'copy')) > (await chars());
-      u.value(
-        compares && asks
-          ? `\`${option('check', '--skill')} <dir>\` makes a command read that folder instead of \`skill\` in the settings: \`${command('test')} ${option('check', '--skill')} <copy>\` asks the questions about the copy, and \`${command('proof')} ${option('check', '--skill')} <copy>\` compares the build with it.`
-          : `\`${option('check', '--skill')} <dir>\` does not make every command read that folder: \`${command('test')}\` ${asks ? 'asks about the copy' : 'still asks about the skill of the settings'}, and \`${command('proof')}\` ${compares ? 'compares the build with the copy' : 'still compares the build with the skill of the settings'}.`,
-      );
+      expect(await chars(option('test', '--skill'), 'copy')).toBeGreaterThan(await chars());
     },
   );
 
@@ -273,8 +268,9 @@ describe('checking.md', () => {
     'changed',
     {
       when: `a run should ask only about what a branch changed, with \`${option('check', '--changed')}\`.`,
+      value: `\`${option('check', '--changed')}\` asks only the questions about the skill files, or their \`with\` files, that differ from the merge base of HEAD and \`${option('check', '--base')}\`, with uncommitted and untracked changes. Without \`${option('check', '--base')}\`, the base is the target branch of the pull request in GitHub Actions (\`GITHUB_BASE_REF\`), or else the default branch.`,
     },
-    async (u) => {
+    async () => {
       const p = await built();
       const git = (...args: string[]) => spawnSync('git', ['-c', 'user.email=skill@example.com', '-c', 'user.name=Skill', ...args], { cwd: p.root, encoding: 'utf8' });
       git('init', '-q');
@@ -285,26 +281,20 @@ describe('checking.md', () => {
       edit(p);
       p.write('skill/new.md', '# New\n');
       const changed = changedSkillFiles(p.skill, 'main');
-      expect(changed.files, 'the edit is a change').toContain('retries.md');
-      const untracked = changed.files.includes('new.md');
+      expect(changed.files.sort()).toEqual(['new.md', 'retries.md']);
       const select = changedSelection(changed);
-      const [own, other, viaWith] = [question('in-retries', { file: 'retries.md' }), question('in-index', { file: 'SKILL.md' }), question('with-retries', { file: 'SKILL.md', withFiles: ['retries.md'] })].map(select);
-      expect(own, 'a question about the changed file is asked').toBe(true);
+      expect([question('in-retries', { file: 'retries.md' }), question('in-index', { file: 'SKILL.md' }), question('with-retries', { file: 'SKILL.md', withFiles: ['retries.md'] })].map(select)).toEqual([true, false, true]);
       const repo = new Git(p.root);
-      const fallback = defaultBase(repo);
+      expect(defaultBase(repo)).toBe('main');
       git('update-ref', 'refs/remotes/origin/develop', 'HEAD');
       const before = process.env.GITHUB_BASE_REF;
       process.env.GITHUB_BASE_REF = 'develop';
-      let inActions: string;
       try {
-        inActions = defaultBase(repo);
+        expect(defaultBase(repo)).toBe('origin/develop');
       } finally {
         if (before === undefined) delete process.env.GITHUB_BASE_REF;
         else process.env.GITHUB_BASE_REF = before;
       }
-      u.value(
-        `\`${option('check', '--changed')}\` asks only the questions about the skill files${viaWith ? ', or their `with` files,' : ''} that differ from the merge base of HEAD and \`${option('check', '--base')}\`, with uncommitted ${untracked ? 'and untracked changes' : 'changes, and not untracked files'}${other ? '; it asks about the other files too' : ''}. Without \`${option('check', '--base')}\`, the base is ${inActions === 'origin/develop' ? 'the target branch of the pull request in GitHub Actions (`GITHUB_BASE_REF`), or else ' : ''}${fallback === 'main' ? 'the default branch' : `\`${fallback}\``}.`,
-      );
     },
   );
 
@@ -313,33 +303,33 @@ describe('checking.md', () => {
     const answer = (probabilities: Record<string, number>) => p.write('model.mjs', modelModule(probabilities));
     answer({ wait: 0.55, now: 0.45, none: 0 });
     const borderline = await cli(p.root, [command('check'), '--json']);
-    // Both verdicts near the threshold, when `check` asks and marks them.
-    const nearBoth = report(borderline).test?.summary.borderline === 2;
+    expect(report(borderline).test?.summary.borderline).toBe(2);
+    expect(borderline.status).toBe(EXIT.passed);
     answer({ wait: 0.2, now: 0.8, none: 0 });
-    const failedTest = (await cli(p.root, [command('check')])).status;
+    expect((await cli(p.root, [command('check')])).status).toBe(EXIT.failed);
     answer({ wait: 0.9, now: 0.1, none: 0 });
-    const passed = (await cli(p.root, [command('check')])).status;
+    expect((await cli(p.root, [command('check')])).status).toBe(EXIT.passed);
     edit(p);
-    const failedProof = (await cli(p.root, [command('proof')])).status;
-    const wrong: [string, number | null][] = [
-      ['an option it does not take', (await cli(p.root, [command('proof'), '--nothing'])).status],
-      ['a folder that is not there', (await cli(p.root, [command('proof'), option('proof', '--skill'), 'nowhere'])).status],
+    expect((await cli(p.root, [command('proof')])).status).toBe(EXIT.failed);
+    const wrong: [string, Promise<Ran>][] = [
+      ['an option it does not take', cli(p.root, [command('proof'), '--nothing'])],
+      ['a folder that is not there', cli(p.root, [command('proof'), option('proof', '--skill'), 'nowhere'])],
     ];
+    for (const [what, ran] of wrong) expect((await ran).status, what).toBe(EXIT.usage);
     p.write(CONFIG_FILE, 'skill: ./skill\nproof: {}\n');
-    wrong.push(['no API key', (await cli(p.root, [command('check')])).status]);
+    expect((await cli(p.root, [command('check')])).status, 'no API key').toBe(EXIT.usage);
     p.write(CONFIG_FILE, 'skil: ./skill\n');
-    wrong.push(['settings that are not valid', (await cli(p.root, [command('proof')])).status]);
+    expect((await cli(p.root, [command('proof')])).status, 'settings that are not valid').toBe(EXIT.usage);
     // With no `proof`, nothing builds the skill or declares its questions.
     p.write(CONFIG_FILE, 'skill: ./skill\n');
     const commands = [command('proof'), command('test'), command('check')];
-    const noProof = await Promise.all(commands.map((c) => cli(p.root, c === command('proof') ? [c] : [c, dryRun])));
-    for (const status of [borderline.status, failedTest, passed, failedProof, ...wrong.map(([, s]) => s), ...noProof.map((r) => r.status)]) expect(typeof status).toBe('number');
-    const usage = wrong.filter(([, s]) => s === EXIT.usage).map(([what]) => what);
-    const other = wrong.filter(([, s]) => s !== EXIT.usage).map(([what, s]) => `${what} exits with ${s}`);
-    const refused = commands.filter((_, i) => noProof[i]!.status === EXIT.usage && noProof[i]!.stderr.includes('no `proof` in'));
-    const failedWith = failedTest === failedProof ? `with ${failedTest} when a check failed` : `with ${failedTest} when a question failed and ${failedProof} when the proof did`;
+    for (const c of commands) {
+      const ran = await cli(p.root, c === command('proof') ? [c] : [c, dryRun]);
+      expect(ran.status, c).toBe(EXIT.usage);
+      expect(ran.stderr, c).toContain('no `proof` in');
+    }
     u.value(
-      `\`${BIN}\` exits with ${passed} when every check passed, ${nearBoth ? `borderline verdicts ${borderline.status === passed ? 'included' : `excepted: a borderline pass exits with ${borderline.status}`}` : 'borderline verdicts aside'}; ${failedWith}; and with ${EXIT.usage} when the command itself was wrong: ${or(usage)}${other.length ? ` (${and(other)})` : ''}. Settings with no \`proof\` give ${EXIT.usage} to ${and(code(refused))}${refused.length < commands.length ? `, and not to ${and(code(commands.filter((c) => !refused.includes(c))))}` : ''}: the skill and its questions both come from the records of \`proof.run\`.`,
+      `\`${BIN}\` exits with ${EXIT.passed} when every check passed, borderline verdicts included; with ${EXIT.failed} when a check failed; and with ${EXIT.usage} when the command itself was wrong: ${or([...wrong.map(([what]) => what), 'no API key', 'settings that are not valid'])}. Settings with no \`proof\` give ${EXIT.usage} to ${and(code(commands))}: the skill and its questions both come from the records of \`proof.run\`.`,
     );
   });
 
@@ -347,31 +337,31 @@ describe('checking.md', () => {
     'advisory',
     {
       when: `CI asks the questions, and a question that fails should not block the merge.`,
+      value: `with \`${option('check', '--advisory')}\`, a question that fails is reported as it is without it, and does not fail the run: \`${command('check')}\` exits with ${EXIT.passed} when only questions failed (${EXIT.failed} without the flag) and with ${EXIT.failed} when the proof fails, and \`${command('test')}\` with ${EXIT.passed}. What is not a verdict still fails it: a provider that answers with an error exits with ${EXIT.failed}. The status line ends with \`, advisory\`, so a green run is not read as questions that passed; the \`github\` reporter writes those failures as warnings, and the JSON report has \`advisory: true\` in \`test\`. It is a flag only, with no key in \`${CONFIG_FILE}\`, so it shows where CI calls the command.`,
       values: { ...EXIT },
     },
-    async (u) => {
+    async () => {
       const p = await built(`skill: ./skill\nmodel: ./model.mjs\nproof: {}\n`);
       const advisory = option('check', '--advisory');
       // Every question fails.
       p.write('model.mjs', modelModule({ wait: 0.2, now: 0.8, none: 0 }));
-      const plain = await cli(p.root, [command('check')]);
+      expect((await cli(p.root, [command('check')])).status).toBe(EXIT.failed);
       const checked = await cli(p.root, [command('check'), advisory]);
-      const tested = await cli(p.root, [command('test'), option('test', '--advisory')]);
+      expect(checked.status).toBe(EXIT.passed);
+      // The colours aside, which CI can turn on.
+      expect(checked.stdout.replace(/\x1b\[[0-9;]*m/g, '').trim().split('\n').at(-1)).toMatch(/, advisory$/);
+      expect((await cli(p.root, [command('test'), option('test', '--advisory')])).status).toBe(EXIT.passed);
       const json = report(await cli(p.root, [command('check'), advisory, '--json']));
+      expect(json.test).toMatchObject({ advisory: true, summary: { passed: 0 } });
       const github = (await cli(p.root, [command('check'), advisory, option('check', '--reporter'), 'github'])).stdout;
-      expect(json.test?.summary.passed, 'every question fails').toBe(0);
-      const statusLine = checked.stdout.trim().split('\n').at(-1) ?? '';
-      const warns = /^::warning .*title=SkillUnit test%3A wait-before-retry::/m.test(github) && !/^::error .*title=SkillUnit test%3A/m.test(github);
+      expect(github).toMatch(/^::warning .*title=SkillUnit test%3A wait-before-retry::/m);
+      expect(github).not.toMatch(/^::error .*title=SkillUnit test%3A/m);
       // A provider that answers with an error is no verdict; nor is a proof that fails.
       p.write('model.mjs', "export default { id: 'down', limits: { perQuestionTokens: 100000, perRequestTokens: 100000 }, async decide() { throw new Error('the provider is down'); } };\n");
-      const down = await cli(p.root, [command('check'), advisory]);
+      expect((await cli(p.root, [command('check'), advisory])).status).toBe(EXIT.failed);
       p.write('model.mjs', modelModule({ wait: 0.2, now: 0.8, none: 0 }));
       edit(p);
-      const proofFails = await cli(p.root, [command('check'), advisory]);
-      for (const ran of [plain, checked, tested, down, proofFails]) expect(typeof ran.status).toBe('number');
-      u.value(
-        `with \`${advisory}\`, a question that fails is reported as it is without it, and ${checked.status === plain.status ? 'still fails the run' : 'does not fail the run'}: \`${command('check')}\` exits with ${checked.status} when only questions failed (${plain.status} without the flag) and with ${proofFails.status} when the proof fails, and \`${command('test')}\` with ${tested.status}. What is not a verdict ${down.status === EXIT.passed ? 'does not fail it either' : 'still fails it'}: a provider that answers with an error exits with ${down.status}. ${statusLine.endsWith(', advisory') ? 'The status line ends with `, advisory`, so a green run is not read as questions that passed' : 'The status line does not say the run was advisory'}; ${warns ? 'the `github` reporter writes those failures as warnings' : 'the `github` reporter writes those failures as errors'}, and the JSON report ${json.test?.advisory === true ? 'has `advisory: true` in `test`' : 'does not say the run was advisory'}. It is a flag only, with no key in \`${CONFIG_FILE}\`, so it shows where CI calls the command.`,
-      );
+      expect((await cli(p.root, [command('check'), advisory])).status).toBe(EXIT.failed);
     },
   );
 
@@ -381,15 +371,14 @@ describe('checking.md', () => {
     const out = async (...args: string[]) => (await cli(p.root, [command('proof'), ...args])).stdout;
     const reporter = option('proof', '--reporter');
     const json = JSON.parse(await out(option('proof', '--json')));
-    expect(json).toMatchObject({ command: 'proof', ok: false });
-    const same = JSON.stringify(JSON.parse(await out(reporter, 'json'))) === JSON.stringify(json);
-    const github = await out(reporter, 'github');
-    expect(github, 'an annotation for the edit').toMatch(/^::error file=.*retries\.md/m);
-    const atLine = /^::error file=.*retries\.md,line=\d+,/m.test(github);
+    expect(json).toMatchObject({ schema: REPORT_SCHEMA, command: 'proof', ok: false });
+    expect(JSON.parse(await out(reporter, 'json'))).toEqual(json);
+    expect(await out(reporter, 'github')).toMatch(/^::error file=.*retries\.md,line=\d+,/m);
     expect(await out(reporter, 'junit')).toMatch(/^<\?xml/);
-    const tableByDefault = (await out()) === (await out(reporter, 'table'));
+    expect(await out()).toBe(await out(reporter, 'table'));
+    expect(REPORTERS[0]).toBe('table');
     u.value(
-      `\`${reporter}\` takes ${and(code(REPORTERS))}; ${tableByDefault ? '`table` is the default' : 'the default is not `table`'}. \`${option('proof', '--json')}\` ${same ? `is \`${reporter} json\`` : `is not quite \`${reporter} json\``}: the whole report as JSON, with its \`schema\`, ${json.schema}. \`github\` prints an annotation ${atLine ? 'at the line of each finding' : 'for each finding, with no line'}, which GitHub Actions shows on the pull request.`,
+      `\`${reporter}\` takes ${and(code(REPORTERS))}; \`${REPORTERS[0]}\` is the default. \`${option('proof', '--json')}\` is \`${reporter} json\`: the whole report as JSON, with its \`schema\`, ${REPORT_SCHEMA}. \`github\` prints an annotation at the line of each finding, which GitHub Actions shows on the pull request.`,
     );
   });
 
@@ -397,18 +386,16 @@ describe('checking.md', () => {
     'origin',
     {
       when: 'the proof reports a line of the skill.',
+      value: 'each finding about a line of the skill names the test that declares it: in `origin`, in the JSON report and after the finding in the table.',
     },
-    async (u) => {
+    async () => {
       const p = await built();
       edit(p);
       const ran = report(await cli(p.root, [command('proof'), option('proof', '--json')]));
       const problem = ran.proof?.configured ? ran.proof.problems[0] : undefined;
-      expect(problem, 'the edit is reported').toBeDefined();
       const unitLine = JSON.parse(p.read('tmp/skill-units/3-wait-before-retry.json')).line;
-      const json = JSON.stringify(problem?.origin) === JSON.stringify({ kind: 'test', file: '../skill.test.ts', line: unitLine, unit: 'wait-before-retry' });
-      const table = (await cli(p.root, [command('proof')])).stdout.includes(`skill.test.ts:${unitLine}`);
-      const where = [json ? 'in `origin`, in the JSON report' : '', table ? 'after the finding in the table' : ''].filter(Boolean);
-      u.value(where.length ? `each finding about a line of the skill names the test that declares it: ${and(where)}.` : 'a finding about a line of the skill does not name the test that declares it.');
+      expect(problem?.origin).toEqual({ kind: 'test', file: '../skill.test.ts', line: unitLine, unit: 'wait-before-retry' });
+      expect((await cli(p.root, [command('proof')])).stdout).toContain(`skill.test.ts:${unitLine}`);
     },
   );
 
