@@ -278,6 +278,53 @@ describe('a skill folder edited by hand', () => {
   });
 });
 
+describe('what --write takes out', () => {
+  const written = (more: Record<string, string> = {}) => {
+    const root = project({ ...GOOD, ...more });
+    run(root, {}, { write: true });
+    return root;
+  };
+  const OTHER = { 'tmp/skill-units/other.json': setup('other', 2, { skillFile: 'other.md', title: 'Other', when: 'Other things', description: 'Other.' }) };
+
+  it('a unit no test declares, when the proof has no other error: taken out', () => {
+    const root = written();
+    rmSync(join(root, 'tmp/skill-units/by-hand.0004.json'));
+    expect(errors(run(root))).toEqual([expect.stringContaining('the skill has the unit `by-hand`, and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill')]);
+    const r = run(root, {}, { write: true });
+    expect(r.problems).toEqual([]);
+    expect(read(root, 'skill/SKILL.md')).not.toContain('by-hand');
+  });
+
+  it('a unit no test declares, while the proof has an error elsewhere, as a test left out by `.only` leaves: kept, and the report says why', () => {
+    const root = written();
+    // The region of `check-status` stays in the test, and belongs to no unit once its record is gone.
+    rmSync(join(root, 'tmp/skill-units/check-status.0002.json'));
+    const r = run(root, {}, { write: true });
+    expect(read(root, 'skill/SKILL.md')).toBe(BUILT);
+    expect(r.ok).toBe(false);
+    expect(r.files.find((f) => f.file === 'SKILL.md')!.state).toBe('differs');
+    expect(r.problems.map(show)).toEqual([
+      expect.stringMatching(/^\.\.\/tests\/a\.test\.ts:\d+ - error: the region `skill:check-status` belongs to no unit/),
+      `SKILL.md:${lineOf('### rule: check-status')} - warning: \`--write\` left \`SKILL.md\` as it is, since the build takes out the unit \`check-status\` and the proof has an error elsewhere. Fix that error, then write again`,
+      `SKILL.md:${lineOf('### rule: check-status')} check-status error: the skill has the unit \`check-status\`, and no test declares it: its test was skipped or deleted, or did not run. The proof has an error elsewhere, and \`--write\` leaves the unit in the skill until it has none: fix that error first`,
+    ]);
+  });
+
+  it('a row of the index for a file no setup() declares, while the proof has an error elsewhere: kept', () => {
+    const root = written(OTHER);
+    expect(read(root, 'skill/SKILL.md')).toContain('(other.md)');
+    rmSync(join(root, 'tmp/skill-units/other.json'));
+    rmSync(join(root, 'tmp/skill-units/check-status.0002.json'));
+    const r = run(root, {}, { write: true });
+    expect(read(root, 'skill/SKILL.md')).toContain('(other.md)');
+    expect(errors(r)).toContainEqual(expect.stringContaining('the skill has the row of `other.md` in the index, and no `setup()` declares that file. The proof has an error elsewhere, and `--write` leaves the row until it has none'));
+    // With the error fixed, the row goes.
+    writeFileSync(join(root, 'tests/a.test.ts'), TEST.replace(/.*skill:check-status[\s\S]*?endregion\n/, ''));
+    run(root, {}, { write: true });
+    expect(read(root, 'skill/SKILL.md')).not.toContain('(other.md)');
+  });
+});
+
 describe('a unit whose test failed', () => {
   it('the finding is on its test and carries the error, and its file is not built', () => {
     const root = project({ ...GOOD, 'tmp/skill-units/check-status.0002.json': failed('check-status', 20, 'expected 500 to be 404') });

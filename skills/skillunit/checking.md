@@ -20,13 +20,13 @@ Value: without `--write`, `proof` compares the build with the skill folder, and 
 
 When: a test that declares a unit is skipped or deleted.
 
-Value: a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. `--write` takes it out of the skill after a run that passed.
+Value: a unit the skill folder has and no test declares is reported: its test was skipped or deleted, or did not run. `--write` takes it out of the skill only when the proof has no other error, such as a failed run.
 
 ### fact: failed-run
 
 When: `proof.run` fails, and the run left no record of a unit, a file or a row of the index that the skill has.
 
-Value: the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; `--write` takes none of them out until a run passes, and says which files it left as they are.
+Value: the finding on the run comes first, with the end of its output. A unit, a file or a row of the index that the skill has and that run left no record of is reported as such, and points at the run; `--write` takes none of them out until a run passes and the proof has no error, and says which files it left as they are.
 
 ### fact: run-left-no-record
 

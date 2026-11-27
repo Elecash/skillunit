@@ -26,7 +26,8 @@ const clientOpt = key<ClientOptions>;
 const { create: _create, ...client } = tf;
 const withBody = Object.entries(client).filter(([, m]) => m.length > 2).map(([n]) => n);
 const withoutBody = Object.entries(client).filter(([, m]) => m.length <= 2).map(([n]) => n);
-const header = (i: number, name: string) => (calls[i]!.init.headers as Record<string, string>)[name];
+/** The header of that name a call sent, whatever the case of its name. */
+const header = (i: number, name: string) => new Headers(calls[i]!.init.headers).get(name) ?? undefined;
 
 describe('features/requests.md', () => {
   unit('methods', { when: 'the code sends a request.' }, async (u) => {
@@ -111,6 +112,10 @@ describe('features/requests.md', () => {
       }
       // Every method of a kind sends the same.
       expect([withSet.size, withoutSet.size, withoutNone.size]).toEqual([1, 1, 1]);
+      // A name with a capital is the same header.
+      serve({ body: {} });
+      await tf.post(API, 'x', { headers: { 'Content-Type': 'text/csv' } });
+      expect(header(0, 'content-type')).toBe([...withSet][0]);
       const [sent] = [...withSet];
       const withABody =
         sent === JSON_TYPE
@@ -147,6 +152,10 @@ describe('features/requests.md', () => {
       await tf.get(API, { headers: { accept: 'text/csv' } });
       const byRequest = header(0, 'accept');
       expect(kept, "a header only the client sets").toBe('c');
+      // A name with a capital is the same header.
+      serve({ body: {} });
+      await tf.create({ headers: { 'X-Team': 'a' } }).get(API, { headers: { 'x-team': 'b', Accept: 'text/csv' } });
+      expect([header(0, 'x-team'), header(0, 'accept')]).toEqual([team, byRequest]);
       // The order the headers are put together in: a later one replaces an earlier one.
       const order = [`\`accept: ${[...accept][0]}\``, ...(team === 'b' ? [`the \`${clientOpt('headers')}\` of its client`, 'its own'] : ['its own', `the \`${clientOpt('headers')}\` of its client`])];
       const acceptToo = byClient === 'text/csv' && byRequest === 'text/csv';

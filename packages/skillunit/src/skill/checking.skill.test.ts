@@ -12,7 +12,7 @@ import { RUN_LINES } from '../proof/layer.js';
 import { REPORT_SCHEMA, REPORTERS } from '../report/types.js';
 import { changedSelection, changedSkillFiles } from '../test/changed.js';
 import { runAll } from '../test/runner.js';
-import { BIN, cleanUp, cli, collected, command, modelModule, option, project, question, report, runner, skillProject, stub } from './helpers.js';
+import { BIN, cleanUp, cli, collected, command, modelModule, option, project, question, report, runner, skillProject, stub, TEST_FILE } from './helpers.js';
 
 afterEach(cleanUp);
 
@@ -114,10 +114,15 @@ describe('checking.md', () => {
       rmSync(join(p.root, 'tmp/skill-units/3-wait-before-retry.json'));
       const stale = p.proof();
       const named = stale.problems.some((x) => x.unit === 'wait-before-retry' && x.message.includes('no test declares it: its test was skipped or deleted, or did not run'));
+      // An error elsewhere, as a test left out by \`.only\` leaves: a region of the test file that belongs to no unit.
+      p.write(TEST_FILE, `// ${'#'}region skill:nobody\nx;\n// ${'#'}endregion\n`);
+      p.proof({ write: true });
+      const held = p.read('skill/retries.md').includes('wait-before-retry');
+      p.write(TEST_FILE, '');
       p.proof({ write: true });
       const out = !p.read('skill/retries.md').includes('wait-before-retry');
       u.value(
-        `a unit the skill folder has and no test declares is ${named ? 'reported: its test was skipped or deleted, or did not run' : 'not reported'}. \`${write}\` ${out ? 'takes it out of the skill' : 'leaves it in the skill'} after a run that passed.`,
+        `a unit the skill folder has and no test declares is ${named ? 'reported: its test was skipped or deleted, or did not run' : 'not reported'}. \`${write}\` ${out ? 'takes it out of the skill' : 'leaves it in the skill'}${held ? ' only when the proof has no other error, such as a failed run' : ', whatever else the proof reports'}.`,
       );
     },
   );
@@ -138,7 +143,7 @@ describe('checking.md', () => {
     const kept = [p.read('skill/SKILL.md'), p.read('skill/retries.md')].join() === before.join();
     const says = wrote.problems.some((x) => x.file === 'SKILL.md' && x.severity === 'warning' && x.message.includes(`\`${write}\` left \`SKILL.md\` as it is`));
     u.value(
-      `${first ? 'the finding on the run comes first, with the end of its output' : 'the run is not the first finding'}. A unit, a file or a row of the index that the skill has and that run left no record of is ${pointed ? 'reported as such, and points at the run' : 'not reported as one that points at the run'}; \`${write}\` ${kept ? `takes none of them out until a run passes${says ? ', and says which files it left as they are' : ''}` : 'takes them out all the same'}.`,
+      `${first ? 'the finding on the run comes first, with the end of its output' : 'the run is not the first finding'}. A unit, a file or a row of the index that the skill has and that run left no record of is ${pointed ? 'reported as such, and points at the run' : 'not reported as one that points at the run'}; \`${write}\` ${kept ? `takes none of them out until a run passes and the proof has no error${says ? ', and says which files it left as they are' : ''}` : 'takes them out all the same'}.`,
     );
   });
 

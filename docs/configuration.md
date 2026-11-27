@@ -96,8 +96,10 @@ questions about one file, with the same `section` and `with`, as one request.
 A choice question is judged on the probability of the option the model ranks first, whatever else
 the model reports about its answer.
 
-`openai` uses the same default thresholds as `typesafe`. With them, on 2026-11-26, both passed
-all 13 questions of SkillUnit's own skill and all 9 of tinyfetch's, on every run.
+`openai` uses the same default thresholds as `typesafe`. With them, on 2026-11-27, both passed
+all 13 questions of SkillUnit's own skill and all 9 of tinyfetch's, in one run each. Two of
+tinyfetch's were borderline on `openai`, `html-not-found` and `retry-on-429`, both at 0.55 against
+a threshold of 0.50; on `typesafe`, the lowest of tinyfetch's was 0.69.
 
 **Pick one model and write your questions for it.** Decision models can answer the same question
 differently: OpenAI's, for one, is more decisive than Jev. A question that fails where it should

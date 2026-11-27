@@ -35,7 +35,7 @@ describe('features/clients.md', () => {
     serve({ body: {} }, { body: {} });
     await tf.get('/users');
     await create().get('/users');
-    const [ofTf, ofNone] = calls.map((c) => JSON.stringify([c.url, c.init.headers]));
+    const [ofTf, ofNone] = calls.map((c) => JSON.stringify([c.url, Object.fromEntries(new Headers(c.init.headers))]));
     expect(ofNone).toBe(JSON.stringify([`${DEFAULT_BASE}/users`, { accept: JSON_TYPE }]));
     const [made, byDefault] = [exported('create'), exported('tf')];
     const tfIs = ofTf === ofNone ? 'a client made with none' : `a client made with options of its own, which sends \`${ofTf}\``;

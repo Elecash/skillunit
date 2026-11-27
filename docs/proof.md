@@ -302,8 +302,8 @@ no body shows no block, since only a body calls `u.example()`; a body that only 
 `u.example()` is how advice shows one, and its unit is counted as declared too.
 
 The report never calls such a unit proved. Under each unit, proof shows
-`proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:162`,
-and its summary counts both: `24 units · 22 proved by a test · 2 declared without one`.
+`proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:199`,
+and its summary counts both: `25 units · 23 proved by a test · 2 declared without one`.
 
 ## Building and checking
 
@@ -329,7 +329,7 @@ It is an error when:
 - a region belongs to no unit and no file, or its id is in two places;
 - a file the build gives is not in the skill folder;
 - the skill folder has a unit that no test declares, because its test was skipped or deleted, or
-  did not run. `--write` takes it out, after a run that passed;
+  did not run. `--write` takes it out when the proof has no other error;
 - the skill folder holds a Markdown file that no `setup()` declares. `--write` reports it and
   leaves it there;
 - `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, comes first in
@@ -358,9 +358,12 @@ and its finding comes first. Then:
   when a test file does not load, is reported as such, with a pointer to the run. It is not called
   deleted, since its test may not have run.
 
-`--write` takes a unit or a row of the index out of the skill only after a run that exits with 0,
-and never removes a file. After a run that failed, it writes the files whose build takes nothing
-out, and says which files it left as they are and why.
+`--write` takes a unit or a row of the index out of the skill only when the proof has no error,
+and never removes a file. A run that exits with 0 is not enough: a `.only` left in a test file
+makes the runner skip the other tests of that file, its `setup()` among them, and pass; the proof
+then reports the unit of the `.only`, whose `setup()` left no record. While the proof has an error,
+`--write` writes the files whose build takes nothing out, and says which files it left as they
+are and why.
 
 ## Where a line comes from
 

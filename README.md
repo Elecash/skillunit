@@ -20,7 +20,7 @@ itself.
 `skillunit check` runs the two and prints each unit of the skill with what each layer found. On [tinyfetch](https://github.com/Elecash/skillunit/tree/main/apps/tinyfetch), a small HTTP client in this repository, cut to three of its units:
 
 ```
-Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s, exit 0 · test typesafe · jev-1.14.0
+Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 1.0 s, exit 0 · test typesafe · jev-1.14.0
   …
   skill/features/retries.md
     …
@@ -28,8 +28,8 @@ Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s,
       proof  ✓ proved by a test, src/skill/retries.test.ts:51
       test   –
     what-is-retried  fact
-      proof  ✓ proved by a test, src/skill/retries.test.ts:94
-      test   ✓ src/skill/retries.test.ts:94  retry-on-429  once 0.99
+      proof  ✓ proved by a test, src/skill/retries.test.ts:93
+      test   ✓ src/skill/retries.test.ts:93  retry-on-429  once 1.00
     …
     retry-idempotent-only  rule
       proof  – declared, no test, src/skill/retries.test.ts:161
@@ -38,9 +38,9 @@ Units  proof ran `node ../../tools/tsc.mjs --noEmit && npx vitest run` in 0.9 s,
       test   ✓ src/skill/retries.test.ts:161  put-may-retry  retry 0.98
   …
 
-  24 units · 5 proof and test · 17 proof only · 2 test only · 0 not covered
-  24 units · 22 proved by a test · 2 declared without one
-  9 tests · 6,372 in / 474 out tokens
+  25 units · 5 proof and test · 18 proof only · 2 test only · 0 not covered
+  25 units · 23 proved by a test · 2 declared without one
+  9 tests · 6,525 in / 474 out tokens
 
 OK  proof ok · test 9/9 passed
 ```

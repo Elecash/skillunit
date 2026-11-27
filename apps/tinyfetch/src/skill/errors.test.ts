@@ -7,7 +7,7 @@ import { HttpError, TimeoutError, type RequestOptions } from 'tinyfetch';
 import { key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { RETRIED_STATUS } from '../retry.js';
-import { reset, serve, type Reply } from './helpers.js';
+import { calls, reset, serve, type Reply } from './helpers.js';
 
 const field = key<HttpError>;
 const opt = key<RequestOptions>;
@@ -89,22 +89,32 @@ describe('features/errors.md', () => {
       const network = await outcome();
       again({ raw: '{"id": 1' });
       const parse = await outcome();
-      // The last attempt's answer is the one the fake server gives after the first, however many attempts there are.
-      serve({ status: RETRIED_STATUS, body: 'first' }, ...Array.from({ length: 5 }, () => ({ status: RETRIED_STATUS, body: 'last' })));
-      const retried = await outcome({ retry: 1, retryDelay: 1 });
-      const lost = new TypeError('fetch failed');
-      serve(new TypeError('fetch failed'), ...Array.from({ length: 5 }, () => lost));
-      const lostRetried = await outcome({ retry: 1, retryDelay: 1 });
-      for (const e of [network, parse, retried, lostRetried]) expect(e).toBeInstanceOf(Error);
+      for (const e of [network, parse]) expect(e).toBeInstanceOf(Error);
       /** What a request rejected with, said from the error `fetch` threw. */
       const name = (e: unknown) => `${(e as Error).name === HttpError.name ? 'an' : 'a'} \`${(e as Error).name}\``;
       const fromFetch = (e: unknown, thrown: unknown) => (e === thrown ? 'the error `fetch` threw, such as a `TypeError`' : `${name(e)}${(e as Error).cause === thrown ? ' whose `cause` is the error `fetch` threw' : ''}`);
       const statuses = resolved.length === OK.length && resolved.every((s, i) => s === OK[i]) ? `a status from ${lowest} to ${highest}` : 'a status the example lists';
       if (statuses !== `a status from ${lowest} to ${highest}`) u.example('text', `resolves: ${resolved.join(', ')}`);
-      const last = isHttpError(retried) && retried.body === 'last' ? `${name(retried)} for a status` : `${name(retried)} that is not the one of the last attempt, for a status`;
       u.value(
-        `a response with ${statuses} resolves; any other status rejects with ${asHttp ? `an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses${keepsText ? ', and its text when it does not' : ''}` : `an error that is not always an \`${HttpError.name}\` with that status and that body`}${keepsText ? '' : `; one whose body is not JSON rejects with ${isHttpError(broken) ? `an \`${HttpError.name}\` whose \`${field('body')}\` is not its text` : name(broken)}`}; a request that gets no response rejects with ${fromFetch(network, down)}; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse. A request with \`${opt('retry')}\` whose every attempt fails rejects the same way, with the error of its last attempt: ${last}, ${fromFetch(lostRetried, lost).replace(', such as a `TypeError`', '')} for no response.`,
+        `a response with ${statuses} resolves; any other status rejects with ${asHttp ? `an \`${HttpError.name}\` whose \`${field('status')}\` is the status and whose \`${field('body')}\` is the body parsed as JSON when it says it is JSON and parses${keepsText ? ', and its text when it does not' : ''}` : `an error that is not always an \`${HttpError.name}\` with that status and that body`}${keepsText ? '' : `; one whose body is not JSON rejects with ${isHttpError(broken) ? `an \`${HttpError.name}\` whose \`${field('body')}\` is not its text` : name(broken)}`}; a request that gets no response rejects with ${fromFetch(network, down)}; an \`ok\` response that says it is JSON and does not parse rejects with the \`${(parse as Error).name}\` of the parse.`,
       );
+    },
+  );
+
+  unit(
+    'what-a-retried-request-throws',
+    {
+      when: `a request with \`${opt('retry')}\` fails on every attempt.`,
+      value: `it rejects as a request with no \`${opt('retry')}\` does, with the error of its last attempt: an \`${HttpError.name}\` with the status and body of the last response, or the error \`fetch\` threw the last time.`,
+    },
+    async () => {
+      serve({ status: RETRIED_STATUS, body: 'first' }, { status: RETRIED_STATUS, body: 'last' });
+      await expect(tf.get(API, { retry: 1, retryDelay: 1 })).rejects.toMatchObject({ name: HttpError.name, status: RETRIED_STATUS, body: 'last' });
+      expect(calls).toHaveLength(2);
+      const [first, last] = [new TypeError('fetch failed'), new TypeError('fetch failed')];
+      serve(first, last);
+      expect(await tf.get(API, { retry: 1, retryDelay: 1 }).catch((e: unknown) => e)).toBe(last);
+      expect(calls).toHaveLength(2);
     },
   );
 
