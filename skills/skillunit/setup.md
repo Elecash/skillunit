@@ -35,12 +35,6 @@ When: `proof.run` runs tests that fail.
 
 Value: the proof fails when `proof.run` exits with anything but 0, even when its tests left every record the build needs.
 
-### rule: type-check-in-run
-
-When: the tests take names from the types with `key()`, or pass options typed by the code.
-
-Do: start `proof.run` with the type-check of the test files, as `npx tsc --noEmit && npx vitest run skill.test`. Vitest strips the types, so a name the code no longer has fails no test, only the type-check.
-
 ### fact: providers
 
 When: the settings choose the decision model, or a command overrides them.

@@ -3,11 +3,11 @@
 // #region skill:retries
 import { tf } from 'tinyfetch';
 // #endregion
-import { key, setup, unit } from 'skillunit/vitest';
+import { and, code, key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect, vi } from 'vitest';
 import { DEFAULT_RETRY, DEFAULT_RETRY_DELAY, RETRIED_STATUS, RETRY_TIMES } from '../retry.js';
 import type { RequestOptions } from 'tinyfetch';
-import { and, call, calls, methods, reset, serve, verb, type Reply } from './helpers.js';
+import { call, calls, methods, reset, serve, verb, type Reply } from './helpers.js';
 
 const opt = key<RequestOptions>;
 
@@ -126,7 +126,7 @@ describe('features/retries.md', () => {
       await retryCall(name);
       expect(calls, name).toHaveLength(2);
     }
-    u.value(`\`${opt('retry')}\` sends a request again whatever its method, ${and(Object.keys(all).map((m) => `\`${m}\``))} alike: tinyfetch does not check whether a method is safe to repeat.`);
+    u.value(`\`${opt('retry')}\` sends a request again whatever its method, ${and(code(Object.keys(all)))} alike: tinyfetch does not check whether a method is safe to repeat.`);
   });
 
   // A gap: whether the server can take a request twice is not in tinyfetch; `retry-any-method`

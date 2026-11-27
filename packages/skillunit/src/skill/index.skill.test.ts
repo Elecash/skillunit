@@ -3,13 +3,14 @@
 // #region skill:skillunit
 import { ask, setup, unit } from 'skillunit/vitest';
 // #endregion
+import { and } from 'skillunit/vitest';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect } from 'vitest';
 import { INIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE } from '../config.js';
 import { SKILL_INDEX } from '../unit/contract.js';
-import { and, BIN, cleanUp, cli, command, option, project, report, scratch, type Command } from './helpers.js';
+import { BIN, cleanUp, cli, command, option, project, report, scratch, type Command } from './helpers.js';
 
 afterEach(cleanUp);
 

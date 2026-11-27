@@ -56,6 +56,39 @@ is a unit. `SKILL.md` gets a "Where to look" table with a row for every other fi
 `when`. The region `skill:<setup id>`, anywhere in the test file, is the code under the
 description, such as the import every example of the file assumes.
 
+An example shows the import an agent writes, by the name of the package, so the test inside the
+package imports the package by its name too. Node resolves a package's own name through the
+`exports` of its `package.json`, and Vitest and TypeScript with `"moduleResolution": "NodeNext"`
+do the same. tinyfetch's `exports` points at its source, so its tests run the code as it is, with
+no build and no alias:
+
+```json
+{
+  "name": "tinyfetch",
+  "type": "module",
+  "exports": "./src/index.ts"
+}
+```
+
+```ts
+// #region skill:timeouts
+import { tf, TimeoutError } from 'tinyfetch';
+// #endregion
+```
+
+A package whose `exports` points at built files resolves its own name to them, so its tests run
+the last build. SkillUnit's own package is one: its tests map each entry to the source, with
+`resolve.alias` in `vitest.config.ts` and `paths` in `tsconfig.json`:
+
+```ts
+// vitest.config.ts
+resolve: { alias: { 'skillunit/vitest': fileURLToPath(new URL('./src/vitest.ts', import.meta.url)) } },
+```
+
+```json
+{ "compilerOptions": { "paths": { "skillunit/vitest": ["./src/vitest.ts"] } } }
+```
+
 A unit with no `setup()` before it in its test file belongs to no file, and fails the build. A
 build with files and no `SKILL.md` fails too.
 
@@ -88,7 +121,14 @@ The body gets a context, and the runner's own context after it:
 - `u.value(text)` sets the `Value` of a fact from what the body observed;
 - `u.example(lang, text)` adds a block the body produced: a command, a config, an output.
 
+`and()`, `or()` and `code()`, from `skillunit/vitest` and `skillunit/unit` next to `key`, list
+what the body read as a sentence does: `and(['a', 'b', 'c'])` is `a, b and c`, `or()` joins with
+`or`, and `code()` puts each item in backticks, so `and(code(names))` lists names of the code as
+code.
+
 ```ts
+import { and, unit } from 'skillunit/vitest';
+
 unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
   const retried: string[] = [];
   const never: string[] = [];
@@ -219,7 +259,9 @@ skill:
 
 - `key<T>(name)`, from `skillunit/vitest` or `skillunit/unit`, returns `name` and accepts only a
   key of `T`: `key<RequestOptions>('retry')`. A key renamed in the code fails the type-check of
-  every test that still names it.
+  every test that still names it. With the type of a module, after
+  `import type * as tinyfetch from 'tinyfetch'`, `key<typeof tinyfetch>('create')` accepts only a
+  name the module exports, so a renamed export fails the same way.
 - `exportNames(entry)`, from `skillunit/typescript`, gives the names a TypeScript file exports,
   `values` and `types` apart, as the compiler sees them. A class exported with `export type` is a
   type, and `export *` brings the names of its module. It takes a path or a `file:` URL, and

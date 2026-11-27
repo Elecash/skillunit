@@ -1,5 +1,5 @@
 // What the tests of the skill share: a `fetch` that answers what a test tells it to, and the
-// helpers that build sentences. Not a test: it declares nothing.
+// names that build sentences. Not a test: it declares nothing.
 import { tf } from 'tinyfetch';
 import type * as Tinyfetch from 'tinyfetch';
 import type { Client } from 'tinyfetch';
@@ -63,8 +63,3 @@ export function methods(url: string): Record<string, () => Promise<unknown>> {
   );
 }
 export const everyMethod = (url: string) => Object.values(methods(url));
-
-/** `a`, `a and b`, `a, b and c`. */
-export const and = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
-/** `a`, `a or b`, `a, b or c`. */
-export const or = (items: string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);

@@ -1,13 +1,13 @@
 // The file `questions.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ask, key, setup, unit, type UnitQuestion, type UnitSpec } from 'skillunit/vitest';
+import { and, ask, code, key, setup, type UnitQuestion, type UnitSpec, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { DEFAULT_THRESHOLDS, type Thresholds } from '../config.js';
 import { buildRequest, judge, read } from '../test/reader.js';
 import { runAll } from '../test/runner.js';
 import { checkQuestions, DEFAULT_SKILL_FILE, NONE, QUESTION_KEYS } from '../unit/contract.js';
-import { and, cleanUp, cli, code, collected, command, option, project, question, report, runner, skillProject, stub } from './helpers.js';
+import { cleanUp, cli, collected, command, option, project, question, report, runner, skillProject, stub } from './helpers.js';
 
 afterEach(cleanUp);
 

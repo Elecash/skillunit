@@ -38,11 +38,25 @@ When: a project declares the units of its skill in its tests.
 
 Decide: where `unit()` comes from.
 
-- **vitest** — the tests run on Vitest: import `ask`, `key`, `setup` and `unit` from `skillunit/vitest`.
+- **vitest** — the tests run on Vitest: import `and`, `ask`, `code`, `key`, `or`, `setup` and `unit` from `skillunit/vitest`.
 
 - **other-runner** — another JavaScript runner: `createUnit(it)` from `skillunit/unit` gives `unit`, `ask` and `setup` for that runner's `it`.
 
 - **other-language** — another language: each test writes its record itself, one JSON file per unit in `proof.units`, in version 2 of the contract, whose types `skillunit/unit` exports.
+
+### rule: setup-text-from-code
+
+When: a test writes the text of a `setup()`: the description of its file, the `when` of its row in the index, the description of the frontmatter.
+
+Do: build each name of the code in it from the code, with `key()` or a `name`, as in the sentence of a unit, and declare what it uses before the `setup()`, which runs when the file loads.
+
+Even when: the text is a short row of the index: one that said "…headers and query" kept `query` after the option and its unit were gone, and every check passed.
+
+### fact: import-by-name
+
+When: a test inside a package imports the package by its name, as the examples of the skill do.
+
+Value: Node resolves the name of a package from inside it through the `exports` of its `package.json`, with no link in `node_modules`, and Vitest and TypeScript with `NodeNext` do the same. With `exports` pointing at the source, the tests run the code as it is, with no build and no alias.
 
 ### fact: unit-kinds
 
@@ -123,7 +137,13 @@ Value: `exportNames(entry)` from `skillunit/typescript` gives the names a TypeSc
 
 When: a sentence names a key of a type of the code: an option, a method, a field.
 
-Value: `key<T>(name)` from `skillunit/vitest` or `skillunit/unit` returns `name` and accepts only a key of `T`, so a key renamed in the code fails the type-check of each test that still names it.
+Value: `key<T>(name)` from `skillunit/vitest` or `skillunit/unit` returns `name` and accepts only a key of `T`, so a key renamed in the code fails the type-check of each test that still names it. With the type of a module, `key<typeof Module>(name)` after `import type * as Module from '<library>'`, it accepts only a name the module exports, so a renamed export fails the same way.
+
+### fact: text-helpers
+
+When: a sentence lists names or values the body read.
+
+Value: `and(items)` and `or(items)`, from `skillunit/vitest` or `skillunit/unit` next to `key`, join a list as a sentence does: `and(['a', 'b', 'c'])` is "a, b and c", and `or` joins the last two with "or". `code(items)` puts each item in backticks, so `and(code(['retry', 'timeout']))` is `retry` and `timeout`.
 
 ### rule: say-no-more
 
@@ -145,7 +165,7 @@ Even when: the whole test would show that the example works: set up before the `
 
 When: the tests of the skill use `key()` or an object typed against a type of the code.
 
-Do: run the type-check on the test files too, where CI runs it: a key renamed in the code fails there, and only there.
+Do: start `proof.run` with a type-check that includes the test files, as `npx tsc --noEmit && npx vitest run skill.test`: a key renamed in the code fails there, and only there.
 
 Even when: the tests pass: a test run that strips the types, as Vitest does, does not check them.
 

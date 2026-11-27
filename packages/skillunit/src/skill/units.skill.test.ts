@@ -1,16 +1,19 @@
 // The file `units.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ask, key, setup, unit, type SetupSpec, type UnitContext } from 'skillunit/vitest';
+import { and, ask, code, key, or, setup, type SetupSpec, type UnitContext, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { fenceLang } from '../build/render.js';
 import { exportNames, loadTypeScript, type ExportNames } from '../typescript.js';
 import { checkNumbers, checkQuestions, checkSpec, numbersIn, SETUP_KEYS, SKILL_INDEX, SPEC_KEYS, UNIT_CONTRACT, type UnitKind, type UnitRecord, type UnitSpec } from '../unit/contract.js';
 import { createUnit } from '../unit/create.js';
+import type * as UnitEntry from '../unit/index.js';
+import { suggestedRun } from '../init.js';
 import { vitestOptions } from '../unit/vitest-options.js';
-import { and, cleanUp, cli, code, command, entry, memoryWriter, option, or, PACKAGE, project, report, runner, scratch } from './helpers.js';
+import { cleanUp, cli, command, entry, memoryWriter, option, PACKAGE, project, report, runner, scratch } from './helpers.js';
 import { DEFAULT_RETRY_DELAY, retryWaits } from './retry.js';
 
 afterEach(cleanUp);
@@ -171,6 +174,51 @@ describe('units.md', () => {
       p.write('tmp/skill-units/by-hand.json', JSON.stringify({ skillunit: UNIT_CONTRACT, status: 'passed', id: 'by-hand', kind: 'rule', file: 'skill.test.ts', line: 1, test: 'rule by-hand', setup: 'demo', order: 0, when: 'x.', do: 'y.', examples: [] }));
       p.proof({ write: true });
       expect(p.read('skill/SKILL.md')).toContain('### rule: by-hand');
+    },
+  );
+
+  // A gap: the build checks the text of a `setup()` for numbers only, so only the type-check of a
+  // name built from the code catches a rename in it.
+  unit('setup-text-from-code', {
+    when: `a test writes the text of a \`${setup.name}()\`: the description of its file, the \`${setupKey('when')}\` of its row in the index, the description of the frontmatter.`,
+    do: `build each name of the code in it from the code, with \`${key.name}()\` or a \`name\`, as in the sentence of a unit, and declare what it uses before the \`${setup.name}()\`, which runs when the file loads.`,
+    evenWhen: 'the text is a short row of the index: one that said "…headers and query" kept `query` after the option and its unit were gone, and every check passed.',
+  });
+
+  unit(
+    'import-by-name',
+    {
+      when: 'a test inside a package imports the package by its name, as the examples of the skill do.',
+      value: 'Node resolves the name of a package from inside it through the `exports` of its `package.json`, with no link in `node_modules`, and Vitest and TypeScript with `NodeNext` do the same. With `exports` pointing at the source, the tests run the code as it is, with no build and no alias.',
+    },
+    async () => {
+      const dir = scratch('by-name');
+      const files: Record<string, string> = {
+        'package.json': JSON.stringify({ name: 'demo-lib', type: 'module', exports: './src/index.ts' }),
+        'tsconfig.json': JSON.stringify({ compilerOptions: { module: 'NodeNext', moduleResolution: 'NodeNext', allowImportingTsExtensions: true, noEmit: true, strict: true, types: [] }, include: ['src'] }),
+        'src/index.ts': "export const answer = 'ok';\n",
+        'src/a.test.ts': "import { answer } from 'demo-lib';\nimport { expect, test } from 'vitest';\ntest('by name', () => expect(answer).toBe('ok'));\n",
+      };
+      for (const [name, text] of Object.entries(files)) {
+        mkdirSync(join(dir, name, '..'), { recursive: true });
+        writeFileSync(join(dir, name), text);
+      }
+      const vitest = join(require.resolve('vitest/package.json'), '..');
+      mkdirSync(join(dir, 'node_modules'));
+      symlinkSync(vitest, join(dir, 'node_modules', 'vitest'), 'dir');
+      const tsc = require.resolve('typescript/bin/tsc');
+      const run = (args: string[]) => spawnSync(process.execPath, args, { cwd: dir, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1' } });
+      const tests = () => run([join(vitest, 'vitest.mjs'), 'run']);
+      const types = () => run([tsc, '--noEmit', '--pretty', 'false']);
+      expect([tests().status, types().status]).toEqual([0, 0]);
+      // Without `exports`, neither finds the package by its name. Vitest's cache of modules would
+      // keep the one it resolved before.
+      writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'demo-lib', type: 'module' }));
+      for (const cache of ['.vite', '.vitest-cache']) rmSync(join(dir, 'node_modules', cache), { recursive: true, force: true });
+      const failed = [tests(), types()];
+      expect(failed.map((r) => r.status === 0)).toEqual([false, false]);
+      expect(failed[0]!.stdout + failed[0]!.stderr).toContain("Cannot find package 'demo-lib'");
+      expect(failed[1]!.stdout).toContain("Cannot find module 'demo-lib'");
     },
   );
 
@@ -462,7 +510,28 @@ describe('units.md', () => {
     expect(key<Options>('delay')).toBe('delay');
     expect(vitestNames).toContain(key.name);
     expect(unitNames).toContain(key.name);
-    u.value(`\`${key.name}<T>(name)\` from \`${VITEST}\` or \`${UNIT}\` returns \`name\` and accepts only a key of \`T\`, so a key renamed in the code fails the type-check of each test that still names it.`);
+    // The type of a module: its keys are the names it exports.
+    const exported = key<typeof UnitEntry>;
+    expect(exported('createUnit')).toBe('createUnit');
+    // @ts-expect-error `makeUnit` is not an export of the module.
+    expect(exported('makeUnit')).toBe('makeUnit');
+    u.value(
+      `\`${key.name}<T>(name)\` from \`${VITEST}\` or \`${UNIT}\` returns \`name\` and accepts only a key of \`T\`, so a key renamed in the code fails the type-check of each test that still names it. With the type of a module, \`${key.name}<typeof Module>(name)\` after \`import type * as Module from '<library>'\`, it accepts only a name the module exports, so a renamed export fails the same way.`,
+    );
+  });
+
+  unit('text-helpers', { when: 'a sentence lists names or values the body read.' }, (u) => {
+    expect(and(['a', 'b', 'c'])).toBe('a, b and c');
+    expect(or(['a', 'b'])).toBe('a or b');
+    expect([and(['a']), and([])]).toEqual(['a', '']);
+    expect(code(['retry', 'timeout'])).toEqual(['`retry`', '`timeout`']);
+    for (const name of [and.name, or.name, code.name]) {
+      expect(vitestNames).toContain(name);
+      expect(unitNames).toContain(name);
+    }
+    u.value(
+      `\`${and.name}(items)\` and \`${or.name}(items)\`, from \`${VITEST}\` or \`${UNIT}\` next to \`${key.name}\`, join a list as a sentence does: \`${and.name}(['a', 'b', 'c'])\` is "${and(['a', 'b', 'c'])}", and \`${or.name}\` joins the last two with "or". \`${code.name}(items)\` puts each item in backticks, so \`${and.name}(${code.name}(['retry', 'timeout']))\` is ${and(code(['retry', 'timeout']))}.`,
+    );
   });
 
   // A gap: only a reader can compare a sentence with what its body checks.
@@ -499,18 +568,18 @@ describe('units.md', () => {
     },
   });
 
-  // A gap: the type-check is the project's to run; `key` says what fails in it.
+  // A gap: the type-check is the project's to set up; `key` says what fails in it.
   unit('type-check-the-tests', {
     when: `the tests of the skill use \`${key.name}()\` or an object typed against a type of the code.`,
-    do: 'run the type-check on the test files too, where CI runs it: a key renamed in the code fails there, and only there.',
+    do: `start \`proof.run\` with a type-check that includes the test files, as \`${suggestedRun(true)}\`: a key renamed in the code fails there, and only there.`,
     evenWhen: 'the tests pass: a test run that strips the types, as Vitest does, does not check them.',
     ask: {
       id: 'type-check-test-files',
-      scenario: `The project's type-check leaves out the \`*.test.ts\` files, to be fast, and the tests of the skill use \`${key.name}()\`. The user asks to leave the type-check as it is.`,
+      scenario: `The project's type-check leaves out the \`*.test.ts\` files, to be fast, \`proof.run\` is \`${suggestedRun(false)}\`, and the tests of the skill use \`${key.name}()\`. The user asks to leave it all as it is.`,
       question: 'What does the agent do with the type-check?',
       options: {
-        add: 'Add the test files of the skill to the type-check that CI runs',
-        leave: 'Leave it as it is: CI runs the tests, and a test fails when a key it names is wrong',
+        add: 'Start `proof.run` with a type-check that includes the test files of the skill',
+        leave: 'Leave it as it is: the tests run, and a test fails when a key it names is wrong',
       },
       expect: 'add',
     },

@@ -5,9 +5,9 @@ import { tf } from 'tinyfetch';
 // #endregion
 import * as tinyfetch from 'tinyfetch';
 import { exportNames } from 'skillunit/typescript';
-import { setup, unit } from 'skillunit/vitest';
+import { and, code, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect, vi } from 'vitest';
-import { and, methods, reset, serve } from './helpers.js';
+import { methods, reset, serve } from './helpers.js';
 
 afterEach(reset);
 
@@ -29,8 +29,7 @@ describe('SKILL.md', () => {
     const { values, types } = exportNames(new URL('../index.ts', import.meta.url));
     expect(values).toEqual(Object.keys(tinyfetch).sort());
     for (const name of values) expect(tinyfetch[name as keyof typeof tinyfetch]).toBeDefined();
-    const code = (n: string) => `\`${n}\``;
-    u.value(`\`${PACKAGE}\` exports ${and(values.map(code))}${types.length ? `, and the type${types.length > 1 ? 's' : ''} ${and(types.map(code))}` : ''}.`);
+    u.value(`\`${PACKAGE}\` exports ${and(code(values))}${types.length ? `, and the type${types.length > 1 ? 's' : ''} ${and(code(types))}` : ''}.`);
   });
 
   unit(

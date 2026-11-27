@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { cpSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { setup, unit } from 'skillunit/vitest';
+import { and, code, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { COMMON_OPTIONS, EXIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE } from '../config.js';
@@ -12,7 +12,7 @@ import { RUN_LINES } from '../proof/layer.js';
 import { REPORT_SCHEMA, REPORTERS } from '../report/types.js';
 import { changedSelection, changedSkillFiles } from '../test/changed.js';
 import { runAll } from '../test/runner.js';
-import { and, BIN, cleanUp, cli, code, collected, command, modelModule, option, project, question, report, runner, skillProject, stub } from './helpers.js';
+import { BIN, cleanUp, cli, collected, command, modelModule, option, project, question, report, runner, skillProject, stub } from './helpers.js';
 
 afterEach(cleanUp);
 

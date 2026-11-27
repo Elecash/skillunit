@@ -57,6 +57,8 @@ const users = tf.get("https://api.example.com/users", {
 A rule tells the agent what to do, or what not to do. Use it where the code allows the wrong thing and the agent has to choose the right one.
 
 ```ts
+import { code, or, unit } from 'skillunit/vitest';
+
 unit(
   'send-a-body',
   {
@@ -98,6 +100,8 @@ await tf.post("https://api.example.com/users", { name: "Ada" });
 A decision is a choice between ways that are each right in some situation. `decide` names the choice, and each of `paths` has a `path`, its short name, and a `when`, the condition that selects it.
 
 ```ts
+import { and, code, unit } from 'skillunit/vitest';
+
 unit(
   'which-entry',
   {
@@ -123,7 +127,7 @@ When: a project declares the units of its skill in its tests.
 
 Decide: where `unit()` comes from.
 
-- **vitest** — the tests run on Vitest: import `ask`, `key`, `setup` and `unit` from `skillunit/vitest`.
+- **vitest** — the tests run on Vitest: import `and`, `ask`, `code`, `key`, `or`, `setup` and `unit` from `skillunit/vitest`.
 
 - **other-runner** — another JavaScript runner: `createUnit(it)` from `skillunit/unit` gives `unit`, `ask` and `setup` for that runner's `it`.
 

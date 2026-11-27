@@ -4,23 +4,23 @@
 import { tf } from 'tinyfetch';
 // #endregion
 import type { ClientOptions, RequestOptions } from 'tinyfetch';
-import { key, setup, unit } from 'skillunit/vitest';
+import { and, code, key, or, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { JSON_TYPE, PARSED_TYPE } from '../request.js';
-import { and, call, calls, method, methods, or, reset, serve } from './helpers.js';
+import { call, calls, method, methods, reset, serve } from './helpers.js';
 
 afterEach(reset);
+
+const opt = key<RequestOptions>;
 
 setup('requests', {
   file: 'features/requests.md',
   title: 'tinyfetch — requests',
-  when: 'Send a request: its method, path, body, headers and query',
+  when: `Send a request: its method, path, body, ${and([opt('headers'), opt('query')])}`,
   description: 'What a request sends, and what its call resolves to.',
 });
 
 const API = 'https://api.example.com/users';
-const code = (items: string[]) => items.map((i) => `\`${i}\``);
-const opt = key<RequestOptions>;
 const clientOpt = key<ClientOptions>;
 /** The methods of a client, and how many arguments each takes before its options. */
 const { create: _create, ...client } = tf;

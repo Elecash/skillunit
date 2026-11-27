@@ -139,7 +139,8 @@ error, a type), the name comes from the code:
 | The name of | From | Such as |
 | --- | --- | --- |
 | a key of a type: an option, a method, a field | `key<T>(name)`, which takes only a key of `T` | `` `${key<RequestOptions>('retry')}` `` |
-| a value a module exports | `Object.keys(module)`, or `exportNames()` | the list of exports |
+| a value a module exports, named one by one | `key<typeof module>(name)`, which takes only a name the module exports | `` `${key<typeof Tinyfetch>('create')}` `` |
+| the values a module exports | `Object.keys(module)`, or `exportNames()` | the list of exports |
 | a type a file exports | `exportNames()` from `skillunit/typescript` | `Client`, `RequestOptions` |
 | a class or a function | its `name` | `` `${HttpError.name}` `` |
 
@@ -147,6 +148,31 @@ A function's `name` is the name its code gave it, which is not always the name a
 it under. `export const defu = createDefu()` exports a function whose `name` is another one, or
 empty. For such an export, take the name of the export: `key<typeof module>('defu')` accepts only
 a name the module exports.
+
+`module` is the type of the library's entry, imported with `import type * as Tinyfetch from
+'tinyfetch'`. tinyfetch's tests name an export with `exported = key<typeof Tinyfetch>`, so a
+renamed export fails the type-check at every sentence that names it. To list names in a
+sentence, `and()`, `or()` and `code()` from `skillunit/vitest` join them as a sentence does:
+`and(code(['retry', 'timeout']))` gives `` `retry` and `timeout` ``.
+
+**The text of a `setup()`** follows the same rule: the description of a file, the `when` of its row
+in the index, and the description of the frontmatter. The build compares them with nothing but
+the number rule. With `query` removed from tinyfetch's code and from the unit that stated it, the
+row of the index still said "…headers and query", and everything passed. The row is now built
+from the type:
+
+```ts
+const opt = key<RequestOptions>;
+
+setup('requests', {
+  file: 'features/requests.md',
+  title: 'tinyfetch — requests',
+  when: `Send a request: its method, path, body, ${and([opt('headers'), opt('query')])}`,
+  description: 'What a request sends, and what its call resolves to.',
+});
+```
+
+Declare the helpers it uses before the `setup()`: it runs when the test file loads.
 
 With `retryDelay` renamed to `backoff` in tinyfetch's code and in the keys of its tests, as an
 IDE renames it, the tests passed, and after `proof --write` the skill listed `backoff` among the

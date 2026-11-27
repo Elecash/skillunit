@@ -1,7 +1,7 @@
 // The file `setup.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { key, setup, unit } from 'skillunit/vitest';
+import { and, code, key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { INIT, OPTIONS } from '../commands.js';
 import { CONFIG_FILE, DEFAULT_PROOF_UNITS, DEFAULT_THRESHOLDS, FORMAT_FILE, loadConfig, PROOF_KEYS, SETTINGS_KEYS, type ModelConfig, type Thresholds } from '../config.js';
@@ -10,7 +10,7 @@ import { init, suggestedRun } from '../init.js';
 import { loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type DecisionModel, type ProviderName } from '../models/index.js';
 import { runTests } from '../proof/layer.js';
 import { SKILL_INDEX } from '../unit/contract.js';
-import { and, BIN, cleanUp, cli, code, command, envLayout, option, project, report, scratch } from './helpers.js';
+import { BIN, cleanUp, cli, command, envLayout, option, project, report, scratch } from './helpers.js';
 
 afterEach(cleanUp);
 
@@ -149,18 +149,6 @@ describe('setup.md', () => {
       expect(failed.problems.map((x) => x.message)).toEqual([expect.stringContaining('exited with 1')]);
       p.write(CONFIG_FILE, `skill: ./skill\nproof:\n  run: "${copy.replace(/"/g, '\\"')}"\n`);
       expect(p.proof().ok).toBe(true);
-    },
-  );
-
-  unit(
-    'type-check-in-run',
-    {
-      when: `the tests take names from the types with \`key()\`, or pass options typed by the code.`,
-      do: `start \`${proofKey('run')}\` with the type-check of the test files, as \`${suggestedRun(true)}\`. Vitest strips the types, so a name the code no longer has fails no test, only the type-check.`,
-    },
-    () => {
-      // At run time `key()` gives back what it is passed: only the type-check knows the keys.
-      expect(key<{ retry: number }>('backoff' as 'retry')).toBe('backoff');
     },
   );
 

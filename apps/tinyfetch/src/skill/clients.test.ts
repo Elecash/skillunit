@@ -4,10 +4,10 @@
 import { create } from 'tinyfetch';
 // #endregion
 import { tf, type ClientOptions } from 'tinyfetch';
-import { key, setup, unit } from 'skillunit/vitest';
+import { and, code, key, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { DEFAULT_BASE, JSON_TYPE } from '../request.js';
-import { and, calls, exported, method, reset, serve } from './helpers.js';
+import { calls, exported, method, reset, serve } from './helpers.js';
 
 afterEach(reset);
 
@@ -18,7 +18,6 @@ setup('clients', {
   description: `What a client made with \`${exported('create')}\` shares between its requests.`,
 });
 
-const code = (items: string[]) => items.map((i) => `\`${i}\``);
 const clientOpt = key<ClientOptions>;
 
 describe('features/clients.md', () => {

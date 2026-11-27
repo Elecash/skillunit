@@ -18,13 +18,6 @@ import type { Question } from '../test/questions.js';
 import type { UnitRecord } from '../unit/contract.js';
 import { createUnit, type RunnerIt } from '../unit/create.js';
 
-/** `a`, `a and b`, `a, b and c`. */
-export const and = (items: readonly string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
-/** `a`, `a or b`, `a, b or c`. */
-export const or = (items: readonly string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);
-/** Each item in backticks. */
-export const code = (items: readonly string[]) => items.map((i) => `\`${i}\``);
-
 const folders: string[] = [];
 /** A new folder for one test. `cleanUp` takes them all away. */
 export function scratch(name: string): string {

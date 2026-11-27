@@ -316,7 +316,7 @@ export const scenarios: Scenario[] = [
       app.write(TESTS.requests, text.slice(0, start) + text.slice(end).replace(/^\n/, ''));
       app.edit(TESTS.requests, "  unit(\n    'response-value',", "  unit.skip(\n    'response-value',");
       // The deleted unit was the only one to use `or`.
-      app.edit(TESTS.requests, ' methods, or, reset,', ' methods, reset,');
+      app.edit(TESTS.requests, "import { and, code, key, or, setup, unit } from 'skillunit/vitest';", "import { and, code, key, setup, unit } from 'skillunit/vitest';");
       app.commit('Drop one test, skip another');
     },
     // A unit deleted with its test, and one skipped, leave no record; the skill still has them, and
