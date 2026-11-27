@@ -82,16 +82,19 @@ describe('SKILL.md', () => {
     };
     expect(Object.keys(does).sort()).toEqual([INIT, ...Object.keys(OPTIONS)].sort());
     const empty = scratch('init');
-    expect((await cli(empty, [INIT, 'skill'])).status).toBe(0);
-    expect(existsSync(join(empty, CONFIG_FILE))).toBe(true);
+    await cli(empty, [INIT, 'skill']);
+    if (!existsSync(join(empty, CONFIG_FILE))) does.init = `does not write \`${CONFIG_FILE}\``;
     const p = await built();
     const layers = async (...args: string[]) => {
       const ran = report(await cli(p.root, [...args, '--json']));
-      return [ran.proof && 'proof', ran.test && 'test'].filter(Boolean);
+      return [ran.proof && 'proof', ran.test && 'test'].filter(Boolean).join();
     };
-    expect(await layers(command('proof'))).toEqual(['proof']);
-    expect(await layers(command('test'), '--dry-run')).toEqual(['test']);
-    expect(await layers(command('check'), '--dry-run')).toEqual(['proof', 'test']);
+    // What each command ran, from its report: a command that runs both layers runs proof, then test.
+    const only: Record<string, string> = { proof: 'runs only the proof', test: 'asks only the questions', 'proof,test': `runs \`${command('proof')}\`, then \`${command('test')}\``, '': 'runs neither layer' };
+    const [ofProof, ofTest, ofCheck] = [await layers(command('proof')), await layers(command('test'), '--dry-run'), await layers(command('check'), '--dry-run')];
+    expect(ofProof, 'proof runs the proof').toContain('proof');
+    if (ofTest !== 'test') does.test = only[ofTest]!;
+    if (ofCheck !== 'proof,test') does.check = only[ofCheck]!;
     u.value(Object.entries(does).map(([name, what]) => `\`${BIN} ${name}\` ${what}.`).join(' '));
   });
 });

@@ -74,7 +74,7 @@ Value: `--changed` asks only the questions about the skill files, or their `with
 
 When: a script or CI reads what `skillunit` exited with.
 
-Value: `skillunit` exits with 0 when every check passed, borderline verdicts included; with 1 when a check failed; and with 2 when the command itself was wrong: an option it does not take, a folder that is not there, no API key, or settings that are not valid. Settings with no `proof` give 2 to `proof`, `test` and `check`: the skill and its questions both come from the records of `proof.run`.
+Value: `skillunit` exits with 0 when every check passed, borderline verdicts included; with 1 when a check failed; and with 2 when the command itself was wrong: an option it does not take, a folder that is not there, no API key or settings that are not valid. Settings with no `proof` give 2 to `proof`, `test` and `check`: the skill and its questions both come from the records of `proof.run`.
 
 ### fact: reporters
 

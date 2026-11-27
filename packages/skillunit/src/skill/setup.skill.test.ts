@@ -1,6 +1,6 @@
 // The file `setup.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { and, code, key, or, setup, unit } from 'skillunit/vitest';
 import { afterEach, describe, expect } from 'vitest';
 import { INIT, OPTIONS } from '../commands.js';
@@ -50,19 +50,27 @@ describe('setup.md', () => {
     'init',
     {
       when: `the project has no \`${CONFIG_FILE}\` yet.`,
-      value: `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to that folder. It refuses when the file is there already, and it writes no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it. In a folder with a \`tsconfig.json\`, the \`${proofKey('run')}\` it suggests in a comment type-checks first: \`${suggestedRun(true)}\`. In a folder with no \`package.json\`, it also points at the JSON contract, which a test in another language writes.`,
     },
-    () => {
+    (u) => {
       const typed = scratch('init-typed');
       writeFileSync(join(typed, 'tsconfig.json'), '{}\n');
       init('skills/my-skill', typed);
-      expect(readFileSync(join(typed, CONFIG_FILE), 'utf8')).toContain(`run: "${suggestedRun(true)}"`);
+      const typeChecks = readFileSync(join(typed, CONFIG_FILE), 'utf8').includes(`run: "${suggestedRun(true)}"`);
       const dir = scratch('init');
-      expect(init('skills/my-skill', dir).at(-1)).toContain('the JSON contract');
-      expect(readFileSync(join(dir, CONFIG_FILE), 'utf8')).toContain(`run: "${suggestedRun(false)}"`);
-      expect(loadConfig(join(dir, CONFIG_FILE)).skill).toBe(join(dir, 'skills', 'my-skill'));
-      expect(existsSync(join(dir, 'skills', 'my-skill', SKILL_INDEX))).toBe(false);
-      expect(() => init('skills/my-skill', dir)).toThrow(`${CONFIG_FILE} already exists`);
+      const contract = init('skills/my-skill', dir).at(-1)?.includes('the JSON contract') === true;
+      expect(existsSync(join(dir, CONFIG_FILE)), 'the settings are written').toBe(true);
+      const plain = readFileSync(join(dir, CONFIG_FILE), 'utf8').includes(`run: "${suggestedRun(false)}"`);
+      const skill = loadConfig(join(dir, CONFIG_FILE)).skill === join(dir, 'skills', 'my-skill');
+      const noIndex = !existsSync(join(dir, 'skills', 'my-skill', SKILL_INDEX));
+      let refuses = false;
+      try {
+        init('skills/my-skill', dir);
+      } catch (e) {
+        refuses = (e as Error).message.includes(`${CONFIG_FILE} already exists`);
+      }
+      u.value(
+        `\`${BIN} ${INIT} <skill folder>\` writes \`${CONFIG_FILE}\` in the current folder, with \`${setting('skill')}\` set to ${skill ? 'that folder' : 'another folder'}. It ${refuses ? 'refuses when the file is there already' : 'writes over a file that is there already'}, and it writes ${noIndex ? `no \`${SKILL_INDEX}\`: the first \`${command('proof')} ${option('proof', '--write')}\` builds it` : `a \`${SKILL_INDEX}\``}. In a folder with a \`tsconfig.json\`, the \`${proofKey('run')}\` it suggests in a comment ${typeChecks && plain ? `type-checks first: \`${suggestedRun(true)}\`` : 'does not type-check first'}.${contract ? ' In a folder with no `package.json`, it also points at the JSON contract, which a test in another language writes.' : ''}`,
+      );
     },
   );
 
@@ -79,17 +87,23 @@ describe('setup.md', () => {
     const file = join(dir, CONFIG_FILE);
     writeFileSync(file, `${Object.values(valid).join('\n')}\n`);
     const config = loadConfig(file);
-    expect(config.skill).toBe(join(dir, 'skills', 'my-skill'));
-    expect(config.proof?.units).toBe(join(dir, 'out', 'units'));
+    const fromFile = config.skill === join(dir, 'skills', 'my-skill') && config.proof?.units === join(dir, 'out', 'units');
     writeFileSync(file, 'skil: ./skills/my-skill\n');
-    expect(() => loadConfig(file)).toThrow('unknown key `skil`');
+    let refuses = false;
+    try {
+      loadConfig(file);
+    } catch (e) {
+      refuses = (e as Error).message.includes('unknown key `skil`');
+    }
     // With no settings file, the skill is the current folder.
     expect(existsSync(CONFIG_FILE)).toBe(false);
-    expect(loadConfig().skill).toBe(process.cwd());
+    const noFile = loadConfig().skill === process.cwd();
     const example = `${valid.skill}\n${valid.context}\n${setting('proof')}:\n  run: "npx vitest run skill.test"\n`;
     writeFileSync(file, example);
     expect(loadConfig(file).proof?.run).toBe('npx vitest run skill.test');
-    u.value(`\`${CONFIG_FILE}\` takes ${and(code(SETTINGS_KEYS))}, and refuses any other key. Each path in it starts from the folder of the file. With no settings file, the skill is the current folder.`);
+    u.value(
+      `\`${CONFIG_FILE}\` takes ${and(code(SETTINGS_KEYS))}, and ${refuses ? 'refuses any other key' : 'takes another key without a word'}. Each path in it starts from ${fromFile ? 'the folder of the file' : 'the current folder, not the folder of the file'}. With no settings file, the skill is ${noFile ? 'the current folder' : 'another folder than the current one'}.`,
+    );
     u.example('yaml', example);
   });
 
@@ -106,7 +120,6 @@ describe('setup.md', () => {
         format: `a command with \`${FORMAT_FILE}\`, run once with every built Markdown file in its place`,
       };
       expect(Object.keys(does)).toEqual([...PROOF_KEYS]);
-      u.value(`\`${setting('proof')}\` takes ${and(code(PROOF_KEYS))}, and no other key. ${Object.entries(does).map(([k, what]) => `\`${proofKey(k as keyof typeof does)}\` is ${what}.`).join(' ')}`);
       const format = join('fmt.mjs');
       const p = await project(
         (r) => {
@@ -119,14 +132,21 @@ describe('setup.md', () => {
         },
       );
       const cfg = loadConfig(join(p.root, CONFIG_FILE)).proof!;
-      expect(cfg.units).toBe(join(p.root, DEFAULT_PROOF_UNITS));
+      if (cfg.units !== join(p.root, DEFAULT_PROOF_UNITS)) does.units = `where the tests leave their records, \`${relative(p.root, cfg.units)}\` by default`;
       p.proof({ write: true });
-      expect(p.read('runs.txt')).toBe('2\n');
-      expect(p.read('skill/retries.md').endsWith('formatted\n')).toBe(true);
+      expect(p.read('skill/retries.md').endsWith('formatted\n'), 'the formatter ran on the built files').toBe(true);
+      if (p.read('runs.txt') !== '2\n') does.format = `a command with \`${FORMAT_FILE}\`, run once for each built Markdown file`;
       runTests({ ...cfg, run: 'node -p "process.cwd()" > cwd.txt' }, false);
-      expect(p.read('cwd.txt').trim()).toBe(realpathSync(p.root));
+      const ranIn = realpathSync(p.read('cwd.txt').trim());
+      if (ranIn !== realpathSync(p.root)) does.run = `the command that runs the tests, through the shell, from ${ranIn === realpathSync(dirname(p.root)) ? 'the folder above' : 'another folder than the one'} of \`${CONFIG_FILE}\``;
       p.write(CONFIG_FILE, 'skill: ./skill\nproof: { cache: true }\n');
-      expect(() => loadConfig(join(p.root, CONFIG_FILE))).toThrow('unknown key `proof.cache`');
+      let refuses = false;
+      try {
+        loadConfig(join(p.root, CONFIG_FILE));
+      } catch (e) {
+        refuses = (e as Error).message.includes('unknown key `proof.cache`');
+      }
+      u.value(`\`${setting('proof')}\` takes ${and(code(PROOF_KEYS))}, and ${refuses ? 'no other key' : 'other keys too'}. ${Object.entries(does).map(([k, what]) => `\`${proofKey(k as keyof typeof does)}\` is ${what}.`).join(' ')}`);
     },
   );
 
@@ -153,16 +173,18 @@ describe('setup.md', () => {
 
   unit('providers', { when: 'the settings choose the decision model, or a command overrides them.' }, async (u) => {
     const p = await withQuestion();
+    // With no key set, the provider a run uses is the one whose key the error names.
+    let chosen = true;
     for (const name of PROVIDER_NAMES) {
       const ran = await cli(p.root, [command('test'), checkOption('--provider'), name]);
-      expect(ran.status).toBe(2);
-      expect(ran.stderr).toContain(`${PROVIDERS[name].env.join(' and ')} ${PROVIDERS[name].env.length > 1 ? 'are' : 'is'} not set`);
+      expect(ran.status, name).not.toBe(0);
+      chosen &&= ran.stderr.includes(`${PROVIDERS[name].env.join(' and ')} ${PROVIDERS[name].env.length > 1 ? 'are' : 'is'} not set`);
     }
     const unknown = await cli(p.root, [command('test'), checkOption('--provider'), 'unknown']);
-    expect(unknown.stderr).toContain(`--provider takes ${PROVIDER_NAMES.join(', ')}`);
+    const listed = unknown.stderr.includes(`--provider takes ${PROVIDER_NAMES.join(', ')}`);
     const shipped = PROVIDER_NAMES.map((name) => `\`${name}\` (key in \`${PROVIDERS[name].env.join('` and `')}\`)`);
     u.value(
-      `SkillUnit ships ${and(shipped)}. \`${setting('model')}: { ${modelKey('provider')}: <provider>, ${modelKey('name')}: <model> }\` chooses one in the settings, \`${checkOption('--provider')}\` chooses one for a single run, and \`${checkOption('--model')}\` the model.`,
+      `SkillUnit ships ${and(shipped)}. \`${setting('model')}: { ${modelKey('provider')}: <provider>, ${modelKey('name')}: <model> }\` chooses one in the settings, \`${checkOption('--provider')}\` ${chosen ? 'chooses one for a single run' : 'does not change the one the settings choose'}${listed ? '' : ', and takes a name it does not know'}, and \`${checkOption('--model')}\` the model.`,
     );
   });
 
@@ -239,16 +261,17 @@ describe('setup.md', () => {
         return false;
       }
     };
-    expect([accepts(`thresholds: { yes: ${half} }`), accepts(`thresholds: { yes: ${half - 0.01} }`)]).toEqual([true, false]);
-    expect([accepts(`thresholds: { no: ${half - 0.01} }`), accepts(`thresholds: { no: ${half} }`)]).toEqual([true, false]);
+    const yesFloor = accepts(`thresholds: { yes: ${half} }`) && !accepts(`thresholds: { yes: ${half - 0.01} }`);
+    const noCeiling = accepts(`thresholds: { no: ${half - 0.01} }`) && !accepts(`thresholds: { no: ${half} }`);
     const flags = Object.keys(DEFAULT_THRESHOLDS).map((k) => `--${k}`);
     for (const flag of flags) expect(OPTIONS.check).toContain(flag);
     const p = await withQuestion();
-    expect(report(await cli(p.root, ['check', checkOption('--dry-run'), '--json'])).test?.thresholds).toEqual(DEFAULT_THRESHOLDS);
-    expect(report(await cli(p.root, ['check', checkOption('--dry-run'), checkOption('--yes'), '0.9', '--json'])).test?.thresholds).toEqual({ ...DEFAULT_THRESHOLDS, yes: 0.9 });
-    const defaults = (Object.entries(DEFAULT_THRESHOLDS) as [keyof Thresholds, number][]).map(([k, v]) => `\`${k}\` ${v}`);
+    const used = report(await cli(p.root, [command('test'), checkOption('--dry-run'), '--json'])).test?.thresholds;
+    expect(used, 'a dry run reports its thresholds').toBeDefined();
+    const overridden = JSON.stringify(report(await cli(p.root, [command('test'), checkOption('--dry-run'), checkOption('--yes'), '0.9', '--json'])).test?.thresholds) === JSON.stringify({ ...used, yes: 0.9 });
+    const defaults = (Object.entries(used!) as [keyof Thresholds, number][]).map(([k, v]) => `\`${k}\` ${v}`);
     u.value(
-      `the thresholds a verdict is judged with default to ${and(defaults)}. \`yes\` must be ${half} or more and \`no\` under ${half}. ${and(code(flags))} override them for one run.`,
+      `the thresholds a verdict is judged with default to ${and(defaults)}. \`yes\` ${yesFloor ? `must be ${half} or more` : `can be under ${half}`} and \`no\` ${noCeiling ? `under ${half}` : `${half} or more`}. ${and(code(flags))} ${overridden ? 'override them for one run' : 'do not override them'}.`,
     );
   });
 

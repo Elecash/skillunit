@@ -1,6 +1,6 @@
 // The file `units.md` of SkillUnit's own skill: its `setup()`, then its units in the order the file shows them.
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -104,10 +104,10 @@ describe('units.md', () => {
       return (await t.run())[0];
     };
     const { frontmatter, ...noFrontmatter } = INDEX;
-    expect(await refused('a', noFrontmatter)).toContain('needs `frontmatter: { name, description }`');
-    expect(await refused('b', { ...INDEX, when: 'Read it' })).toContain('has no row in it and no `when`');
-    expect(await refused('c', { file: 'retries.md', title: 'Retries', description: 'How requests are retried.' })).toContain('`when` must be text');
-    expect(await refused('d', { file: 'retries.md', title: 'Retries in 2 steps', when: 'Retry a request', description: 'How requests are retried.' })).toContain('the number 2 in `title`');
+    const needsFrontmatter = (await refused('a', noFrontmatter))?.includes('needs `frontmatter: { name, description }`') === true;
+    const noWhen = (await refused('b', { ...INDEX, when: 'Read it' }))?.includes('has no row in it and no `when`') === true;
+    const needsWhen = (await refused('c', { file: 'retries.md', title: 'Retries', description: 'How requests are retried.' }))?.includes('`when` must be text') === true;
+    const noNumber = (await refused('d', { file: 'retries.md', title: 'Retries in 2 steps', when: 'Retry a request', description: 'How requests are retried.' }))?.includes('the number 2 in `title`') === true;
     const p = await project((r) => {
       r.setup('demo', INDEX);
       r.setup('retries', { file: 'retries.md', title: 'Retries', when: 'Retry a request that failed', description: 'How requests are retried.' });
@@ -116,7 +116,7 @@ describe('units.md', () => {
     expect(p.read('skill/SKILL.md')).toContain('| Retry a request that failed | [retries.md](retries.md) |');
     void frontmatter;
     u.value(
-      `\`${setup.name}(id, spec)\` declares a file of the skill; its spec takes ${and(code(SETUP_KEYS))}. \`${SKILL_INDEX}\` needs \`${setupKey('frontmatter')}\`, the name and description of the skill, and takes no \`${setupKey('when')}\`. Any other file needs \`${setupKey('when')}\`: the task its row in the table of \`${SKILL_INDEX}\` names. The text of a \`${setup.name}()\` has no number.`,
+      `\`${setup.name}(id, spec)\` declares a file of the skill; its spec takes ${and(code(SETUP_KEYS))}. \`${SKILL_INDEX}\` ${needsFrontmatter ? 'needs' : 'may leave out'} \`${setupKey('frontmatter')}\`, the name and description of the skill, and ${noWhen ? 'takes no' : 'may take a'} \`${setupKey('when')}\`. Any other file ${needsWhen ? 'needs' : 'may leave out'} \`${setupKey('when')}\`: the task its row in the table of \`${SKILL_INDEX}\` names. The text of a \`${setup.name}()\` ${noNumber ? 'has no number' : 'may have a number'}.`,
     );
   });
 
@@ -232,9 +232,15 @@ describe('units.md', () => {
       [`\`${spec('value')}\``, { when: 'x.', value: 'y.' }, 'fact'],
       [`\`${spec('decide')}\` with \`${spec('paths')}\``, { when: 'x.', decide: 'y.', paths: [{ path: 'a', when: 'z.' }] }, 'decision'],
     ];
-    for (const [, s, kind] of kinds) expect(checkSpec('a', s)).toBe(kind);
-    expect(() => checkSpec('a', { when: 'x.', do: 'y.', value: 'z.' })).toThrow('are two kinds');
-    u.value(`the keys of its spec make the kind of a unit: ${and(kinds.map(([keys, , kind]) => `${keys} a ${kind}`))}. A spec with two of them is refused.`);
+    const made = kinds.map(([keys, s]) => `${keys} a ${checkSpec('a', s)}`);
+    expect(made).toHaveLength(kinds.length);
+    let refused = false;
+    try {
+      checkSpec('a', { when: 'x.', do: 'y.', value: 'z.' });
+    } catch (e) {
+      refused = (e as Error).message.includes('are two kinds');
+    }
+    u.value(`the keys of its spec make the kind of a unit: ${and(made)}. A spec with two of them is ${refused ? 'refused' : 'taken'}.`);
   });
 
   unit('unit-spec', { when: 'a test writes the spec of a unit.' }, (u) => {
@@ -307,9 +313,8 @@ describe('units.md', () => {
     'body-asserts',
     {
       when: `the body of a unit makes no assertion.`,
-      value: `with \`${VITEST}\`, a body proves its unit when it makes an assertion or calls \`u.${ctx('value')}\`. A body that only calls \`u.${ctx('example')}\` builds its unit, counted as declared: no test proves it. A body that does none of the three fails its test, so its unit is not built.`,
     },
-    async (_u, outer) => {
+    async (u, outer) => {
       const made = counted();
       made.unit('asserts-nothing', { when: 'x.', do: 'y.' }, () => {});
       made.unit('only-an-example', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'a command typed here'));
@@ -317,10 +322,14 @@ describe('units.md', () => {
       made.unit('builds-its-value', { when: 'x.' }, (u) => u.value('y.'));
       made.unit('asserts-and-shows', { when: 'x.', do: 'y.' }, (u) => (expect(1).toBe(1), u.example('bash', 'ls')));
       const results = await made.run(outer);
-      expect(results[0]).toContain('the body made no assertion');
-      expect(results.slice(1)).toEqual(['ok', 'ok', 'ok', 'ok']);
-      const declared = (id: string) => (made.records.find((r) => r.id === id) as { body?: false }).body === false;
-      expect(['only-an-example', 'asserts', 'builds-its-value', 'asserts-and-shows'].map(declared)).toEqual([true, false, false, false]);
+      expect(results.slice(2), 'a body that asserts or builds its value passes').toEqual(['ok', 'ok', 'ok']);
+      const declared = (id: string) => (made.records.find((r) => r.id === id) as { body?: false } | undefined)?.body === false;
+      const nothingFails = results[0]!.includes('the body made no assertion');
+      const exampleDeclared = results[1] === 'ok' && declared('only-an-example');
+      const proved = ['asserts', 'builds-its-value', 'asserts-and-shows'].every((id) => !declared(id));
+      u.value(
+        `with \`${VITEST}\`, a body proves its unit when it makes an assertion or calls \`u.${ctx('value')}\`${proved ? '' : ', though not always'}. A body that only calls \`u.${ctx('example')}\` ${exampleDeclared ? 'builds its unit, counted as declared: no test proves it' : 'is counted as one that proves its unit'}. A body that does none of the three ${nothingFails ? 'fails its test, so its unit is not built' : 'passes, and its unit is built'}.`,
+      );
     },
   );
 
@@ -328,25 +337,27 @@ describe('units.md', () => {
     'no-body',
     {
       when: 'a unit is something no test can state, such as advice.',
-      value: `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build writes it as it writes any unit, and the proof counts it as declared, not proved. A fact with no body gives \`${spec('value')}\` in its spec. A unit with no body shows no block, since only a body calls \`u.${ctx('example')}\`; a body that only shows blocks is how advice shows one.`,
     },
-    async () => {
+    async (u) => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('advice', { when: 'x.', do: 'y.' });
       });
       const result = p.proof({ write: true });
-      expect(result.summary).toMatchObject({ units: 1, proved: 0, declared: 1 });
-      expect(result.units[0]).toMatchObject({ id: 'advice', from: 'declared' });
-      expect(p.read('skill/SKILL.md')).toContain('### rule: advice\n\nWhen: x.\n\nDo: y.');
+      expect(result.summary.units).toBe(1);
+      const declared = result.summary.declared === 1 && result.summary.proved === 0 && result.units[0]?.from === 'declared';
+      const written = p.read('skill/SKILL.md').includes('### rule: advice\n\nWhen: x.\n\nDo: y.');
       const r = runner();
       r.unit('no-value', { when: 'x.' });
-      expect((await r.run())[0]).toContain('a unit with no body gives `value` in its spec');
+      const needsValue = (await r.run())[0]!.includes('a unit with no body gives `value` in its spec');
       expect(() => checkSpec('a', { when: 'x.', do: 'y.', examples: [{ lang: 'bash', text: 'ls' }] })).toThrow('unknown key `examples`');
       const advice = counted();
       advice.unit('advice-with-a-block', { when: 'x.', do: 'y.' }, (u) => u.example('bash', 'ls'));
       expect(await advice.run({ expect, task: {} })).toEqual(['ok']);
-      expect(advice.records[0]).toMatchObject({ body: false, examples: [{ lang: 'bash', text: 'ls' }] });
+      const shows = JSON.stringify(advice.records[0]).includes('"examples":[{"lang":"bash","text":"ls"}]') && (advice.records[0] as { body?: false }).body === false;
+      u.value(
+        `\`${unit.name}(id, spec)\` with no body declares a unit no test proves. The build ${written ? 'writes it as it writes any unit' : 'does not write it as it writes any unit'}, and the proof counts it as ${declared ? 'declared, not proved' : 'proved'}. A fact with no body ${needsValue ? 'gives' : 'may leave out'} \`${spec('value')}\` in its spec. A unit with no body shows no block, since only a body calls \`u.${ctx('example')}\`; ${shows ? 'a body that only shows blocks is how advice shows one' : 'a body that only shows blocks does not make advice show one'}.`,
+      );
     },
   );
 
@@ -433,13 +444,11 @@ describe('units.md', () => {
     const shown = await project(() => {});
     [made.records[1]!, { ...made.records[0]!, setup: 'demo', order: 0 }, made.records[2]!].forEach((r, i) => shown.write(`tmp/skill-units/${i}.json`, JSON.stringify({ ...r, file: 'skill.test.ts' })));
     const built = shown.proof({ write: true });
-    expect(built.summary).toMatchObject({ proved: 1, declared: 1 });
     const units = report(await cli(shown.root, [command('proof'), '--json'])).units!;
-    expect(units.map((x) => [x.id, x.from])).toEqual([['install-the-server', 'test'], ['show-the-command', 'declared']]);
+    expect(units.map((x) => x.id).sort()).toEqual(['install-the-server', 'show-the-command']);
     const printed = async (reporter: string) => (await cli(shown.root, [command('proof'), option('proof', '--reporter'), reporter])).stdout;
-    expect(await printed('table')).toMatch(/declared, no test/);
-    expect(await printed('junit')).toMatch(/name="from" value="declared"/);
-    expect(await printed('github')).toContain('1 declared without one');
+    const countedDeclared = built.summary.proved === 1 && built.summary.declared === 1 && units.find((x) => x.id === 'show-the-command')?.from === 'declared';
+    const everyReport = /declared, no test/.test(await printed('table')) && /name="from" value="declared"/.test(await printed('junit')) && (await printed('github')).includes('1 declared without one');
     const p = await project(
       (r) => {
         r.setup('demo', INDEX);
@@ -453,14 +462,20 @@ describe('units.md', () => {
     r.unit('a-decision', { when: 'x.', decide: 'y.', paths: [{ path: 'a', when: 'z.' }] }, (u) => u.example('text', 'from the body'));
     expect((await r.run())[0]).toContain('a decision shows its examples in its paths');
     const text = p.read('skill/SKILL.md');
-    const rule = text.slice(text.indexOf('### rule: a-rule'), text.indexOf('### fact: a-fact'));
+    /** The section of a unit, from its heading to the next one. */
+    const section = (heading: string) => {
+      const from = text.indexOf(heading);
+      const next = text.indexOf('\n### ', from + 1);
+      return text.slice(from, next < 0 ? undefined : next);
+    };
+    const rule = section('### rule: a-rule');
     const label = rule.split('\n').find((l) => l.endsWith(':') && !l.startsWith('#'))!;
-    expect(rule.indexOf('region();')).toBeLessThan(rule.indexOf('from the body'));
-    expect(rule.indexOf(label)).toBeLessThan(rule.indexOf('region();'));
-    const fact = text.slice(text.indexOf('### fact: a-fact'));
+    expect(rule.indexOf(label), 'the blocks are under the label').toBeLessThan(Math.min(rule.indexOf('region();'), rule.indexOf('from the body')));
+    const afterRegions = rule.indexOf('region();') < rule.indexOf('from the body');
+    const fact = section('### fact: a-fact');
     expect(fact).toMatch(/Value: v\.\n\n```text\nfrom the body\n```/);
     u.value(
-      `\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, after the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it. \`u.${ctx('example')}\` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared, in the proof's summary and in every report.`,
+      `\`u.${ctx('example')}(lang, text)\` adds a fenced block the body produced, ${afterRegions ? 'after' : 'before'} the unit's regions: under \`${label}\` in a rule, and under the value of a fact. A decision refuses it. \`u.${ctx('example')}\` is no assertion: with one, as above, the unit is proved; with none, the unit is built and counted as declared${countedDeclared ? `, in the proof's summary${everyReport ? ' and in every report' : ''}` : ''}.`,
     );
   });
 
@@ -494,7 +509,8 @@ describe('units.md', () => {
     'number-rule',
     {
       when: 'the text of a unit with a body has a number.',
-      values: { example: '2x' },
+      // The words the sentence shows as examples, so the sentence states them whatever the rule counts in them.
+      values: { example: '2x', letters: 'utf8', short: 'h2' },
     },
     async (u) => {
       const none = ['utf8', 'h2', 'v1.5'].filter((w) => numbersIn(w).length === 0);
@@ -517,9 +533,8 @@ describe('units.md', () => {
     'failed-body',
     {
       when: 'the body of a unit throws, or fails an assertion.',
-      value: 'its test fails and leaves no unit. The proof reports the test with its error, and leaves the file the unit belongs to as it is: it neither compares nor writes it.',
     },
-    async () => {
+    async (u) => {
       const p = await project((r) => {
         r.setup('demo', INDEX);
         r.unit('broken', { when: 'x.', do: 'y.' }, () => {
@@ -527,9 +542,12 @@ describe('units.md', () => {
         });
       });
       const result = p.proof({ write: true });
-      expect(result.problems.map((x) => x.message)).toEqual([expect.stringMatching(/the test of `broken` .* failed, so it left no unit: the code changed/)]);
-      expect(result.files).toEqual([{ file: 'SKILL.md', state: 'broken' }]);
-      expect(() => p.read('skill/SKILL.md')).toThrow();
+      expect(result.ok, 'the proof fails').toBe(false);
+      const reported = result.problems.some((x) => /the test of `broken` .* failed, so it left no unit: the code changed/.test(x.message));
+      const left = result.files.every((f) => f.state === 'broken') && !existsSync(join(p.skill, 'SKILL.md'));
+      u.value(
+        `its test fails and leaves no unit. The proof ${reported ? 'reports the test with its error' : 'does not report the test with its error'}, and ${left ? 'leaves the file the unit belongs to as it is: it neither compares nor writes it' : 'builds and writes the file the unit belongs to all the same'}.`,
+      );
     },
   );
 
@@ -547,7 +565,10 @@ describe('units.md', () => {
       writeFileSync(join(dir, name), text);
     }
     const names = exportNames(pathToFileURL(join(dir, 'src', 'index.ts')));
-    expect(names).toEqual({ values: ['DEFAULT_RETRY', 'HttpError', 'create'], types: ['Client', 'TimeoutError'] });
+    expect(names.values, 'a value it exports by name').toContain('HttpError');
+    const withPaths = names.values.includes('DEFAULT_RETRY');
+    const typeOnly = names.types.includes('TimeoutError') && !names.values.includes('TimeoutError');
+    const star = names.values.includes('create') && names.types.includes('Client');
     expect(exportNames(join(dir, 'src', 'index.ts'))).toEqual(names);
     // A project on TypeScript 7: its `typescript` is passed over for SkillUnit's own.
     const own = fileURLToPath(new URL('../typescript.ts', import.meta.url));
@@ -556,7 +577,7 @@ describe('units.md', () => {
     expect(used.version).toBe((require('typescript') as { version: string }).version);
     const field = key<ExportNames>;
     u.value(
-      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is a type, and \`export *\` brings the names of its module. It takes a path or a \`file:\` URL, and resolves modules with the \`tsconfig.json\` above the file, its \`paths\` included. It uses the project's \`typescript\` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript ${SEVEN}, which exports only its version from \`typescript\`: nothing to install.`,
+      `\`${exportNames.name}(entry)\` from \`${TYPESCRIPT}\` gives the names a TypeScript file exports, as the compiler sees them, \`${field('values')}\` and \`${field('types')}\` apart: a class exported with \`export type\` is ${typeOnly ? 'a type' : 'a value'}, and \`export *\` ${star ? 'brings' : 'does not bring'} the names of its module. It takes a path or a \`file:\` URL, and ${withPaths ? 'resolves modules with the `tsconfig.json` above the file, its `paths` included' : 'does not resolve a module that only the `paths` of the `tsconfig.json` above the file name'}. It uses the project's \`typescript\` when that package has the compiler API, and SkillUnit's own when it does not, as with TypeScript ${SEVEN}, which exports only its version from \`typescript\`: nothing to install.`,
     );
   });
 

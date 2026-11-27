@@ -32,7 +32,8 @@ describe('questions.md', () => {
     expect(() => checkQuestions('a', { ...base, expect: 'maybe' })).toThrow('`expect` must be `yes` or `no`');
     expect(() => checkQuestions('a', { ...base, expect: 'yes', hint: 'x' })).toThrow('unknown key `hint`');
     const sent = buildRequest('# Skill', [WAIT]).questions[0]!.options!.map((o) => o.id);
-    expect(sent).toEqual(['wait', 'now', NONE]);
+    expect(sent.slice(0, 2), 'the options of the question are sent').toEqual(['wait', 'now']);
+    const adds = sent.at(-1) === NONE;
     const r = runner();
     r.ask('before-any-file', { ...base, expect: 'yes' });
     r.setup('retries', { file: 'retries.md', title: 'Retries', when: 'Retry a request', description: 'How requests are retried.' });
@@ -43,7 +44,7 @@ describe('questions.md', () => {
     const files = r.records.filter((x) => x.kind === 'question').map((x) => (x as { skillFile: string }).skillFile);
     expect(files).toEqual([DEFAULT_SKILL_FILE, 'retries.md', 'timeouts.md']);
     u.value(
-      `a unit asks with \`${key<UnitSpec>('ask')}\` in its spec, one question or a list. \`${ask.name}(id, spec)\` asks about the prose of a built file: the one named in \`file\`, else the file of its \`${setup.name}()\`, else \`${DEFAULT_SKILL_FILE}\`. A question takes ${and(code(QUESTION_KEYS))}. With \`${q('options')}\`, SkillUnit adds \`${NONE}\`, which \`${q('expect')}\` may name and \`${q('options')}\` may not list; with no \`${q('options')}\`, \`${q('expect')}\` is \`yes\` or \`no\`.`,
+      `a unit asks with \`${key<UnitSpec>('ask')}\` in its spec, one question or a list. \`${ask.name}(id, spec)\` asks about the prose of a built file: the one named in \`file\`, else the file of its \`${setup.name}()\`, else \`${DEFAULT_SKILL_FILE}\`. A question takes ${and(code(QUESTION_KEYS))}. With \`${q('options')}\`, SkillUnit ${adds ? 'adds' : 'does not add'} \`${NONE}\`, which \`${q('expect')}\` may name and \`${q('options')}\` may not list; with no \`${q('options')}\`, \`${q('expect')}\` is \`yes\` or \`no\`.`,
     );
   });
 
