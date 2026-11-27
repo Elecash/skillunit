@@ -82,55 +82,22 @@ body that goes through every case, or a sentence that names the cases the body t
 of tinyfetch's `base-url` now tries the four forms: a base with and without `/` at its end, and
 a path with and without `/` at its start.
 
-**A sentence about what the code does is built from what the body observed**, with
-`u.value()`. A sentence typed in `value` above an assertion is the weak form. When the behaviour
-changes, the test goes red, someone edits the assertion to match, and the sentence stays: the
-tests, the type-check and the proof all pass, and the skill is false. In a round of trials, 7 of
-12 changes that left a skill wrong ended with everything green, and in each the false text was
-typed in a test.
+**A sentence about what the code does is typed in `value`, and the body asserts what it says.**
+Its numbers come from constants and its names from the types, as in `retry-delay` above. When the
+behaviour changes, the test goes red, and that red test is the signal: it says the code no longer
+does what the skill says.
 
-tinyfetch's `timeout-precedence` was the weak form:
+**When a test goes red, fix the code.** If the change is meant, change the sentence and the body
+together, then run `skillunit proof --write`. Never edit the assertion alone to make it pass: the
+sentence above it stays, and the skill is then false with every check green. The tests are what
+SkillUnit builds the skill from, so they have to be right.
 
-```ts
-unit(
-  'timeout-precedence',
-  {
-    when: `a client or a request sets \`${opt('timeout')}\`.`,
-    value: `a request's own \`${opt('timeout')}\` wins over the \`${key<ClientOptions>('timeout')}\` of its client, and the client's over the default.`,
-  },
-  async () => {
-    // … three requests that time out …
-    expect(await outcomes([…])).toEqual([DEFAULT_TIMEOUT / 4, DEFAULT_TIMEOUT / 2, DEFAULT_TIMEOUT]);
-  },
-);
-```
-
-With the client's `timeout` made to win, the test failed, and the fix that made it pass changed
-`DEFAULT_TIMEOUT / 2` to `DEFAULT_TIMEOUT / 4` and left the sentence. Built from the observation,
-there is no expected value to edit:
-
-```ts
-async (u) => {
-  // … three requests that time out: one that sets `timeout` on a client that sets one, one that
-  // sets none, and one on a client that sets none either …
-  const [both, client, neither] = (await Promise.all(pending)).map((e) => (e as TimeoutError).timeout);
-  const source = (ms) => ({ [ofRequest]: 'its own `timeout`', [ofClient]: 'the `timeout` of its client', [DEFAULT_TIMEOUT]: 'the default' })[ms];
-  expect([both, client, neither].every((ms) => [ofRequest, ofClient, DEFAULT_TIMEOUT].includes(ms))).toBe(true);
-  u.value(`a request that sets \`timeout\`, on a client that sets one too, waits for ${source(both)}; …`);
-},
-```
-
-The body asserts only what holds whatever the code does: each request timed out after one of the
-three times. The same change now passes the tests, and the proof fails on the built line, with
-the test it comes from. `skillunit proof --write` writes "…waits for the `timeout` of its
-client", which is what the code does.
-
-It does not reach the words around the observed value: "waits for" and "on a client that sets
-one too" are typed. Where no value can carry a claim, put what the body saw in the sentence or in
-an example, so the skill at least shows what happened. tinyfetch's `what-is-retried` lists in an
-example the statuses of a case that are not all retried alike, and `base-url` lists the URLs it
-sent when they are not the one it expects. A number the body observes must still be in `values`,
-so a sentence names the setting that won, in words, rather than the number it gave.
+**`u.value()` is for a sentence that lists what a body found by going through cases.** Which
+failures are retried, which methods a client has: the body tries each case and writes which did
+what. Its words come from the list it went through or from a constant, never from an outcome the
+code does not have. A body that writes prose for an outcome it only imagines stops going red when
+the behaviour changes, and `--write` then writes the new behaviour into the skill as if it were
+meant.
 
 **An example is a region with code of the library only.** The lines between `#region
 skill:<id>` and `#endregion` are copied into the skill as they are. Set up the fake server
@@ -230,31 +197,6 @@ compiler's error.
 The name of a parameter stays typed, as in "pass the value itself as `body`": arguments go by
 position, so renaming a parameter changes nothing an agent writes.
 
-## The change that proves a unit
-
-A unit is done when a change to the code that makes its sentence false turns something red with
-no test edited. For each unit, make the smallest such change, run the tests and
-`skillunit check --dry-run`, and write down what went red. Then run `skillunit proof --write`,
-write down whether the skill is true, and undo the change. A unit where nothing goes red is not
-done.
-
-| Unit | Change | What went red | After `proof --write` |
-| --- | --- | --- | --- |
-| `retry-delay` | the first new attempt waits the second wait | the text of `retry-delay` | true: "waits 2x `retryDelay`" |
-| `headers` | the client's headers win over the request's | the text of `headers` | true: "…then its own, then the `headers` of its client" |
-| `send-a-body` | a string body is sent as it is | the test of `send-a-body` | still red: a rule, whose test is edited by hand |
-
-The last column tells the two kinds of red apart. A red test is fixed by editing the test, and a
-hurried edit of the assertion leaves the sentence false. A red text is fixed by `--write`, which
-writes what the code does now. On tinyfetch, 23 of 28 such changes end with a true skill after
-`--write`. Of the 5 left, 4 fail the test of a rule, whose body checks the fact the advice rests
-on, and 1 adds a key to `RequestOptions`, which fails the type-check on purpose.
-
-The table finds what review misses. In SkillUnit's own skill, two bodies passed and proved
-nothing until their change turned nothing red: one tried a tie under the threshold, which fails
-anyway, and one could not tell whether `tsconfig.json` was read. It also catches
-`expect(true).toBe(true)`, which the count of assertions takes for a real one.
-
 ## A unit with no body: a gap and its reason
 
 A unit with no body is something an agent needs and no test of this code can state: what a server
@@ -292,31 +234,9 @@ exist. Asked for the total of three waits that grow, the reader multiplied. Show
 and no other", it would not say there is no connect timeout. What the skill must say is absent,
 a fact says in so many words, in `unknown`.
 
-## The change that proves a question
-
-A question is proven like a unit, by a change that fails it. Write the opposite in the sentence
-of its unit, ask the question, and it must fail; then undo the change. The question is there for
-the day the skill says something else, and that is the change it has to notice.
-
-```sh
-cp -R skills/my-skill /tmp/my-skill-copy
-# in the copy, write the opposite in the sentence of the unit, and keep its heading and `When`
-npx skillunit test --skill /tmp/my-skill-copy --no-run
-```
-
-Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
-threshold can flip from one run to the next, so only a clear failure counts. A question that
-still passes with its unit saying the opposite does not read the unit: change the question, never
-a threshold.
-
-Deleting the unit's text instead is a reading, not a test. It says whether the model answers
-right without the skill. For an API the model knows, it does, and that is the normal case: the
-question stays. Measured on 2026-11-26 on 27 questions of three skills, on both models: all 54
-verdicts passed with their unit, 10 passed with its text deleted, and none passed with the unit
-saying the opposite, those 10 included.
-
-[Questions](questions.md#proving-a-question) says where to look when a question passes with its
-unit saying the opposite.
+**When an agent got something wrong with the skill, the fix starts from a question** that
+reproduces it and fails: [Questions](questions.md#when-an-agent-got-something-wrong) has the
+steps.
 
 ## What the build writes
 

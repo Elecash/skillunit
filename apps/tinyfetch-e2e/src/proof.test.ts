@@ -154,11 +154,11 @@ describe('the proof of tinyfetch', () => {
     const proof = app.run('proof');
     const declared = (proof.report.proof.units as any[]).filter((u) => u.from === 'declared').map((u) => u.id);
     expect(declared).toEqual(['retry-idempotent-only', 'never-disable-timeout']);
-    expect(proof.report.proof.summary).toMatchObject({ units: 24, proved: 22, declared: 2 });
+    expect(proof.report.proof.summary).toMatchObject({ units: 26, proved: 24, declared: 2 });
     const table = spawnSync(process.execPath, [CLI, 'proof'], { cwd: app.root, encoding: 'utf8', env: { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' } }).stdout;
     expect(table).toContain(`never-disable-timeout  rule\n      proof  – declared, no test, ${TIMEOUTS}:`);
     expect(table).not.toContain(`proved by a test, ${TIMEOUTS}:${lineOf(app.read(TIMEOUTS), "unit('never-disable-timeout'")}`);
-    expect(table).toContain('24 units · 22 proved by a test · 2 declared without one');
+    expect(table).toContain('26 units · 24 proved by a test · 2 declared without one');
   });
 
   it('check --dry-run with no key: every question is ready, and nothing is sent', () => {
@@ -167,7 +167,7 @@ describe('the proof of tinyfetch', () => {
     const run = spawnSync(process.execPath, [CLI, 'check', '--dry-run', '--json'], { cwd: app.root, encoding: 'utf8', env });
     expect(run.status).toBe(0);
     const test = JSON.parse(run.stdout).test;
-    expect(test.summary).toMatchObject({ tests: 9, passed: 9, usage: { input_tokens: 0, output_tokens: 0 } });
+    expect(test.summary).toMatchObject({ tests: 10, passed: 10, usage: { input_tokens: 0, output_tokens: 0 } });
     expect(test.requests.flatMap((r: any) => r.verdicts).every((v: any) => v.answer === '(dry run)' && v.declared)).toBe(true);
     expect(test.problems).toEqual([]);
   });

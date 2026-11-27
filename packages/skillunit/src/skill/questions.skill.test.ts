@@ -33,7 +33,7 @@ describe('questions.md', () => {
     expect(() => checkQuestions('a', { ...base, expect: 'yes', hint: 'x' })).toThrow('unknown key `hint`');
     const sent = buildRequest('# Skill', [WAIT]).questions[0]!.options!.map((o) => o.id);
     expect(sent.slice(0, 2), 'the options of the question are sent').toEqual(['wait', 'now']);
-    const adds = sent.at(-1) === NONE;
+    expect(sent.at(-1), `${NONE} is added`).toBe(NONE);
     const r = runner();
     r.ask('before-any-file', { ...base, expect: 'yes' });
     r.setup('retries', { file: 'retries.md', title: 'Retries', when: 'Retry a request', description: 'How requests are retried.' });
@@ -44,7 +44,7 @@ describe('questions.md', () => {
     const files = r.records.filter((x) => x.kind === 'question').map((x) => (x as { skillFile: string }).skillFile);
     expect(files).toEqual([DEFAULT_SKILL_FILE, 'retries.md', 'timeouts.md']);
     u.value(
-      `a unit asks with \`${key<UnitSpec>('ask')}\` in its spec, one question or a list. \`${ask.name}(id, spec)\` asks about the prose of a built file: the one named in \`file\`, else the file of its \`${setup.name}()\`, else \`${DEFAULT_SKILL_FILE}\`. A question takes ${and(code(QUESTION_KEYS))}. With \`${q('options')}\`, SkillUnit ${adds ? 'adds' : 'does not add'} \`${NONE}\`, which \`${q('expect')}\` may name and \`${q('options')}\` may not list; with no \`${q('options')}\`, \`${q('expect')}\` is \`yes\` or \`no\`.`,
+      `a unit asks with \`${key<UnitSpec>('ask')}\` in its spec, one question or a list. \`${ask.name}(id, spec)\` asks about the prose of a built file: the one named in \`file\`, else the file of its \`${setup.name}()\`, else \`${DEFAULT_SKILL_FILE}\`. A question takes ${and(code(QUESTION_KEYS))}. With \`${q('options')}\`, SkillUnit adds \`${NONE}\`, which \`${q('expect')}\` may name and \`${q('options')}\` may not list; with no \`${q('options')}\`, \`${q('expect')}\` is \`yes\` or \`no\`.`,
     );
   });
 
@@ -52,6 +52,7 @@ describe('questions.md', () => {
     'how-a-question-passes',
     {
       when: 'a verdict is read, or a threshold is chosen.',
+      value: `a question with \`${q('options')}\` passes when the expected option has the highest probability, and that probability is at least \`${threshold('choice')}\`, ${choice} by default; a tie at the top never passes. A yes or no question passes when P(yes) is at least \`${threshold('yes')}\`, ${yes}, for \`yes\`, or at most \`${threshold('no')}\`, ${no}, for \`no\`.`,
       values: { choice, yes, no },
       // The exception to apply: a tie at the top, at the threshold.
       ask: {
@@ -61,19 +62,16 @@ describe('questions.md', () => {
         expect: 'no',
       },
     },
-    (u) => {
+    () => {
       const th = { ...DEFAULT_THRESHOLDS };
       const pass = (expect: string, probabilities: Record<string, number>, options: boolean) => judge({ ...WAIT, expect, ...(options ? {} : { options: undefined }) }, { probabilities }, th).pass;
       // Each threshold, at it and just past it.
-      const atChoice = pass('wait', { wait: choice, now: choice / 2, none: choice / 2 }, true) && !pass('wait', { wait: choice - 0.01, now: 0.3, none: 0.2 }, true);
-      const notTop = !pass('wait', { wait: 0.3, now: 0.7, none: 0 }, true);
-      const tie = pass('wait', { wait: choice, now: choice, none: 0 }, true);
-      const atYes = pass('yes', { yes, no: 1 - yes }, false) && !pass('yes', { yes: yes - 0.01, no: 1 - yes + 0.01 }, false);
-      const atNo = pass('no', { yes: no, no: 1 - no }, false) && !pass('no', { yes: no + 0.01, no: 1 - no - 0.01 }, false);
-      expect(pass('wait', { wait: 1, now: 0, none: 0 }, true), 'a sure answer passes').toBe(true);
-      u.value(
-        `a question with \`${q('options')}\` passes when the expected option has ${notTop ? 'the highest probability, and that probability is' : 'a probability'} ${atChoice ? 'at least' : 'not simply at least'} \`${threshold('choice')}\`, ${choice} by default; a tie at the top ${tie ? 'passes too' : 'never passes'}. A yes or no question passes when P(yes) is ${atYes ? 'at least' : 'not simply at least'} \`${threshold('yes')}\`, ${yes}, for \`yes\`, or ${atNo ? 'at most' : 'not simply at most'} \`${threshold('no')}\`, ${no}, for \`no\`.`,
-      );
+      expect(pass('wait', { wait: choice, now: choice / 2, none: choice / 2 }, true)).toBe(true);
+      expect(pass('wait', { wait: choice - 0.01, now: 0.3, none: 0.2 }, true)).toBe(false);
+      expect(pass('wait', { wait: choice, now: choice, none: 0 }, true)).toBe(false);
+      expect(pass('wait', { wait: 0.3, now: 0.7, none: 0 }, true)).toBe(false);
+      expect([pass('yes', { yes, no: 1 - yes }, false), pass('yes', { yes: yes - 0.01, no: 1 - yes + 0.01 }, false)]).toEqual([true, false]);
+      expect([pass('no', { yes: no, no: 1 - no }, false), pass('no', { yes: no + 0.01, no: 1 - no - 0.01 }, false)]).toEqual([true, false]);
     },
   );
 
@@ -81,21 +79,23 @@ describe('questions.md', () => {
     'phrasings',
     {
       when: `a question gives \`${q('scenario')}\` as a list of phrasings.`,
+      value: `each phrasing is asked on its own, and the question passes when most of them pass, so no single wording decides it.`,
     },
-    async (u) => {
+    async () => {
       const three = { ...WAIT, scenarios: ['A request failed.', 'The server answered 503.', 'The network dropped.'] };
-      let apart = true;
       /** Whether the question passes when the phrasings marked true pass. */
       const asked = async (passing: boolean[]) => {
         const model = stub((request) => Object.fromEntries(request.questions.map((x, i) => [x.id, { probabilities: passing[i] ? { wait: 0.9, now: 0.1, none: 0 } : { wait: 0.1, now: 0.9, none: 0 } }])));
         const result = await read(model.model, buildRequest('# Skill', [three]), [three], DEFAULT_THRESHOLDS);
-        apart &&= model.calls[0]!.questions.length === three.scenarios.length;
+        expect(model.calls[0]!.questions).toHaveLength(three.scenarios.length);
         expect(result.verdicts).toHaveLength(1);
-        return result.verdicts[0]!.pass;
+        return result.verdicts[0]!;
       };
-      const [two, one, notFirst] = [await asked([true, true, false]), await asked([true, false, false]), await asked([false, true, true])];
-      const decides = two && !one && notFirst ? 'most of them pass, so no single wording decides it' : one && !notFirst ? 'the first of them passes: the first wording decides it' : 'a rule other than most of them pass';
-      u.value(`each phrasing is ${apart ? 'asked on its own' : 'not asked on its own'}, and the question passes when ${decides}.`);
+      expect((await asked([true, true, false])).pass).toBe(true);
+      expect((await asked([true, false, false])).pass).toBe(false);
+      // Not the first wording: any two of the three.
+      expect((await asked([false, true, true])).pass).toBe(true);
+      expect((await asked([true, true, false])).variantsPass).toEqual([true, true, false]);
     },
   );
 
@@ -103,21 +103,17 @@ describe('questions.md', () => {
     'borderline',
     {
       when: 'a verdict is close to its threshold.',
+      value: `a verdict within \`${threshold('margin')}\`, ${margin} by default, of its threshold is marked borderline: the next run may decide it the other way. A borderline pass still passes.`,
       values: { margin },
     },
-    async (u) => {
+    async () => {
       const near = stub((request) => Object.fromEntries(request.questions.map((x) => [x.id, { probabilities: { wait: choice + margin / 2, now: 1 - choice - margin / 2, none: 0 } }])));
       const ran = await runAll(skillProject(), near.model, collected({ ...question('wait'), ...WAIT, declared: { file: '/p/a.test.ts', line: 1 }, file: 'SKILL.md', sections: [], withFiles: [] }));
-      const verdict = ran.requests[0]!.verdicts[0]!;
-      expect(verdict.pass, 'over the threshold, it passes').toBe(true);
+      expect(ran.requests[0]!.verdicts[0]).toMatchObject({ pass: true, borderline: true });
+      expect(ran.ok).toBe(true);
+      expect(ran.summary.borderline).toBe(1);
       const far = stub((request) => Object.fromEntries(request.questions.map((x) => [x.id, { probabilities: { wait: choice + margin * 2, now: 1 - choice - margin * 2, none: 0 } }])));
-      const farOff = (await runAll(skillProject(), far.model, collected({ ...question('wait'), ...WAIT, file: 'SKILL.md', sections: [], withFiles: [], declared: { file: '/p/a.test.ts', line: 1 } }))).requests[0]!.verdicts[0]!.borderline;
-      const marked = verdict.borderline === true && ran.summary.borderline === 1 && !farOff;
-      u.value(
-        marked
-          ? `a verdict within \`${threshold('margin')}\`, ${margin} by default, of its threshold is marked borderline: the next run may decide it the other way. A borderline pass ${ran.ok ? 'still passes' : 'fails the run'}.`
-          : `a verdict within \`${threshold('margin')}\`, ${margin} by default, of its threshold is not marked borderline${farOff ? ', and one farther off is' : ''}.`,
-      );
+      expect((await runAll(skillProject(), far.model, collected({ ...question('wait'), ...WAIT, file: 'SKILL.md', sections: [], withFiles: [], declared: { file: '/p/a.test.ts', line: 1 } }))).requests[0]!.verdicts[0]!.borderline).toBe(false);
     },
   );
 
@@ -125,8 +121,9 @@ describe('questions.md', () => {
     'what-the-model-reads',
     {
       when: 'a question is asked, or fails and the skill has to change.',
+      value: `the model reads the built file that holds the question's unit, or the file of \`${ask.name}()\`: whole, or cut to the headings of \`${q('section')}\`. It reads the files of \`${q('with')}\` too, or every other file with \`${q('with')}: all\`, and the \`context\` of the settings. It never reads the tests. One request carries every question about the same file, \`${q('section')}\` and \`${q('with')}\`.`,
     },
-    async (u) => {
+    async () => {
       const config = { ...skillProject(), context: 'A client for JSON APIs.' };
       writeFileSync(join(config.skill, 'SKILL.md'), '# Skill\n\n## Retries\n\nRetry only GET requests.\n\n## Timeouts\n\nWait ten seconds.\n');
       writeFileSync(join(config.skill, 'errors.md'), '# Errors\n');
@@ -144,19 +141,15 @@ describe('questions.md', () => {
           question('with-all', { sections: [], withFiles: 'all', declared }),
         ),
       );
-      const calls = model.calls;
-      const of = (id: string) => calls.find((c) => c.questions.some((x) => x.id === id));
-      expect(of('whole'), 'every question is asked').toBeDefined();
-      const together = of('whole') === of('whole-too') && calls.length === 4;
-      const whole = JSON.stringify(of('whole')!.state) === JSON.stringify({ skill: '# Skill\n\n## Retries\n\nRetry only GET requests.\n\n## Timeouts\n\nWait ten seconds.' });
-      const cut = JSON.stringify(of('cut')!.state) === JSON.stringify({ skill: '## Retries\n\nRetry only GET requests.' });
-      const refs = (id: string) => Object.keys((of(id)!.state.references as object | undefined) ?? {}).sort().join();
-      const withFiles = refs('with-one') === 'errors.md' && refs('with-all') === 'clients.md,errors.md';
-      const context = of('whole')!.instructions.includes(config.context!);
-      const tests = calls.some((c) => JSON.stringify(c).includes(declared.file));
-      u.value(
-        `the model reads the built file that holds the question's unit, or the file of \`${ask.name}()\`: ${whole ? 'whole' : 'not whole'}, or ${cut ? 'cut' : 'not cut'} to the headings of \`${q('section')}\`. It ${withFiles ? 'reads' : 'does not read'} the files of \`${q('with')}\` too, or every other file with \`${q('with')}: all\`${context ? ', and the `context` of the settings' : ', and not the `context` of the settings'}. It ${tests ? 'reads the tests too' : 'never reads the tests'}. ${together ? 'One request carries' : 'Separate requests carry'} every question about the same file, \`${q('section')}\` and \`${q('with')}\`.`,
-      );
+      const of = (id: string) => model.calls.find((c) => c.questions.some((x) => x.id === id))!;
+      expect(model.calls).toHaveLength(4);
+      expect(of('whole').questions.map((x) => x.id)).toEqual(['whole', 'whole-too']);
+      expect(of('whole').state).toEqual({ skill: '# Skill\n\n## Retries\n\nRetry only GET requests.\n\n## Timeouts\n\nWait ten seconds.' });
+      expect(of('cut').state).toEqual({ skill: '## Retries\n\nRetry only GET requests.' });
+      expect(Object.keys(of('with-one').state.references as object)).toEqual(['errors.md']);
+      expect(Object.keys(of('with-all').state.references as object).sort()).toEqual(['clients.md', 'errors.md']);
+      expect(of('whole').instructions).toContain(config.context);
+      for (const call of model.calls) expect(JSON.stringify(call)).not.toContain(declared.file);
     },
   );
 
@@ -181,17 +174,15 @@ describe('questions.md', () => {
       p.write('tmp/skill-units/9-not-built.json', JSON.stringify({ ...record, id: 'not-built', order: 1, ask: [{ ...record.ask[0], id: 'not-built' }] }));
       const ran = report(await cli(p.root, [command('test'), option('test', '--dry-run'), option('test', '--json')]));
       const problems = ran.test!.problems.map((x) => x.message);
-      const asked = ran.test!.requests.flatMap((r) => r.verdicts.map((v) => v.id));
-      expect(asked, 'the question of the built unit is asked').toContain('built');
-      // Each case is a reason when its question is left out and the report says why.
-      const cases: [string, string, string][] = [
-        ['not-built', 'the skill folder has no unit `not-built`', `when the skill folder does not have its unit yet (run \`${command('proof')} ${option('proof', '--write')}\`)`],
-        ['broken', 'the test of the unit `broken` failed, so its questions were not asked', 'when the test of its unit failed'],
-        ['about-missing', 'is about missing.md, which is not a file in the skill folder', 'when its file is not in the skill folder'],
+      expect(ran.test!.requests.flatMap((r) => r.verdicts.map((v) => v.id))).toEqual(['built']);
+      // Each case: what the report says, and the reason the sentence gives.
+      const cases: [string, string][] = [
+        ['the skill folder has no unit `not-built`', `when the skill folder does not have its unit yet (run \`${command('proof')} ${option('proof', '--write')}\`)`],
+        ['the test of the unit `broken` failed, so its questions were not asked', 'when the test of its unit failed'],
+        ['is about missing.md, which is not a file in the skill folder', 'when its file is not in the skill folder'],
       ];
-      const why = cases.filter(([id, says]) => !asked.includes(id) && problems.some((m) => m.includes(says))).map(([, , when]) => when);
-      const not = cases.filter(([id, says]) => asked.includes(id) || !problems.some((m) => m.includes(says))).map(([id]) => `\`${id}\``);
-      u.value(`a question is not asked, and the report says why, ${or(why)}${not.length ? `; in this test, ${and(not)} ${not.length > 1 ? 'were' : 'was'} asked or left out with no reason` : ''}.`);
+      for (const [says] of cases) expect(problems).toContainEqual(expect.stringContaining(says));
+      u.value(`a question is not asked, and the report says why, ${or(cases.map(([, when]) => when))}.`);
     },
   );
 
@@ -199,18 +190,16 @@ describe('questions.md', () => {
     'request-limits',
     {
       when: 'a file of the skill is large, or many questions are about it.',
+      value: `a request larger than the model takes is not sent: the report says so, and names the largest parts. Questions with another \`${q('section')}\` go in a request of their own, so a large file can be asked about in parts.`,
     },
-    async (u) => {
+    async () => {
       const model = stub(() => ({}), { perQuestionTokens: 400, perRequestTokens: 800 });
       const config = skillProject();
       writeFileSync(join(config.skill, 'SKILL.md'), `# Skill\n\n## Retries\n\n${'Retry only GET requests. '.repeat(80)}\n\n## Timeouts\n\nWait.\n`);
       const ran = await runAll(config, model.model, collected(question('whole', { sections: [] }), question('small', { sections: ['Timeouts'] })));
-      expect(ran.requests).toHaveLength(2);
-      const refused = /^too large: .*Largest parts: the file under test/.test(ran.requests[0]!.error ?? '') && !model.calls.some((c) => c.questions.some((x) => x.id === 'whole'));
-      const apart = ran.requests[1]!.error === undefined && model.calls.some((c) => c.questions.some((x) => x.id === 'small'));
-      u.value(
-        `${refused ? 'a request larger than the model takes is not sent: the report says so, and names the largest parts' : 'a request larger than the model takes is sent all the same'}. Questions with another \`${q('section')}\` ${apart ? 'go in a request of their own, so a large file can be asked about in parts' : 'do not go in a request of their own'}.`,
-      );
+      expect(ran.requests[0]!.error).toMatch(/^too large: .*Largest parts: the file under test/);
+      expect(ran.requests[1]!.error).toBeUndefined();
+      expect(model.calls.map((c) => c.questions.map((x) => x.id))).toEqual([['small']]);
     },
   );
 
@@ -266,24 +255,35 @@ describe('questions.md', () => {
     },
   });
 
-  // A gap: the change is the user's to make; `skill-copy` is how SkillUnit asks about a copy.
-  unit('prove-a-question', {
-    when: 'a question passes, and the test should show that the question reads its unit.',
-    do: `in a copy of the skill folder, write the opposite in the sentence of its unit, keep its heading and its \`When\`, and ask with \`${command('test')} ${option('test', '--skill')} <copy> ${option('test', '--no-run')}\`: the question must fail. A question that still passes does not read its unit: change the question, never a threshold.`,
-    evenWhen: 'the question also passes with the text of its unit deleted: the model knows the library, which is the normal case, and the question is the one that fails the day the skill says something else.',
-    ask: {
-      id: 'question-against-the-opposite',
-      scenario: [
-        'The agent added a question to a unit about a library the model knows well. The question passes on the skill, and it also passes on a copy where the text of its unit is deleted. The user asks whether to drop it.',
-        'A question passes on the skill and on a copy without the text of its unit, since the model knows the API. The user wants to drop it, because the unit seems to make no difference.',
-      ],
-      question: 'What does the agent do with the question?',
-      options: {
-        opposite: 'Ask it on a copy where its unit says the opposite, and keep it if it fails there',
-        drop: 'Drop it: it passes without its unit, so the unit is not what answers it',
-        threshold: 'Raise its threshold until it fails without its unit',
+  // A gap: what an agent did wrong is outside the code; `how-a-question-passes` and
+  // `borderline` are how its question is judged.
+  unit('when-an-agent-got-it-wrong', {
+    when: 'an agent that used the skill got something wrong, and the skill is to be fixed.',
+    do: `before any change to the skill, write the question that reproduces it: its \`${q('scenario')}\` is the situation the agent was in, its wrong \`${q('options')}\` are what the agent did, and \`${q('expect')}\` is what it should have done. Ask it: it has to fail, or come out borderline. If it passes, the text is clear and the cause is elsewhere: ask that agent why it went wrong, and point the question at what it read, such as the row of the index that should have sent it to the file. Then change the unit until the question passes clear of the threshold, and try the changed skill with an agent on the task that went wrong.`,
+    evenWhen: 'the fix to the skill is plain: a question written after the fix has never been red, so nothing shows that it reproduces the mistake, and a borderline pass on it means the unit does not say it yet.',
+    ask: [
+      {
+        id: 'red-before-the-fix',
+        scenario: 'An agent that used the skill sent a POST again after a timeout, which the skill should have kept it from. The user knows what the skill lacks, and asks the agent to fix it right away.',
+        question: 'What does the agent do first?',
+        options: {
+          red: 'Write a question with the situation of that agent as its scenario and the POST sent again as a wrong option, and ask it on the skill as it is',
+          fix: 'Change the unit the mistake is about, then write a question that passes on the new text',
+          agent: 'Run an agent on the same task again, and change the unit if it still goes wrong',
+        },
+        expect: 'red',
       },
-      expect: 'opposite',
-    },
+      {
+        id: 'green-on-the-old-text',
+        scenario: 'The agent wrote the question that reproduces a mistake another agent made with the skill. Asked on the skill as it is, the question passes at 0.95.',
+        question: 'What does the agent do next?',
+        options: {
+          elsewhere: 'Ask the agent that went wrong why, and point the question at what that agent read, such as the row of the index that should have sent it to the file',
+          done: 'Nothing: the text is right, so the agent made a mistake of its own',
+          rewrite: 'Rewrite the unit all the same, so the question passes by a wider margin',
+        },
+        expect: 'elsewhere',
+      },
+    ],
   });
 });

@@ -70,10 +70,10 @@ Do: do not ask the reader to add numbers up, or to conclude from a list that wha
 
 Even when: the list is complete: shown "these options and no other", a reader still does not say that an option is missing.
 
-### rule: prove-a-question
+### rule: when-an-agent-got-it-wrong
 
-When: a question passes, and the test should show that the question reads its unit.
+When: an agent that used the skill got something wrong, and the skill is to be fixed.
 
-Do: in a copy of the skill folder, write the opposite in the sentence of its unit, keep its heading and its `When`, and ask with `test --skill <copy> --no-run`: the question must fail. A question that still passes does not read its unit: change the question, never a threshold.
+Do: before any change to the skill, write the question that reproduces it: its `scenario` is the situation the agent was in, its wrong `options` are what the agent did, and `expect` is what it should have done. Ask it: it has to fail, or come out borderline. If it passes, the text is clear and the cause is elsewhere: ask that agent why it went wrong, and point the question at what it read, such as the row of the index that should have sent it to the file. Then change the unit until the question passes clear of the threshold, and try the changed skill with an agent on the task that went wrong.
 
-Even when: the question also passes with the text of its unit deleted: the model knows the library, which is the normal case, and the question is the one that fails the day the skill says something else.
+Even when: the fix to the skill is plain: a question written after the fix has never been red, so nothing shows that it reproduces the mistake, and a borderline pass on it means the unit does not say it yet.

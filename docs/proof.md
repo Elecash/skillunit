@@ -118,7 +118,9 @@ each is declared once across the tests.
 
 The body gets a context, and the runner's own context after it:
 
-- `u.value(text)` sets the `Value` of a fact from what the body observed;
+- `u.value(text)` sets the `Value` of a fact from what the body found going through a list of
+  cases, such as which failures are retried. Any other fact has its sentence in `value`, and its
+  body asserts what the sentence says;
 - `u.example(lang, text)` adds a block the body produced: a command, a config, an output.
 
 `and()`, `or()` and `code()`, from `skillunit/vitest` and `skillunit/unit` next to `key`, list
@@ -183,7 +185,7 @@ an assertion in a `beforeEach` does not count.
 | The body | The unit |
 | --- | --- |
 | makes an assertion, with or without `u.example()` | proved by a test |
-| calls `u.value()`, with or without an assertion | proved by a test: a change shows in the built skill |
+| calls `u.value()`, with or without an assertion | proved by a test |
 | calls `u.example()`, makes no assertion and calls no `u.value()` | built, and counted as declared: no test proves it |
 | does none of the three | its test fails, and the unit is not built |
 
@@ -302,8 +304,8 @@ no body shows no block, since only a body calls `u.example()`; a body that only 
 `u.example()` is how advice shows one, and its unit is counted as declared too.
 
 The report never calls such a unit proved. Under each unit, proof shows
-`proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:162`,
-and its summary counts both: `24 units · 22 proved by a test · 2 declared without one`.
+`proved by a test, src/skill/timeouts.test.ts:28` or `declared, no test, src/skill/timeouts.test.ts:199`,
+and its summary counts both: `26 units · 24 proved by a test · 2 declared without one`.
 
 ## Building and checking
 
@@ -329,7 +331,7 @@ It is an error when:
 - a region belongs to no unit and no file, or its id is in two places;
 - a file the build gives is not in the skill folder;
 - the skill folder has a unit that no test declares, because its test was skipped or deleted, or
-  did not run. `--write` takes it out, after a run that passed;
+  did not run. `--write` takes it out when the proof has no other error;
 - the skill folder holds a Markdown file that no `setup()` declares. `--write` reports it and
   leaves it there;
 - `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, comes first in
@@ -358,9 +360,12 @@ and its finding comes first. Then:
   when a test file does not load, is reported as such, with a pointer to the run. It is not called
   deleted, since its test may not have run.
 
-`--write` takes a unit or a row of the index out of the skill only after a run that exits with 0,
-and never removes a file. After a run that failed, it writes the files whose build takes nothing
-out, and says which files it left as they are and why.
+`--write` takes a unit or a row of the index out of the skill only when the proof has no error,
+and never removes a file. A run that exits with 0 is not enough: a `.only` left in a test file
+makes the runner skip the other tests of that file, its `setup()` among them, and pass; the proof
+then reports the unit of the `.only`, whose `setup()` left no record. While the proof has an error,
+`--write` writes the files whose build takes nothing out, and says which files it left as they
+are and why.
 
 ## Where a line comes from
 
@@ -650,12 +655,15 @@ the record, not when pytest runs the test.
 - The rule of assertions catches a body emptied by mistake: a body that makes no assertion and
   calls no `u.value()` fails its test, and one that only calls `u.example()` leaves a unit
   counted as declared, not proved. It does not catch `expect(true).toBe(true)`, which counts as
-  an assertion. What catches it is a change to the code that makes the sentence false: when
-  nothing goes red, the body proves nothing.
+  an assertion; only a reader of the test does.
 - The count of assertions comes from the runner. `skillunit/vitest` counts Vitest's `expect`; a
   helper made with `createUnit` and no `assertions`, and the pytest fixture above, count nothing,
   so a body there that asserts nothing still leaves its unit. A body that counts as asserting can
   still assert something other than what its sentence says.
-- A body that builds its sentence from what it observes does not go red when the behaviour
-  changes. `what-is-retried` above passes whatever is retried; the signal is the difference in
-  the skill, which someone has to read in the pull request.
+- SkillUnit builds the skill from the tests, so the skill is as right as the tests are. An
+  assertion edited to match a change, with the sentence above it left as it was, leaves a false
+  sentence, and nothing reports it. When a test goes red, fix the code; when the change is meant,
+  change the sentence and the body together.
+- A body that goes through a list of cases and writes which did what, as `what-is-retried` above
+  does, passes whatever each case does: a change shows only in the built line. Keep that form for
+  a list, and assert everything else.

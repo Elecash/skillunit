@@ -26,19 +26,18 @@ const clientOpt = key<ClientOptions>;
 const { create: _create, ...client } = tf;
 const withBody = Object.entries(client).filter(([, m]) => m.length > 2).map(([n]) => n);
 const withoutBody = Object.entries(client).filter(([, m]) => m.length <= 2).map(([n]) => n);
-const header = (i: number, name: string) => (calls[i]!.init.headers as Record<string, string>)[name];
+/** The header of that name a call sent, whatever the case of its name. */
+const header = (i: number, name: string) => new Headers(calls[i]!.init.headers).get(name) ?? undefined;
 
 describe('features/requests.md', () => {
   unit('methods', { when: 'the code sends a request.' }, async (u) => {
-    const other: string[] = [];
     for (const [name, call] of Object.entries(methods(API))) {
       serve({ body: {} });
       await call();
+      expect(calls[0]!.init.method, name).toBe(name.toUpperCase());
       expect(calls[0]!.init.body === undefined, name).toBe(withoutBody.includes(name));
-      if (calls[0]!.init.method !== name.toUpperCase()) other.push(`\`${name}\` sends \`${calls[0]!.init.method}\``);
     }
-    const sends = other.length ? `each sends the HTTP method of its name but this: ${and(other)}` : 'each sends the HTTP method of its name';
-    u.value(`a client has the methods ${and(code(Object.keys(client)))}, and ${sends}; ${and(code(withBody))} take \`(path, body, options)\`, and ${and(code(withoutBody))} take \`(path, options)\`.`);
+    u.value(`a client has the methods ${and(code(Object.keys(client)))}, and each sends the HTTP method of its name; ${and(code(withBody))} take \`(path, body, options)\`, and ${and(code(withoutBody))} take \`(path, options)\`.`);
   });
 
   unit(
@@ -81,6 +80,7 @@ describe('features/requests.md', () => {
     'content-type',
     {
       when: `the code sets \`content-type\` in \`${opt('headers')}\`.`,
+      value: `a request with a body sends \`content-type: ${JSON_TYPE}\`, which replaces a \`content-type\` of \`${opt('headers')}\`, so tinyfetch sends no other kind of body; a request with no body sends the \`content-type\` of \`${opt('headers')}\` as it is, and none when it sets none.`,
       // An exception to apply: a header the code sets that tinyfetch replaces.
       ask: {
         id: 'send-csv',
@@ -93,33 +93,23 @@ describe('features/requests.md', () => {
         expect: 'json',
       },
     },
-    async (u) => {
-      const headers = { 'content-type': 'text/plain' };
-      const [withSet, withoutSet, withoutNone] = [new Set<unknown>(), new Set<unknown>(), new Set<unknown>()];
-      for (const name of withBody) {
-        serve({ body: {} });
-        await (client[name as keyof typeof client] as (p: string, b: unknown, o: RequestOptions) => Promise<unknown>)(API, 'x', { headers });
-        withSet.add(header(0, 'content-type'));
+    async () => {
+      // A name with a capital is the same header.
+      for (const headers of [{ 'content-type': 'text/plain' }, { 'Content-Type': 'text/plain' }] as Record<string, string>[]) {
+        for (const name of withBody) {
+          serve({ body: {} });
+          await (client[name as keyof typeof client] as (p: string, b: unknown, o: RequestOptions) => Promise<unknown>)(API, 'x', { headers });
+          expect(header(0, 'content-type'), name).toBe(JSON_TYPE);
+        }
+        for (const name of withoutBody) {
+          serve({ body: {} });
+          await (client[name as keyof typeof client] as (p: string, o: RequestOptions) => Promise<unknown>)(API, { headers });
+          expect(header(0, 'content-type'), name).toBe('text/plain');
+          serve({ body: {} });
+          await (client[name as keyof typeof client] as (p: string) => Promise<unknown>)(API);
+          expect(header(0, 'content-type'), name).toBeUndefined();
+        }
       }
-      for (const name of withoutBody) {
-        serve({ body: {} });
-        await (client[name as keyof typeof client] as (p: string, o: RequestOptions) => Promise<unknown>)(API, { headers });
-        withoutSet.add(header(0, 'content-type'));
-        serve({ body: {} });
-        await (client[name as keyof typeof client] as (p: string) => Promise<unknown>)(API);
-        withoutNone.add(header(0, 'content-type'));
-      }
-      // Every method of a kind sends the same.
-      expect([withSet.size, withoutSet.size, withoutNone.size]).toEqual([1, 1, 1]);
-      const [sent] = [...withSet];
-      const withABody =
-        sent === JSON_TYPE
-          ? `a request with a body sends \`content-type: ${JSON_TYPE}\`, which replaces a \`content-type\` of \`${opt('headers')}\`, so tinyfetch sends no other kind of body`
-          : sent === headers['content-type']
-            ? `a request with a body sends the \`content-type\` of \`${opt('headers')}\` when it sets one`
-            : `a request with a body sends \`content-type: ${String(sent)}\``;
-      const [kept] = [...withoutSet];
-      u.value(`${withABody}; a request with no body sends ${kept === headers['content-type'] ? `the \`content-type\` of \`${opt('headers')}\` as it is` : `another \`content-type\` than the one of \`${opt('headers')}\``}${[...withoutNone][0] === undefined ? ', and none when it sets none' : ''}.`);
     },
   );
 
@@ -127,30 +117,28 @@ describe('features/requests.md', () => {
     'headers',
     {
       when: 'the code sets headers on a client or a request.',
+      value: `a request sends \`accept: ${JSON_TYPE}\`, then the \`${clientOpt('headers')}\` of its client, then its own: a later one replaces an earlier one of the same name, \`accept\` included.`,
     },
-    async (u) => {
-      const accept = new Set<unknown>();
+    async () => {
+      const api = tf.create({ headers: { 'x-team': 'a', 'x-client': 'c' } });
       for (const call of Object.values(methods(API))) {
         serve({ body: {} });
         await call();
-        accept.add(header(0, 'accept'));
+        expect(header(0, 'accept')).toBe(JSON_TYPE);
       }
-      expect(accept.size, 'every method sends the same `accept`').toBe(1);
-      const api = tf.create({ headers: { 'x-team': 'a', 'x-client': 'c' } });
       serve({ body: {} });
       await api.get(API, { headers: { 'x-team': 'b' } });
-      const [team, kept] = [header(0, 'x-team'), header(0, 'x-client')];
+      expect([header(0, 'accept'), header(0, 'x-team'), header(0, 'x-client')]).toEqual([JSON_TYPE, 'b', 'c']);
       serve({ body: {} });
       await tf.create({ headers: { accept: 'text/csv' } }).get(API);
-      const byClient = header(0, 'accept');
+      expect(header(0, 'accept')).toBe('text/csv');
       serve({ body: {} });
       await tf.get(API, { headers: { accept: 'text/csv' } });
-      const byRequest = header(0, 'accept');
-      expect(kept, "a header only the client sets").toBe('c');
-      // The order the headers are put together in: a later one replaces an earlier one.
-      const order = [`\`accept: ${[...accept][0]}\``, ...(team === 'b' ? [`the \`${clientOpt('headers')}\` of its client`, 'its own'] : ['its own', `the \`${clientOpt('headers')}\` of its client`])];
-      const acceptToo = byClient === 'text/csv' && byRequest === 'text/csv';
-      u.value(`a request sends ${order[0]}, then ${order[1]}, then ${order[2]}: a later one replaces an earlier one of the same name, \`accept\` ${acceptToo ? 'included' : 'excepted'}.`);
+      expect(header(0, 'accept')).toBe('text/csv');
+      // A name with a capital is the same header.
+      serve({ body: {} });
+      await tf.create({ headers: { 'X-Team': 'a' } }).get(API, { headers: { 'x-team': 'b', Accept: 'text/csv' } });
+      expect([header(0, 'x-team'), header(0, 'accept')]).toEqual(['b', 'text/csv']);
     },
   );
 
@@ -158,23 +146,23 @@ describe('features/requests.md', () => {
     'query',
     {
       when: `the code passes \`${opt('query')}\`.`,
+      value: `each key of \`${opt('query')}\` is set on the query string of the URL, as \`String(value)\` and encoded; a key the path already has takes the new value, and the other keys of the path stay.`,
     },
-    async (u) => {
+    async () => {
       serve({ body: [] });
       // #region skill:query
       await tf.get('https://api.example.com/users', { query: { role: 'admin', page: 2 } });
       // #endregion
-      expect(new URL(calls[0]!.url).searchParams.get('role')).toBe('admin');
+      expect(calls[0]!.url).toBe('https://api.example.com/users?role=admin&page=2');
       serve({ body: [] });
       await tf.get(`${API}?page=1&sort=name`, { query: { page: 3, active: true, q: 'a b&c' } });
       const url = new URL(calls[0]!.url);
-      expect(url.searchParams.get('active')).toBe('true');
-      const encoded = url.searchParams.get('q') === 'a b&c' && url.search.includes('q=a+b%26c');
-      const pages = url.searchParams.getAll('page');
-      const replaced = pages.length === 1 && pages[0] === '3' ? 'takes the new value' : pages.length > 1 ? 'keeps its value, and the new one is added after it' : 'keeps its value';
-      u.value(
-        `each key of \`${opt('query')}\` is set on the query string of the URL, as \`String(value)\`${encoded ? ' and encoded' : ', not encoded'}; a key the path already has ${replaced}, and the other keys of the path ${url.searchParams.get('sort') === 'name' ? 'stay' : 'go'}.`,
-      );
+      const params: Record<string, string> = {};
+      url.searchParams.forEach((value, key) => (params[key] = value));
+      expect(params).toEqual({ page: '3', sort: 'name', active: 'true', q: 'a b&c' });
+      // Replaced: the key is there once.
+      expect(url.searchParams.getAll('page')).toEqual(['3']);
+      expect(url.search).toContain('q=a+b%26c');
     },
   );
 
@@ -182,6 +170,7 @@ describe('features/requests.md', () => {
     'response-value',
     {
       when: 'the code uses what a call resolves to.',
+      value: `a call resolves to the body parsed as JSON when the \`content-type\` of the response has \`${PARSED_TYPE}\` in it, to the text of the body when it does not, and to an empty string when the body is empty; \`${method('head')}\` resolves to \`undefined\`.`,
       // A case to place: a response with no body, from a method that is not `head`.
       ask: {
         id: 'delete-no-content',
@@ -195,27 +184,17 @@ describe('features/requests.md', () => {
         expect: 'empty',
       },
     },
-    async (u) => {
-      /** What a call resolved to, said from the body the server sent. */
-      const what = (value: unknown, body: { id: number } | string) =>
-        value === undefined ? '`undefined`' : value === null ? '`null`' : value === '' ? 'an empty string' : typeof body !== 'string' && JSON.stringify(value) === JSON.stringify(body) ? 'the body parsed as JSON' : value === (typeof body === 'string' ? body : JSON.stringify(body)) ? 'the text of the body' : 'something else';
-      const json = { id: 1 };
-      const seen = new Set<string>();
-      for (const type of ['application/json', 'application/problem+json']) {
-        serve({ body: json, type });
-        seen.add(what(await tf.get(API), json));
-      }
-      expect(seen.size, 'the two kinds of JSON agree').toBe(1);
+    async () => {
+      serve({ body: { id: 1 } });
+      expect(await tf.get(API)).toEqual({ id: 1 });
+      serve({ body: { id: 1 }, type: 'application/problem+json' });
+      expect(await tf.get(API)).toEqual({ id: 1 });
       serve({ body: 'id,name', type: 'text/csv' });
-      const text = what(await tf.get(API), 'id,name');
+      expect(await tf.get(API)).toBe('id,name');
       serve({}, { type: 'text/plain' });
-      const empty = new Set([what(await tf.delete(API), ''), what(await tf.get(API), '')]);
-      expect(empty.size, 'an empty body resolves the same with JSON and with text').toBe(1);
-      serve({ body: json });
-      const head = what(await tf.head(API), json);
-      u.value(
-        `a call resolves to ${[...seen][0]} when the \`content-type\` of the response has \`${PARSED_TYPE}\` in it, to ${text} when it does not, and to ${[...empty][0]} when the body is empty; \`${method('head')}\` resolves to ${head}.`,
-      );
+      expect([await tf.delete(API), await tf.get(API)]).toEqual(['', '']);
+      serve({ body: { id: 1 } });
+      expect(await tf.head(API)).toBeUndefined();
     },
   );
 });

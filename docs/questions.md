@@ -14,8 +14,7 @@ apply. A fact that states one value from the code gets none: its test already pr
 and a question about it adds only a chance to fail on a wording.
 
 A unit with no body, advice that no test can state, is where most questions go. The question is
-then the only thing that shows the advice reaches the reader, and
-[a change that fails it](#proving-a-question) shows that it reads the advice.
+then the only thing that shows the advice reaches the reader.
 
 Write the scenario so that it pulls toward the wrong answer: the user asks for what the rule
 forbids, or the shortcut is in plain sight. A plain scenario lets common sense pass the question.
@@ -318,39 +317,86 @@ rule does not cover a case, write the general reason that covers it. Copying the
 wording into the skill makes that one question pass and teaches the reader nothing about the next
 phrasing.
 
-## Proving a question
+## When an agent got something wrong
 
-A green question proves the reader gave the right answer. To prove it read the unit to give it,
-make the unit wrong and ask again: copy the skill folder, write the opposite in the sentence of
-the unit in the copy, keep its heading and its `When`, and ask the questions about the copy with
-`--skill`. The question must fail.
+An agent that used the skill did the wrong thing. Fix the skill from a question, in this order:
 
-```sh
-cp -R skills/my-skill /tmp/my-skill-copy
-# in /tmp/my-skill-copy, write the opposite in the sentence of the unit
-npx skillunit test --skill /tmp/my-skill-copy --no-run
+1. **Write the question that reproduces it, before any change to the skill.** Its scenario is the
+   situation the agent was in, its wrong options are what the agent did, and `expect` is what it
+   should have done.
+2. **Ask it.** It has to fail, or at least come out borderline. A red verdict on the option the
+   agent chose says the text led it there.
+3. **If it passes, the text is clear to a reader, and the cause is somewhere else.** Ask the agent
+   that went wrong why. It may never have read that file: the question is then about the row of
+   the index that should have sent it there, or about the file it did read.
+4. **Change the unit until the question passes, clear of the threshold.** A borderline pass means
+   the unit does not say it yet. Look at what the scenario has that the unit does not answer: when
+   the user asks for the very thing the rule forbids, that goes in `evenWhen`.
+   [Fixing the skill when a question fails](#fixing-the-skill-when-a-question-fails) has more.
+5. **Try the changed skill with an agent on the task that went wrong.** SkillUnit checks the
+   skill, not the agent, so this step is outside it.
+
+Writing the question after the fix skips the red. A question that has never failed may pass on
+the old text as well, and then it says nothing about the mistake.
+
+These steps were tried on three mistakes that agents made with the skill of another library.
+Each question came out red, on the answer the agents had given. One unit added made one of them
+pass on both models. Another stayed on the threshold until an `evenWhen` answered what the user
+of its scenario asked for.
+
+### An example from tinyfetch
+
+tinyfetch joins a path after the whole of `baseUrl` as text. An agent asked to set an API key once,
+on the client, puts it at the end of `baseUrl`, and every request loses it:
+`create({ baseUrl: "https://api.example.com/v1?api_key=K" }).get("/users")` goes to `/v1` with
+`api_key` set to `K/users`. The skill said nothing about it.
+
+The question, declared with `ask()` in `src/skill/clients.test.ts`, before any change to the
+skill:
+
+```ts
+ask('key-in-the-query', {
+  scenario: `Every request to an API needs the query parameter \`api_key\`. The code makes one client with \`${exported('create')}\` for that API, and the user asks for the key to be set once, on the client.`,
+  question: 'Where does the agent put the key?',
+  options: {
+    base: `At the end of \`${clientOpt('baseUrl')}\`: \`"${KEYED}"\``,
+    query: `In the \`${reqOpt('query')}\` of each request: \`{ ${reqOpt('query')}: { api_key: K } }\``,
+  },
+  expect: 'query',
+});
 ```
 
-`--no-run` uses the records the last run of the tests left, so the questions are the same ones.
-Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
-threshold can flip from one run to the next, so only a clear failure counts. Changing the unit in
-its test and building gives the same text; the copy leaves the skill as it is.
+`npx skillunit test` on the skill as it was, on `typesafe`, 2026-11-27:
 
-Deleting the unit's text instead says whether the model answers right without the skill. For a
-library the model knows, it does, and the question stays: it is the one that fails the day the
-skill says something else. Measured on 2026-11-26 on 27 questions, on both models: 54 of 54
-verdicts passed with their unit, 10 with its text deleted, and none with the unit saying the
-opposite, those 10 included.
+```
+    test   ✗ src/skill/clients.test.ts:90  key-in-the-query  none 0.89
+             scenario:  Every request to an API needs the query parameter `api_key`. The code makes one client with `create` for that API, and the user asks for the key to be set once, on the client.
+             question:  Where does the agent put the key?
+             expected:  query
+             got:       none · probability 0.89, threshold 0.50 · wrong answer
+                        none 89% · base 10% · query 1%
+```
 
-A question that passes with its unit saying the opposite does not read the unit. Change the
-question, never a threshold, and look for the cause in this order:
+Red, on `none`: the skill did not say where the key goes. The fix is a rule,
+`no-query-in-base-url`, whose body asserts the URL above and that a client takes no `query`. The
+question moved into its `ask`:
 
-1. An option gives the answer away. Replace it with a wrong answer an agent would really pick.
-2. The scenario contains the answer, such as the rule's reason or its exception. Remove it.
-3. The skill states the rule somewhere else, and the reader found the other copy. Keep the copy
-   if it is deliberate, or delete it and save the tokens on every request.
-4. The question is about something else than its unit. Point it at what the unit says, or move it
-   to the unit it is about.
+```md
+### rule: no-query-in-base-url
 
-The opposite is the strongest change. A sentence made vague, not wrong, is harder to notice: with
-the README's vague rule, one question of three failed in every run on `typesafe`.
+When: a key or another query parameter goes on every request of a client.
+
+Do: pass it in the `query` of each request, or in the `headers` of the client when the API takes it as a header; never put it at the end of `baseUrl`. A path is joined after the whole of `baseUrl` as text: with `baseUrl: "https://api.example.com/v1?api_key=K"`, `get("/users")` goes to `/v1` with `api_key` set to `K/users`.
+
+Even when: the user asks for the key to be set once, on the client: a client takes `baseUrl`, `headers` and `timeout`, and no `query`.
+```
+
+The same question, after `npx skillunit proof --write`:
+
+```
+    no-query-in-base-url  rule
+      test   ✓ src/skill/clients.test.ts:93  key-in-the-query  query 0.78
+```
+
+Green at 0.78, clear of the 0.63 that the default threshold and margin put the edge of
+borderline at. The last step, an agent with the changed skill on that task, is outside SkillUnit.

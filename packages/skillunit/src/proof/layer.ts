@@ -12,8 +12,9 @@
  * its unit or its file.
  *
  * When `proof.run` did not exit with 0, a unit, a file or a row of the index that the skill has and
- * no record declares is not called deleted: the run may have stopped before its test. `write` then
- * leaves a file whose build would take one out as it is.
+ * no record declares is not called deleted: the run may have stopped before its test. `write` takes
+ * a unit or a row of the index out only when the proof has no error, and leaves a file whose build
+ * would take one out as it is.
  */
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -201,6 +202,9 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
   const origin = lookup(build, skillDir, fromSkill);
 
   // ---------------------------------------------------------------- 4: compare, or write
+  // An error so far is one that writing does not fix: a test left out by `.only`, a region with no
+  // unit, a run that failed. Until it is fixed, a unit or a row the build lacks may only be missing.
+  const held = runFailed ? 'run' : problems.some((p) => p.severity === 'error') ? 'error' : null;
   const files: FileProof[] = [];
   const builtNames = new Set(build.files.map((f) => f.file));
   const builtIds = new Set(build.units.map((u) => u.id));
@@ -222,7 +226,7 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     const found = have ? differences(builtLines, haveLines) : [];
     /** What the skill has that the build would take out, and no record of this run declares. */
     const gone = (d: (typeof found)[number]) => (d.expected === undefined ? staleLine(f.file, haveLines, d.line, d.actualEnd ?? d.line, builtIds, builtNames) : undefined);
-    const takenOut = runFailed ? found.map(gone).find((x) => x !== undefined) : undefined;
+    const takenOut = held ? found.map(gone).find((x) => x !== undefined) : undefined;
     if (options.write && !takenOut) {
       mkdirSync(dirname(abs), { recursive: true });
       writeFileSync(abs, want);
@@ -231,7 +235,8 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
     }
     if (options.write && takenOut) {
       const what = takenOut.unit ? `the unit \`${takenOut.unit}\`` : `the row of \`${takenOut.row}\` in the index`;
-      add(f.file, takenOut.line, `\`--write\` left \`${f.file}\` as it is, since \`proof.run\` failed and the build takes out ${what}: ${SEE_RUN}. Fix the run, then write again`, { severity: 'warning' });
+      const why = held === 'run' ? `since \`proof.run\` failed and the build takes out ${what}: ${SEE_RUN}. Fix the run, then write again` : `since the build takes out ${what} and the proof has an error elsewhere. Fix that error, then write again`;
+      add(f.file, takenOut.line, `\`--write\` left \`${f.file}\` as it is, ${why}`, { severity: 'warning' });
     }
     if (!have) {
       files.push({ file: f.file, state: 'missing' });
@@ -256,17 +261,24 @@ export function runProof(options: ProofOptions): { result: ProofResult; origin: 
       // not run. They belong to no unit of the build, so they are named by their own heading.
       const stale = gone(d);
       if (stale?.unit) {
-        const why = runFailed
-          ? `and this run left no record of it while \`proof.run\` failed: ${SEE_RUN}. Its test may not have run: fix the run before you take the unit out; \`--write\` leaves it in the skill until a run exits with 0`
-          : 'and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill';
+        const why =
+          held === 'run'
+            ? `and this run left no record of it while \`proof.run\` failed: ${SEE_RUN}. Its test may not have run: fix the run before you take the unit out; \`--write\` leaves it in the skill until a run exits with 0`
+            : held === 'error'
+              ? 'and no test declares it: its test was skipped or deleted, or did not run. The proof has an error elsewhere, and `--write` leaves the unit in the skill until it has none: fix that error first'
+              : 'and no test declares it: its test was skipped or deleted, or did not run. Run `skillunit proof --write` to take it out of the skill';
         add(f.file, stale.line, `the skill has the unit \`${stale.unit}\`, ${why}`, {
           unit: stale.unit,
           lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
         });
         continue;
       }
-      if (stale?.row && runFailed) {
-        add(f.file, stale.line, `the skill has the row of \`${stale.row}\` in the index, and this run left no record of its \`setup()\` while \`proof.run\` failed: ${SEE_RUN}. Fix the run before you take the row out; \`--write\` leaves it until a run exits with 0`, {
+      if (stale?.row && held) {
+        const why =
+          held === 'run'
+            ? `this run left no record of its \`setup()\` while \`proof.run\` failed: ${SEE_RUN}. Fix the run before you take the row out; \`--write\` leaves it until a run exits with 0`
+            : 'no `setup()` declares that file. The proof has an error elsewhere, and `--write` leaves the row until it has none: fix that error first';
+        add(f.file, stale.line, `the skill has the row of \`${stale.row}\` in the index, and ${why}`, {
           lines: { build: null, skill: haveLines[stale.line - 1] ?? null },
         });
         continue;

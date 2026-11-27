@@ -38,8 +38,10 @@ function parse(text: string, response: Response): unknown {
 export async function request<T>(client: ClientOptions, method: Method, path: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   const url = requestUrl(client.baseUrl, path);
   for (const [key, value] of Object.entries(options.query ?? {})) url.searchParams.set(key, String(value));
-  const headers: Record<string, string> = { accept: JSON_TYPE, ...client.headers, ...options.headers };
-  if (body !== undefined) headers['content-type'] = JSON_TYPE;
+  // `Headers` takes a name in any case as the same header, so a later one replaces an earlier one.
+  const headers = new Headers({ accept: JSON_TYPE });
+  for (const extra of [client.headers, options.headers]) for (const [name, value] of Object.entries(extra ?? {})) headers.set(name, value);
+  if (body !== undefined) headers.set('content-type', JSON_TYPE);
 
   return withRetry(
     async () => {

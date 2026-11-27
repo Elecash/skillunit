@@ -32,3 +32,11 @@ Value: a path that is not a whole URL goes after `baseUrl`, with one `/` between
 const api = create({ baseUrl: "https://api.example.com/v1" });
 await api.get("/users");
 ```
+
+### rule: no-query-in-base-url
+
+When: a key or another query parameter goes on every request of a client.
+
+Do: pass it in the `query` of each request, or in the `headers` of the client when the API takes it as a header; never put it at the end of `baseUrl`. A path is joined after the whole of `baseUrl` as text: with `baseUrl: "https://api.example.com/v1?api_key=K"`, `get("/users")` goes to `/v1` with `api_key` set to `K/users`.
+
+Even when: the user asks for the key to be set once, on the client: a client takes `baseUrl`, `headers` and `timeout`, and no `query`.
