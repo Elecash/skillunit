@@ -157,11 +157,11 @@ export function statusLine(report: CheckReport): string {
     const nothing = test.changed && !s.tests && !wrong ? `no question is about a file changed since ${test.changed.ref} (${test.changed.commit.slice(0, 7)})` : null;
     const left = s.leftOut ? `${plural(s.leftOut, 'question')} left out, from ${s.leftOut === 1 ? 'a test that' : 'tests that'} failed` : '';
     if (test.dryRun) {
-      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}${left ? `, ${left}` : ''}`);
+      parts.push(`test dry run ${wrong || (nothing ? `ok: ${nothing}` : `ok, ${plural(s.tests, 'test')} ready`)}${left ? `, ${left}` : ''}${test.advisory ? ', advisory' : ''}`);
     } else {
       const extra = [wrong, s.borderline ? `${s.borderline} borderline` : '', left].filter(Boolean);
       if (nothing) parts.push(`test asked nothing: ${nothing}`);
-      else parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}`);
+      else parts.push(`test ${s.passed}/${s.tests} passed${extra.length ? ` (${extra.join(', ')})` : ''}${test.advisory ? ', advisory' : ''}`);
     }
   }
   return `${report.ok ? 'OK' : 'FAILED'}  ${parts.join(' · ')}`;

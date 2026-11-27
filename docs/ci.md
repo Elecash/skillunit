@@ -42,6 +42,23 @@ jobs:
   be asked and fits, so a renamed heading, a question whose `expect` names no option, or a unit
   missing from the skill fails it before the model is asked.
 
+## Questions that do not block a merge
+
+By default a question that fails fails the check, as a failing test does. A project that wants
+the questions in its pull requests without gating the merge on them runs the second step with
+`--advisory`:
+
+```yaml
+      # Blocks the merge on the proof and on every question (the default).
+      - run: npx skillunit check --no-run --reporter github
+      # Blocks the merge on the proof only; a question that fails is a warning on its line.
+      - run: npx skillunit check --no-run --advisory --reporter github
+```
+
+With `--advisory` the run still fails on the proof, and on what is not a verdict: a question
+that cannot be asked, a missing key, a provider that answers with an error. The status line ends
+with `, advisory`, so a green check is not read as questions that passed.
+
 ## Pull requests from forks
 
 GitHub gives no secrets to a workflow run from a fork, so the second step has no key there. Run

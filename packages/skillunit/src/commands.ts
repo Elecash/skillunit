@@ -11,8 +11,8 @@ export const COMMON_OPTIONS = ['--config', '--skill', '--reporter', '--json'] as
 /** Options each command takes, besides `COMMON_OPTIONS`. */
 export const OPTIONS = {
   proof: ['--compact', '--write', '--no-run'],
-  test: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
-  check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  test: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--advisory', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
+  check: ['--compact', '--no-run', '--base', '--dry-run', '--changed', '--advisory', '--provider', '--model', '--choice', '--yes', '--no', '--margin'],
 } as const satisfies Record<Command, readonly string[]>;
 
 /** The command that writes the settings; it takes the skill folder, and no option. */

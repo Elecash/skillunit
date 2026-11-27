@@ -43,6 +43,8 @@ Options
 
 Options for test and check
   --dry-run           check that the questions can be asked and requests fit; send nothing
+  --advisory          report a question that fails, and do not fail the run for it; the proof,
+                      and a question that cannot be asked, still fail it
   --changed           ask only the questions about skill files that differ, committed or not,
                       from the merge base of HEAD and --base
   --base <ref>        with --changed: the ref to take the merge base with (default: the pull
@@ -74,6 +76,8 @@ interface Args {
   skill?: string;
   base?: string;
   dryRun: boolean;
+  /** A question that fails is reported, and does not fail the run. */
+  advisory: boolean;
   changed: boolean;
   write: boolean;
   noRun: boolean;
@@ -95,7 +99,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { dryRun: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
+  const args: Args = { dryRun: false, advisory: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -123,6 +127,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     else if (flag === '--dry-run') args.dryRun = true;
     else if (flag === '--compact') args.compact = true;
     else if (flag === '--changed') args.changed = true;
+    else if (flag === '--advisory') args.advisory = true;
     else if (flag === '--write') args.write = true;
     else if (flag === '--no-run') args.noRun = true;
     else if (flag === '--model') args.model = value();
@@ -202,7 +207,7 @@ async function runCommand(command: Command, args: Args) {
       const records = readRecords(cfg.units, cfg.cwd);
       const problems = own ? recordProblems(cfg, own, records) : [];
       const collected = collectQuestions(records.units, records.questions, config.skill, skillUnits);
-      testResult = await runAll(config, model, collected, { dryRun: args.dryRun, problems, leftOut: leftOut(records), ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
+      testResult = await runAll(config, model, collected, { dryRun: args.dryRun, advisory: args.advisory, problems, leftOut: leftOut(records), ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
       if (changed) testResult.changed = { ref: changed.ref, commit: changed.commit };
     }
     const report = buildReport(command, {

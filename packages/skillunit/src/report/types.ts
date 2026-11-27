@@ -7,7 +7,7 @@ import type { Report as TestReport } from '../test/runner.js';
 import type { UnitKind } from '../unit/contract.js';
 
 /** Bumped only when a field changes meaning or disappears. */
-export const REPORT_SCHEMA = 7;
+export const REPORT_SCHEMA = 8;
 
 export type Command = 'proof' | 'test' | 'check';
 

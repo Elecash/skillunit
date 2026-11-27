@@ -29,6 +29,7 @@ that build one from the tests, `skillunit proof --write` last.
 | `--dry-run` | test, check | check that the questions can be asked, headings exist and requests fit; send nothing |
 | `--changed` | test, check | ask only the questions about what changed in git since `--base` |
 | `--base <ref>` | test, check | with `--changed`: the ref whose merge base with HEAD the working tree is compared with |
+| `--advisory` | test, check | report a question that fails, and do not fail the run for it; see [Exit codes](#exit-codes) |
 | `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
 | `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md): `--yes` 0.5 or more and `--no` under 0.5, so a yes/no question passes only on the answer it expects |
@@ -77,6 +78,14 @@ that failed, whose questions were not asked.
 
 - `0`: every check passed. Warnings and borderline verdicts do not fail a run.
 - `1`: a check failed.
+
+With `--advisory`, a question that fails is reported as it is without the flag and does not fail
+the run, so `check` exits with what the proof gives and `test` with 0. What is not a verdict
+still fails it: a question that cannot be asked, a missing key, a provider that answers with an
+error. The status line ends with `, advisory`, as in `OK  proof ok · test 7/9 passed, advisory`,
+the `github` reporter writes the failed questions as warnings, and the JSON report has
+`advisory: true` in `test`. There is no key for it in `skillunit.yaml`: a project turns it on
+where its CI calls the command.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
   for a run that needs one, or settings with no `proof`: the skill and its questions both come from
   the records of `proof.run`, so `proof`, `test` and `check` have nothing to work on without it.
@@ -107,7 +116,7 @@ also runs the proof in full.
 - `json`: the whole report as one object, `{ schema, command, ok, units, proof, test }`,
   with only the layers that ran. `units` lists every unit of the skill as `{ id, kind, file, line }`,
   so a tool can join the layers on the id: the `unit` of a proof finding or a verdict, and the
-  `id` in `proof.units`. `schema`, now 7, changes only when a field changes meaning or disappears.
+  `id` in `proof.units`. `schema`, now 8, changes only when a field changes meaning or disappears.
   `test.provider` names the provider asked. `test.requests` has one entry per request: the
   `file`, `sections` and `with` files it read, and its `verdicts`, or its `error` and the
   `questions` it held. `test.problems` lists the questions that could not be asked, each with

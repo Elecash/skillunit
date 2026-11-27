@@ -338,6 +338,38 @@ describe('checking.md', () => {
     );
   });
 
+  unit(
+    'advisory',
+    {
+      when: `CI asks the questions, and a question that fails should not block the merge.`,
+      values: { ...EXIT },
+    },
+    async (u) => {
+      const p = await built(`skill: ./skill\nmodel: ./model.mjs\nproof: {}\n`);
+      const advisory = option('check', '--advisory');
+      // Every question fails.
+      p.write('model.mjs', modelModule({ wait: 0.2, now: 0.8, none: 0 }));
+      const plain = await cli(p.root, [command('check')]);
+      const checked = await cli(p.root, [command('check'), advisory]);
+      const tested = await cli(p.root, [command('test'), option('test', '--advisory')]);
+      const json = report(await cli(p.root, [command('check'), advisory, '--json']));
+      const github = (await cli(p.root, [command('check'), advisory, option('check', '--reporter'), 'github'])).stdout;
+      expect(json.test?.summary.passed, 'every question fails').toBe(0);
+      const statusLine = checked.stdout.trim().split('\n').at(-1) ?? '';
+      const warns = /^::warning .*title=SkillUnit test%3A wait-before-retry::/m.test(github) && !/^::error .*title=SkillUnit test%3A/m.test(github);
+      // A provider that answers with an error is no verdict; nor is a proof that fails.
+      p.write('model.mjs', "export default { id: 'down', limits: { perQuestionTokens: 100000, perRequestTokens: 100000 }, async decide() { throw new Error('the provider is down'); } };\n");
+      const down = await cli(p.root, [command('check'), advisory]);
+      p.write('model.mjs', modelModule({ wait: 0.2, now: 0.8, none: 0 }));
+      edit(p);
+      const proofFails = await cli(p.root, [command('check'), advisory]);
+      for (const ran of [plain, checked, tested, down, proofFails]) expect(typeof ran.status).toBe('number');
+      u.value(
+        `with \`${advisory}\`, a question that fails is reported as it is without it, and ${checked.status === plain.status ? 'still fails the run' : 'does not fail the run'}: \`${command('check')}\` exits with ${checked.status} when only questions failed (${plain.status} without the flag) and with ${proofFails.status} when the proof fails, and \`${command('test')}\` with ${tested.status}. What is not a verdict ${down.status === EXIT.passed ? 'does not fail it either' : 'still fails it'}: a provider that answers with an error exits with ${down.status}. ${statusLine.endsWith(', advisory') ? 'The status line ends with `, advisory`, so a green run is not read as questions that passed' : 'The status line does not say the run was advisory'}; ${warns ? 'the `github` reporter writes those failures as warnings' : 'the `github` reporter writes those failures as errors'}, and the JSON report ${json.test?.advisory === true ? 'has `advisory: true` in `test`' : 'does not say the run was advisory'}. It is a flag only, with no key in \`${CONFIG_FILE}\`, so it shows where CI calls the command.`,
+      );
+    },
+  );
+
   unit('reporters', { when: `a person, a script or CI reads what \`${BIN}\` reports.`, values: { schema: REPORT_SCHEMA } }, async (u) => {
     const p = await built();
     edit(p);

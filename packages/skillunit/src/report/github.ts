@@ -38,7 +38,8 @@ export function github(report: CheckReport, options: ReportOptions): string {
         const origin = unitOrigin(report, v.unit, options);
         const file = v.declared ? shown(v.declared.file, at) : shown(join(report.test.skill, r.file), at);
         const line = v.declared?.line ?? 1;
-        if (!v.pass) annotate('error', file, line, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
+        // With `--advisory`, a question that fails is a warning: it does not fail the run.
+        if (!v.pass) annotate(report.test.advisory ? 'warning' : 'error', file, line, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
         else if (v.borderline) annotate('warning', file, line, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
     }

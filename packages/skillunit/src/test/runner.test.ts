@@ -156,6 +156,18 @@ const postRetry = question('post-retry', {
 const getOk = question('get-ok', { scenarios: ['A GET times out.'], question: 'May the agent retry it?', expect: 'yes', sections: ['Retries'] });
 
 describe('runAll', () => {
+  it('with `advisory`, a question that fails does not fail the run; a request that could not run still does', async () => {
+    const config = project();
+    const wrong = stub(() => ({ 'get-ok': { probabilities: { yes: 0.1, no: 0.9 } } }));
+    expect((await runAll(config, wrong.model, collected(getOk))).ok).toBe(false);
+    const advisory = await runAll(config, wrong.model, collected(getOk), { advisory: true });
+    expect(advisory).toMatchObject({ ok: true, advisory: true, summary: { tests: 1, passed: 0 } });
+    expect(advisory.requests[0]!.verdicts[0]!.pass).toBe(false);
+    const down = stub(() => new Error('the provider is down'));
+    expect((await runAll(config, down.model, collected(getOk), { advisory: true })).ok).toBe(false);
+    expect(await runAll(config, wrong.model, collected(getOk))).not.toHaveProperty('advisory');
+  });
+
   it('sends one request per file and takes the median phrasing', async () => {
     const config = project();
     const { model, calls } = stub(() => ({

@@ -177,7 +177,7 @@ describe('reporters', () => {
 
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
-    expect(json).toMatchObject({ schema: 7, command: 'check', ok: false });
+    expect(json).toMatchObject({ schema: 8, command: 'check', ok: false });
     expect(json.test.requests[0].verdicts[1].borderline).toBe(true);
     expect(json.units).toEqual(units);
   });
@@ -349,6 +349,15 @@ describe('reporters', () => {
       expect(out).not.toContain('skills/demo/SKILL.md');
       expect(out).toContain('\n  nothing built or compared: the run left no record\n');
       expect(out.split('\nFailed\n')[1]!.trim().split('\n')).toEqual(['proof skillunit.yaml:3', '', 'FAILED  proof 1 error, 0 warnings']);
+    });
+
+    it('advisory: the status line says so, and github writes a failed question as a warning', () => {
+      const advisory = buildReport('test', { test: { ...test, ok: true, advisory: true, problems: [], requests: test.requests.filter((r) => !r.error) } });
+      expect(render(advisory, 'table', options).trim().split('\n').at(-1)).toBe('OK  test 2/4 passed (2 borderline), advisory');
+      const github = render(advisory, 'github', options);
+      expect(github).toContain('::warning file=src/retry.skill.test.ts,line=30,title=SkillUnit test%3A user-asks-for-mutations::');
+      expect(github).not.toContain('::error');
+      expect(JSON.parse(render(advisory, 'json', options)).test.advisory).toBe(true);
     });
 
     it('github: escapes the characters workflow commands use', () => {

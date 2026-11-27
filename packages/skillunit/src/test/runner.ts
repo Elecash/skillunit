@@ -35,6 +35,8 @@ export interface RequestReport {
 
 export interface Report {
   ok: boolean;
+  /** `--advisory`: a question that fails is reported and does not fail the run. */
+  advisory?: true;
   skill: string;
   /** The provider asked: the `id` of the decision model. */
   provider?: string;
@@ -74,6 +76,8 @@ export interface RunOptions {
   problems?: QuestionProblem[];
   /** How many questions the failed tests declare: they cannot be asked. */
   leftOut?: number;
+  /** A question that fails does not fail the run; one that cannot be asked still does. */
+  advisory?: boolean;
 }
 
 export async function runAll(config: Config, model: DecisionModel, collected: Collected, options: RunOptions = {}): Promise<Report> {
@@ -97,9 +101,12 @@ export async function runAll(config: Config, model: DecisionModel, collected: Co
     summary.usage.input_tokens += r.usage.input_tokens;
     summary.usage.output_tokens += r.usage.output_tokens;
   }
-  const ok = !problems.length && requests.every((r) => !r.error && r.verdicts.every((v) => v.pass));
+  // A verdict that fails fails the run unless it is advisory; what is not a verdict always does.
+  const advisory = options.advisory === true;
+  const ok = !problems.length && requests.every((r) => !r.error && (advisory || r.verdicts.every((v) => v.pass)));
   return {
     ok,
+    ...(advisory ? { advisory: true as const } : {}),
     skill: config.skill,
     provider: model.id,
     dryRun,
