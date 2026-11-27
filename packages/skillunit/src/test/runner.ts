@@ -35,6 +35,8 @@ export interface RequestReport {
 
 export interface Report {
   ok: boolean;
+  /** `--advisory`: a question that fails is reported and does not fail the run. */
+  advisory?: true;
   skill: string;
   /** The provider asked: the `id` of the decision model. */
   provider?: string;
@@ -55,6 +57,8 @@ export interface Report {
     borderline: number;
     /** Questions a selection (`--changed`) left out. */
     skipped: number;
+    /** Questions left out because the test that declares them failed: they are in no request. */
+    leftOut: number;
     usage: Usage;
   };
 }
@@ -70,6 +74,10 @@ export interface RunOptions {
   run?: RunReport;
   /** Problems found before the questions were asked, such as a run of the tests that failed. */
   problems?: QuestionProblem[];
+  /** How many questions the failed tests declare: they cannot be asked. */
+  leftOut?: number;
+  /** A question that fails does not fail the run; one that cannot be asked still does. */
+  advisory?: boolean;
 }
 
 export async function runAll(config: Config, model: DecisionModel, collected: Collected, options: RunOptions = {}): Promise<Report> {
@@ -85,7 +93,7 @@ export async function runAll(config: Config, model: DecisionModel, collected: Co
   }
   const problems = [...(options.problems ?? []), ...collected.problems];
 
-  const summary = { tests: 0, passed: 0, borderline: 0, skipped, usage: { input_tokens: 0, output_tokens: 0 } };
+  const summary = { tests: 0, passed: 0, borderline: 0, skipped, leftOut: options.leftOut ?? 0, usage: { input_tokens: 0, output_tokens: 0 } };
   for (const r of requests) {
     summary.tests += r.verdicts.length;
     summary.passed += r.verdicts.filter((v) => v.pass).length;
@@ -93,9 +101,12 @@ export async function runAll(config: Config, model: DecisionModel, collected: Co
     summary.usage.input_tokens += r.usage.input_tokens;
     summary.usage.output_tokens += r.usage.output_tokens;
   }
-  const ok = !problems.length && requests.every((r) => !r.error && r.verdicts.every((v) => v.pass));
+  // A verdict that fails fails the run unless it is advisory; what is not a verdict always does.
+  const advisory = options.advisory === true;
+  const ok = !problems.length && requests.every((r) => !r.error && (advisory || r.verdicts.every((v) => v.pass)));
   return {
     ok,
+    ...(advisory ? { advisory: true as const } : {}),
     skill: config.skill,
     provider: model.id,
     dryRun,

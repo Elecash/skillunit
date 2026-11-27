@@ -1,7 +1,7 @@
 # SkillUnit docs
 
-- [Writing the tests of a skill](style-guide.md): the list from the code, a unit and its body, the change that proves it, a unit with no body and its reason, when a unit gets a question, and the copy check.
-- [Questions](questions.md): when to ask, where the questions for the decision model go, their fields, `with`, how to write one that fails when its rule is gone, and the copy check that shows it does.
+- [Writing the tests of a skill](style-guide.md): the list from the code, a unit and its body, the change that proves it, a unit with no body and its reason, when a unit gets a question, and the change that proves a question.
+- [Questions](questions.md): when to ask, where the questions for the decision model go, their fields, `with`, how to write one, and the change to its unit that proves it.
 - [The kinds of unit](units.md): a fact, a rule and a decision, each with what it is for, its keys, a test that declares one and the Markdown it becomes.
 - [Proof](proof.md): the files of the skill declared with `setup()`, units declared in the project's tests with `unit()`, those no test proves, names from the code with `key()` and `exportNames()`, which tests `proof.run` runs, the JSON a test in another language writes, and what proof does not do.
 - [Configuration](configuration.md): every key of `skillunit.yaml`, where the API key is read from, and the decision models.
@@ -17,12 +17,12 @@ npm install --save-dev skillunit
 npx skillunit init skills/my-skill
 ```
 
-`init` writes `skillunit.yaml`. Proof builds the skill from the files and units your tests declare: declare each file with `setup()` and each unit with `unit()`, from `skillunit/vitest`, around the test that checks what it says, or with no body for advice no test can check. Set `proof.run` to the command that runs those tests, build the skill, and commit it:
+`init` writes `skillunit.yaml`. Proof builds the skill from the files and units your tests declare: declare each file with `setup()` and each unit with `unit()`, from `skillunit/vitest`, around the test that checks what it says, or with no body for advice no test can check. Set `proof.run` to the command that type-checks those tests and runs them, build the skill, and commit it:
 
 ```yaml
 skill: ./skills/my-skill
 proof:
-  run: "npx vitest run skill.test"   # the test files that declare the skill: *.skill.test.ts
+  run: "npx tsc --noEmit && npx vitest run skill.test"   # the type-check, then the test files that declare the skill: *.skill.test.ts
 ```
 
 ```sh

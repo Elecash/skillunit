@@ -29,6 +29,7 @@ that build one from the tests, `skillunit proof --write` last.
 | `--dry-run` | test, check | check that the questions can be asked, headings exist and requests fit; send nothing |
 | `--changed` | test, check | ask only the questions about what changed in git since `--base` |
 | `--base <ref>` | test, check | with `--changed`: the ref whose merge base with HEAD the working tree is compared with |
+| `--advisory` | test, check | report a question that fails, and do not fail the run for it; see [Exit codes](#exit-codes) |
 | `--provider <name>` | test, check | the decision model provider, `typesafe` or `openai`, instead of the one in the settings, with its default model unless `--model` is given too |
 | `--model <name>` | test, check | the model of the provider in use (defaults: `jev-latest` for `typesafe`, `gpt-6-luna` for `openai`) |
 | `--choice`, `--yes`, `--no`, `--margin <0-1>` | test, check | thresholds, as in the [configuration](configuration.md): `--yes` 0.5 or more and `--no` under 0.5, so a yes/no question passes only on the answer it expects |
@@ -56,8 +57,7 @@ skill folder. It reports, for each unit, where it is declared: `proved by a test
 `declared, no test`, with the file and line. It fails on a unit whose test failed, on a line of
 the skill folder that is not what the build gives, on a unit the skill folder has and no test
 declares, and on the other cases [Proof](proof.md#building-and-checking) lists. Each finding
-about a line of the skill says which test that line comes from. Without `proof` in the settings
-it exits 2, and `check` skips the layer and says so.
+about a line of the skill says which test that line comes from.
 
 `--write` writes the build to the skill folder; commit it with the change. `--no-run` builds from
 the records already in `proof.units`, for a pipeline that ran the tests in an earlier step.
@@ -67,9 +67,7 @@ the records already in `proof.units`, for a pipeline that ran the tests in an ea
 
 `skillunit test` runs `proof.run`, reads the questions from the records the tests left, and asks
 them about the skill folder as it is. It does not build or compare the skill; that is `proof`.
-`--no-run` uses the records already in `proof.units`. Without `proof` in the settings it exits 2:
-the questions are in the records the tests leave. `check` without `proof` has no test layer, and
-needs no key.
+`--no-run` uses the records already in `proof.units`.
 
 A question whose unit the skill folder does not have, or whose file is not there, cannot be
 asked; it fails the run where it is declared. On its own, `test` also reports what `check` leaves
@@ -80,8 +78,17 @@ that failed, whose questions were not asked.
 
 - `0`: every check passed. Warnings and borderline verdicts do not fail a run.
 - `1`: a check failed.
+
+With `--advisory`, a question that fails is reported as it is without the flag and does not fail
+the run, so `check` exits with what the proof gives and `test` with 0. What is not a verdict
+still fails it: a question that cannot be asked, a missing key, a provider that answers with an
+error. The status line ends with `, advisory`, as in `OK  proof ok · test 7/9 passed, advisory`,
+the `github` reporter writes the failed questions as warnings, and the JSON report has
+`advisory: true` in `test`. There is no key for it in `skillunit.yaml`: a project turns it on
+where its CI calls the command.
 - `2`: the command itself was wrong: an unknown option, a missing file, bad settings, no API key
-  for a run that needs one, or `proof` or `test` with no `proof` in the settings.
+  for a run that needs one, or settings with no `proof`: the skill and its questions both come from
+  the records of `proof.run`, so `proof`, `test` and `check` have nothing to work on without it.
 
 Reports go to stdout, and errors about the command to stderr. With `--reporter json` or `--json`,
 an exit 2 also prints `{ schema, command, ok: false, error: { exit: 2, message } }` on stdout, so
@@ -109,8 +116,7 @@ also runs the proof in full.
 - `json`: the whole report as one object, `{ schema, command, ok, units, proof, test }`,
   with only the layers that ran. `units` lists every unit of the skill as `{ id, kind, file, line }`,
   so a tool can join the layers on the id: the `unit` of a proof finding or a verdict, and the
-  `id` in `proof.units`; `proof` is `{ configured: false, ok: true }` when `check` ran
-  with no `proof` key. `schema`, now 7, changes only when a field changes meaning or disappears.
+  `id` in `proof.units`. `schema`, now 8, changes only when a field changes meaning or disappears.
   `test.provider` names the provider asked. `test.requests` has one entry per request: the
   `file`, `sections` and `with` files it read, and its `verdicts`, or its `error` and the
   `questions` it held. `test.problems` lists the questions that could not be asked, each with

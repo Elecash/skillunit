@@ -12,7 +12,15 @@ import { create } from "tinyfetch";
 
 When: the code makes a client with `create`.
 
-Value: `create(options)` makes a client whose requests share the options `baseUrl`, `headers` and `timeout`; `tf` is a client made with none, and `tf.create` is `create`.
+Value: `create` makes a client whose requests share the options `baseUrl`, `headers` and `timeout`, as in the example; `tf` is a client made with none, and `tf.create` is `create`.
+
+```ts
+const api = create({
+  baseUrl: "https://api.example.com",
+  headers: { "x-team": "a" },
+  timeout: 1_000,
+});
+```
 
 ### fact: base-url
 

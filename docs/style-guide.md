@@ -82,10 +82,55 @@ body that goes through every case, or a sentence that names the cases the body t
 of tinyfetch's `base-url` now tries the four forms: a base with and without `/` at its end, and
 a path with and without `/` at its start.
 
-**A sentence can be built from what the body observes.** Which statuses are retried, what each
-method resolves to: the body tries each case and builds the sentence with `u.value()`, so a
-change to the code changes the sentence. The proof then fails on the difference, and someone
-reads it in the pull request.
+**A sentence about what the code does is built from what the body observed**, with
+`u.value()`. A sentence typed in `value` above an assertion is the weak form. When the behaviour
+changes, the test goes red, someone edits the assertion to match, and the sentence stays: the
+tests, the type-check and the proof all pass, and the skill is false. In a round of trials, 7 of
+12 changes that left a skill wrong ended with everything green, and in each the false text was
+typed in a test.
+
+tinyfetch's `timeout-precedence` was the weak form:
+
+```ts
+unit(
+  'timeout-precedence',
+  {
+    when: `a client or a request sets \`${opt('timeout')}\`.`,
+    value: `a request's own \`${opt('timeout')}\` wins over the \`${key<ClientOptions>('timeout')}\` of its client, and the client's over the default.`,
+  },
+  async () => {
+    // … three requests that time out …
+    expect(await outcomes([…])).toEqual([DEFAULT_TIMEOUT / 4, DEFAULT_TIMEOUT / 2, DEFAULT_TIMEOUT]);
+  },
+);
+```
+
+With the client's `timeout` made to win, the test failed, and the fix that made it pass changed
+`DEFAULT_TIMEOUT / 2` to `DEFAULT_TIMEOUT / 4` and left the sentence. Built from the observation,
+there is no expected value to edit:
+
+```ts
+async (u) => {
+  // … three requests that time out: one that sets `timeout` on a client that sets one, one that
+  // sets none, and one on a client that sets none either …
+  const [both, client, neither] = (await Promise.all(pending)).map((e) => (e as TimeoutError).timeout);
+  const source = (ms) => ({ [ofRequest]: 'its own `timeout`', [ofClient]: 'the `timeout` of its client', [DEFAULT_TIMEOUT]: 'the default' })[ms];
+  expect([both, client, neither].every((ms) => [ofRequest, ofClient, DEFAULT_TIMEOUT].includes(ms))).toBe(true);
+  u.value(`a request that sets \`timeout\`, on a client that sets one too, waits for ${source(both)}; …`);
+},
+```
+
+The body asserts only what holds whatever the code does: each request timed out after one of the
+three times. The same change now passes the tests, and the proof fails on the built line, with
+the test it comes from. `skillunit proof --write` writes "…waits for the `timeout` of its
+client", which is what the code does.
+
+It does not reach the words around the observed value: "waits for" and "on a client that sets
+one too" are typed. Where no value can carry a claim, put what the body saw in the sentence or in
+an example, so the skill at least shows what happened. tinyfetch's `what-is-retried` lists in an
+example the statuses of a case that are not all retried alike, and `base-url` lists the URLs it
+sent when they are not the one it expects. A number the body observes must still be in `values`,
+so a sentence names the setting that won, in words, rather than the number it gave.
 
 **An example is a region with code of the library only.** The lines between `#region
 skill:<id>` and `#endregion` are copied into the skill as they are. Set up the fake server
@@ -139,15 +184,48 @@ error, a type), the name comes from the code:
 | The name of | From | Such as |
 | --- | --- | --- |
 | a key of a type: an option, a method, a field | `key<T>(name)`, which takes only a key of `T` | `` `${key<RequestOptions>('retry')}` `` |
-| a value a module exports | `Object.keys(module)`, or `exportNames()` | the list of exports |
+| a value a module exports, named one by one | `key<typeof module>(name)`, which takes only a name the module exports | `` `${key<typeof Tinyfetch>('create')}` `` |
+| the values a module exports | `Object.keys(module)`, or `exportNames()` | the list of exports |
 | a type a file exports | `exportNames()` from `skillunit/typescript` | `Client`, `RequestOptions` |
 | a class or a function | its `name` | `` `${HttpError.name}` `` |
+
+A function's `name` is the name its code gave it, which is not always the name a module exports
+it under. `export const merge = createMerge()` exports a function whose `name` is another one, or
+empty. For such an export, take the name of the export: `key<typeof module>('merge')` accepts only
+a name the module exports.
+
+`module` is the type of the library's entry, imported with `import type * as Tinyfetch from
+'tinyfetch'`. tinyfetch's tests name an export with `exported = key<typeof Tinyfetch>`, so a
+renamed export fails the type-check at every sentence that names it. To list names in a
+sentence, `and()`, `or()` and `code()` from `skillunit/vitest` join them as a sentence does:
+`and(code(['retry', 'timeout']))` gives `` `retry` and `timeout` ``.
+
+**The text of a `setup()`** follows the same rule: the description of a file, the `when` of its row
+in the index, and the description of the frontmatter. The build compares them with nothing but
+the number rule. With `query` removed from tinyfetch's code and from the unit that stated it, the
+row of the index still said "…headers and query", and everything passed. The row is now built
+from the type:
+
+```ts
+const opt = key<RequestOptions>;
+
+setup('requests', {
+  file: 'features/requests.md',
+  title: 'tinyfetch — requests',
+  when: `Send a request: its method, path, body, ${and([opt('headers'), opt('query')])}`,
+  description: 'What a request sends, and what its call resolves to.',
+});
+```
+
+Declare the helpers it uses before the `setup()`: it runs when the test file loads.
 
 With `retryDelay` renamed to `backoff` in tinyfetch's code and in the keys of its tests, as an
 IDE renames it, the tests passed, and after `proof --write` the skill listed `backoff` among the
 options and still said "waits `retryDelay`". With the name from `key<RequestOptions>()`, the
-rename fails the type-check of the test at that sentence. So run the type-check on the test files
-too, where CI runs it: a test run that strips the types, as Vitest does, does not check them.
+rename fails the type-check of the test at that sentence. A test run that strips the types, as
+Vitest does, does not check them, so put the type-check first in `proof.run`, as
+`npx tsc --noEmit && npx vitest run skill.test`: the proof then fails on the rename, with the
+compiler's error.
 
 The name of a parameter stays typed, as in "pass the value itself as `body`": arguments go by
 position, so renaming a parameter changes nothing an agent writes.
@@ -156,14 +234,21 @@ position, so renaming a parameter changes nothing an agent writes.
 
 A unit is done when a change to the code that makes its sentence false turns something red with
 no test edited. For each unit, make the smallest such change, run the tests and
-`skillunit check --dry-run`, write down what went red, and undo the change. A unit where nothing
-goes red is not done.
+`skillunit check --dry-run`, and write down what went red. Then run `skillunit proof --write`,
+write down whether the skill is true, and undo the change. A unit where nothing goes red is not
+done.
 
-| Unit | Change | What went red |
-| --- | --- | --- |
-| `retry-delay` | the first new attempt waits the second wait | the test of `retry-delay` |
-| `headers` | the client's headers win over the request's | the test of `headers` |
-| `exports` | one name more exported | the text of `exports`, in the proof |
+| Unit | Change | What went red | After `proof --write` |
+| --- | --- | --- | --- |
+| `retry-delay` | the first new attempt waits the second wait | the text of `retry-delay` | true: "waits 2x `retryDelay`" |
+| `headers` | the client's headers win over the request's | the text of `headers` | true: "…then its own, then the `headers` of its client" |
+| `send-a-body` | a string body is sent as it is | the test of `send-a-body` | still red: a rule, whose test is edited by hand |
+
+The last column tells the two kinds of red apart. A red test is fixed by editing the test, and a
+hurried edit of the assertion leaves the sentence false. A red text is fixed by `--write`, which
+writes what the code does now. On tinyfetch, 23 of 28 such changes end with a true skill after
+`--write`. Of the 5 left, 4 fail the test of a rule, whose body checks the fact the advice rests
+on, and 1 adds a key to `RequestOptions`, which fails the type-check on purpose.
 
 The table finds what review misses. In SkillUnit's own skill, two bodies passed and proved
 nothing until their change turned nothing red: one tried a tie under the threshold, which fails
@@ -199,36 +284,39 @@ when its sentence leaves the reader something to work out: two values to combine
 apply. A fact that states one value from the code gets none.
 
 **The scenario pulls toward the wrong answer.** The user asks for what the rule forbids, or the
-shortcut is in plain sight. A plain scenario lets common sense pass the question, and then it
-passes without its unit too. tinyfetch's `long-upload` needed its unit only once the user in the
-scenario asked for no time limit.
+shortcut is in plain sight. A plain scenario lets common sense pass the question. tinyfetch's
+`long-upload` needed its unit only once the user in the scenario asked for no time limit.
 
 **Do not ask the reader to add up**, or to conclude from a list that what it leaves out does not
 exist. Asked for the total of three waits that grow, the reader multiplied. Shown "these options
 and no other", it would not say there is no connect timeout. What the skill must say is absent,
 a fact says in so many words, in `unknown`.
 
-## The copy check
+## The change that proves a question
 
-A question passes with its unit and fails without it. To tell, copy the skill folder, delete the
-text of the unit in the copy and keep its heading, and ask the questions about the copy:
+A question is proven like a unit, by a change that fails it. Write the opposite in the sentence
+of its unit, ask the question, and it must fail; then undo the change. The question is there for
+the day the skill says something else, and that is the change it has to notice.
 
 ```sh
+cp -R skills/my-skill /tmp/my-skill-copy
+# in the copy, write the opposite in the sentence of the unit, and keep its heading and `When`
 npx skillunit test --skill /tmp/my-skill-copy --no-run
 ```
 
 Do it for every unit that has questions, on the model CI asks. A verdict within the margin of its
-threshold can flip from one run to the next, so only a clear failure without the unit counts.
+threshold can flip from one run to the next, so only a clear failure counts. A question that
+still passes with its unit saying the opposite does not read the unit: change the question, never
+a threshold.
 
-A question that passes without its unit goes, or the unit changes; never a threshold. When the
-unit's text changes so that a question passes, note what the agent now reads that it did not.
-When the question was the only reason for a unit with no body, the unit goes with it: the rest of
-the skill, or common sense, already gives the agent that advice.
+Deleting the unit's text instead is a reading, not a test. It says whether the model answers
+right without the skill. For an API the model knows, it does, and that is the normal case: the
+question stays. Measured on 2026-11-26 on 27 questions of three skills, on both models: all 54
+verdicts passed with their unit, 10 passed with its text deleted, and none passed with the unit
+saying the opposite, those 10 included.
 
-On SkillUnit's own skill, the copy check took three gaps out. Two had questions that passed
-without them, since other units already said the same; the third had one that failed even with
-its unit, and its advice was in another unit too. [Questions](questions.md#checking-that-a-question-is-real)
-says where to look when a question stays green.
+[Questions](questions.md#proving-a-question) says where to look when a question passes with its
+unit saying the opposite.
 
 ## What the build writes
 

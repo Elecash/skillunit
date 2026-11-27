@@ -3,6 +3,7 @@
  * `it`. Vitest has its own entry, `skillunit/vitest`.
  */
 export { key } from './key.js';
+export { and, code, or } from './text.js';
 export { createUnit, type Ask, type AskFn, type CreateUnitOptions, type RunnerIt, type Setup, type SetupFn, type Unit, type UnitBody, type UnitContext, type UnitFn, type UnitPlace } from './create.js';
 export {
   UNIT_CONTRACT,

@@ -7,13 +7,21 @@ import { join, relative, resolve, sep } from 'node:path';
 import { CONFIG_FILE } from './config.js';
 import { ConfigError } from './problems.js';
 
-function config(skill: string): string {
+/** Where the docs give the records a test in another language writes. */
+export const CONTRACT = 'https://github.com/Elecash/skillunit/blob/main/docs/proof.md#the-json-contract';
+
+/** The `proof.run` `init` suggests. Vitest strips the types, so with a `tsconfig.json` the type-check runs first. */
+export function suggestedRun(typed: boolean): string {
+  return `${typed ? 'npx tsc --noEmit && ' : ''}npx vitest run skill.test`;
+}
+
+function config(skill: string, typed: boolean): string {
   return `${[
     '# SkillUnit settings. Reference: https://github.com/Elecash/skillunit#readme',
     `skill: ${skill}`.padEnd(32) + '# folder with SKILL.md',
     '# context: "One sentence about what the skill is for."',
     '# To build the skill from the files and units your tests declare:',
-    '# proof: { run: "npx vitest run skill.test" }   # the test files that declare them: *.skill.test.ts',
+    `# proof: { run: "${suggestedRun(typed)}" }   # ${typed ? 'the type-check, then ' : ''}the test files that declare them: *.skill.test.ts`,
   ].join('\n')}\n`;
 }
 
@@ -25,7 +33,7 @@ export function init(dir: string, cwd = process.cwd()): string[] {
   const skillDir = resolve(cwd, dir);
   const path = relative(cwd, skillDir).split(sep).join('/');
   const skill = path === '' ? '.' : path.startsWith('..') ? path : `./${path}`;
-  writeFileSync(configPath, config(skill));
+  writeFileSync(configPath, config(skill, existsSync(join(cwd, 'tsconfig.json'))));
 
   const out = [`created ${CONFIG_FILE}`];
   if (!existsSync(join(skillDir, 'SKILL.md'))) out.push(`there is no SKILL.md in ${skill} yet: the steps below build it from your tests`);
@@ -33,5 +41,7 @@ export function init(dir: string, cwd = process.cwd()): string[] {
     `next: in a test, declare each file of the skill with \`setup()\` and each unit with \`unit()\`, from \`skillunit/vitest\`, and set \`proof.run\` in ${CONFIG_FILE} to the command that runs those tests`,
     `then: run \`skillunit proof --write\` to build ${skill}, and \`skillunit check\` to check it`,
   );
+  // No `package.json`: the tests may be in another language, which writes the records itself.
+  if (!existsSync(join(cwd, 'package.json'))) out.push(`no package.json here: a test in another runner or language writes the records itself, as the JSON contract says: ${CONTRACT}`);
   return out;
 }

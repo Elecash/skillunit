@@ -1,4 +1,4 @@
-// Runs `tsc` from the workspace's `typescript` package (5.x). `.bin/tsc` is not reliable
+// Runs `tsc` from the workspace's `typescript` package (6.x). `.bin/tsc` is not reliable
 // here: the tests also install TypeScript 7 under the alias `typescript-7`, and npm links
 // whichever `tsc` it installs last.
 import { spawnSync } from 'node:child_process';

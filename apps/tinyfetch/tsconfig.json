@@ -9,8 +9,7 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "skipLibCheck": true,
-    "noEmit": true,
-    "paths": { "tinyfetch": ["./src/index.ts"] }
+    "noEmit": true
   },
   "include": ["src"]
 }

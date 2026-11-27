@@ -2,12 +2,12 @@
  * The one report every command builds and every reporter prints: the layers that ran, each with
  * its own result. `--reporter json` prints it as it is.
  */
-import type { ProofResult, ProofSkipped } from '../proof/layer.js';
+import type { ProofResult } from '../proof/layer.js';
 import type { Report as TestReport } from '../test/runner.js';
 import type { UnitKind } from '../unit/contract.js';
 
 /** Bumped only when a field changes meaning or disappears. */
-export const REPORT_SCHEMA = 7;
+export const REPORT_SCHEMA = 8;
 
 export type Command = 'proof' | 'test' | 'check';
 
@@ -17,8 +17,7 @@ export interface CheckReport {
   ok: boolean;
   /** Every unit of the skill, in the order of its files, so a tool can join the layers on the id. */
   units?: ReportUnit[];
-  /** `{ configured: false }` when `check` ran and the settings have no `proof` key. */
-  proof?: ProofResult | ProofSkipped;
+  proof?: ProofResult;
   test?: TestReport;
 }
 

@@ -8,6 +8,10 @@
  * throws, as a `FailedUnit`, and the error is thrown again. Without a body, the unit is one no
  * test proves, such as advice: its record says so. A skipped test writes nothing.
  *
+ * Each test writes a `FailedUnit` that says it did not finish before anything else, and replaces
+ * it when it ends. A test the runner abandons, on a timeout or a run that stops, keeps that
+ * record: its unit is reported as failed, not as one whose test was deleted.
+ *
  * `ask(id, spec)`: a question about the prose of a built file, which belongs to no unit.
  *
  * `setup(id, spec)`: a file of the skill, its title, its row in the index and its line. Each unit
@@ -50,9 +54,17 @@ export interface CreateUnitOptions<Ctx> {
    * Writes the record of a unit. `key` is the same for one declaration across runs and differs
    * between two declarations, even of the same id, so a writer can name the file after it.
    * Defaults to writing `<id>.<hash>.json` in the `proof.units` folder of the nearest
-   * `skillunit.yaml` above the working directory, with Node's `fs`.
+   * `skillunit.yaml` above the working directory, with Node's `fs`. A test writes twice under
+   * the same `key`: a failed record that says it did not finish when it starts, then how it
+   * ended. The second replaces the first.
    */
   write?: (record: UnitRecord, key: string) => unknown;
+  /**
+   * Takes out the record written under `key`, for a test skipped from inside its body, which
+   * writes nothing. Defaults to deleting the file of the default `write`. A runner that passes
+   * its own `write` and no `remove` keeps the record that says the test did not finish.
+   */
+  remove?: (record: UnitRecord, key: string) => unknown;
   /** Where the runner says the test is, when it says. Otherwise the place comes from the stack of the call to `unit`. */
   locate?: (ctx: Ctx) => UnitPlace | undefined;
   /** The error a runner throws to skip a test from inside it: the test writes nothing. */
@@ -89,6 +101,7 @@ ownFile(import.meta.url);
 
 export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnitOptions<Ctx> = {}): { unit: Unit<Ctx>; ask: Ask; setup: Setup } {
   const write = options.write ?? defaultWrite;
+  const remove = options.remove ?? (options.write ? undefined : defaultRemove);
   /** Declarations of each id at each place, so a loop that declares one id twice gets two keys. */
   const seen = new Map<string, number>();
   /** The id of each question declared so far, and what declared it. */
@@ -154,14 +167,16 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
         async (ctx: Ctx) => {
           const at = options.locate?.(ctx) ?? place ?? { file: '', line: 0 };
           const head = { skillunit: UNIT_CONTRACT, id, file: pathOf(at.file), line: at.line, test: title, ...belongs } as const;
+          // An id that is not one cannot be built into the skill; nothing would read the record.
+          const valid = typeof id === 'string' && UNIT_ID.test(id);
           const failed = async (error: unknown) => {
-            // An id that is not one cannot be built into the skill; nothing would read the record.
-            if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', error: messageOf(error) }, key);
+            if (valid) await write({ ...head, status: 'failed', error: messageOf(error), ...(questions ? { ask: questions } : {}) }, key);
           };
           if (problem) {
             await failed(problem);
             throw problem;
           }
+          await failed(UNFINISHED);
           let value = spec.value;
           const examples: UnitExample[] = [];
           /** No test proves the unit: it has no body, or its body only showed blocks. */
@@ -205,8 +220,12 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
                 declared = true;
               }
             } catch (e) {
-              if (options.isSkip?.(e)) throw e;
-              await failed(e);
+              if (options.isSkip?.(e)) {
+                if (valid) await remove?.({ ...head, status: 'failed', error: UNFINISHED }, key);
+                throw e;
+              }
+              // A runner that failed the test first, on a timeout, says why; what the abandoned body threw after is not.
+              await failed(options.failure?.(ctx) ?? e);
               throw e;
             }
             const soft = options.failure?.(ctx);
@@ -250,6 +269,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
             if (typeof id === 'string' && QUESTION_ID.test(id)) await write({ ...head, status: 'failed', kind: 'question', error: messageOf(problem) }, key);
             throw problem;
           }
+          await write({ ...head, status: 'failed', kind: 'question', error: UNFINISHED }, key);
           const record: PassedQuestion = { ...head, status: 'passed', kind: 'question', skillFile: checked!.skillFile, ask: [checked!.question] };
           await write(record, key);
         },
@@ -288,6 +308,7 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
             if (typeof id === 'string' && UNIT_ID.test(id)) await write({ ...head, status: 'failed', kind: 'file', error: messageOf(problem) }, key);
             throw problem;
           }
+          await write({ ...head, status: 'failed', kind: 'file', error: UNFINISHED }, key);
           const { file: skillFile, ...rest } = checked!;
           const record: PassedFile = { ...head, status: 'passed', kind: 'file', skillFile, ...rest };
           await write(record, key);
@@ -301,6 +322,9 @@ export function createUnit<Ctx = unknown>(it: RunnerIt<Ctx>, options: CreateUnit
   const setup = Object.assign(declareSetup(it, ''), { skip: declareSetup(it.skip?.bind(it), '.skip'), only: declareSetup(it.only?.bind(it), '.only') });
   return { unit, ask, setup };
 }
+
+/** The error of the record a test writes when it starts, which stays when the test does not end. */
+export const UNFINISHED = 'the test did not finish, because it timed out or the run stopped before it ended';
 
 /** The sentence a test is titled with: what the unit says. */
 function sentence(kind: UnitKind, spec: UnitSpec): string {
@@ -353,8 +377,12 @@ export function pathOf(file: string): string {
   return /^\/[A-Za-z]:\//.test(path) ? path.slice(1) : path;
 }
 
-let nodeWrite: ((record: UnitRecord, key: string) => void) | undefined;
+let node: typeof import('./write.js') | undefined;
 async function defaultWrite(record: UnitRecord, key: string): Promise<void> {
-  nodeWrite ??= (await import('./write.js')).writeUnit;
-  nodeWrite(record, key);
+  node ??= await import('./write.js');
+  node.writeUnit(record, key);
+}
+async function defaultRemove(record: UnitRecord, key: string): Promise<void> {
+  node ??= await import('./write.js');
+  node.removeUnit(record, key);
 }

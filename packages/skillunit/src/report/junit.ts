@@ -26,7 +26,7 @@ export function junit(report: CheckReport, options: ReportOptions): string {
   const suites: Suite[] = [];
   const line = (skill: string, p: Problem) => `${shown(join(skill, p.file), options)}:${p.line}  ${p.unit ?? '-'}  ${withOrigin(skill, p, options)}`;
 
-  if (report.proof?.configured) {
+  if (report.proof) {
     const { proof } = report;
     const cases: Case[] = proof.units.map((u) => {
       const from = `${shown(join(proof.skill, u.test.file), options)}:${u.test.line}`;

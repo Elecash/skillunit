@@ -12,7 +12,7 @@ import { Git } from './git.js';
 import { init } from './init.js';
 import { isProviderName, loadModel, ModelError, PROVIDER_NAMES, PROVIDERS, type ProviderName } from './models/index.js';
 import { ConfigError } from './problems.js';
-import { runFailure, runProof, runTests, type ProofResult, type ProofSkipped, type TestRun } from './proof/index.js';
+import { runFailure, runProof, runTests, type ProofResult, type TestRun } from './proof/index.js';
 import { buildReport, colorByDefault, render, REPORT_SCHEMA, REPORTERS, type Command, type ReporterName } from './report/index.js';
 import { changedSelection, changedSkillFiles } from './test/changed.js';
 import { collectQuestions, type QuestionProblem } from './test/questions.js';
@@ -43,6 +43,8 @@ Options
 
 Options for test and check
   --dry-run           check that the questions can be asked and requests fit; send nothing
+  --advisory          report a question that fails, and do not fail the run for it; the proof,
+                      and a question that cannot be asked, still fail it
   --changed           ask only the questions about skill files that differ, committed or not,
                       from the merge base of HEAD and --base
   --base <ref>        with --changed: the ref to take the merge base with (default: the pull
@@ -74,6 +76,8 @@ interface Args {
   skill?: string;
   base?: string;
   dryRun: boolean;
+  /** A question that fails is reported, and does not fail the run. */
+  advisory: boolean;
   changed: boolean;
   write: boolean;
   noRun: boolean;
@@ -95,7 +99,7 @@ async function main() {
 }
 
 function parseArgs(command: Command, argv: string[]): Args {
-  const args: Args = { dryRun: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
+  const args: Args = { dryRun: false, advisory: false, changed: false, write: false, noRun: false, reporter: 'table', compact: false, thresholds: {} };
   const positional: string[] = [];
   for (let i = 0; i < argv.length; i++) {
     const flag = argv[i]!;
@@ -123,6 +127,7 @@ function parseArgs(command: Command, argv: string[]): Args {
     else if (flag === '--dry-run') args.dryRun = true;
     else if (flag === '--compact') args.compact = true;
     else if (flag === '--changed') args.changed = true;
+    else if (flag === '--advisory') args.advisory = true;
     else if (flag === '--write') args.write = true;
     else if (flag === '--no-run') args.noRun = true;
     else if (flag === '--model') args.model = value();
@@ -166,9 +171,10 @@ async function runCommand(command: Command, args: Args) {
   // `proof --write` builds the skill folder, so it may not exist yet.
   if (!existsSync(config.skill) && !(command === 'proof' && args.write)) usage(`no skill folder at ${config.skill}`);
 
-  // The questions are in the records the tests leave, which only a skill built from the tests has.
-  const testing = (command === 'test' || command === 'check') && config.proof !== undefined;
-  if ((command === 'proof' || command === 'test') && !config.proof) {
+  // The skill and its questions both come from the records the tests leave: with no `proof`, there
+  // is nothing to build, compare or ask.
+  const testing = command === 'test' || command === 'check';
+  if (!config.proof) {
     usage(`no \`proof\` in ${config.configFile ?? CONFIG_FILE}: the skill is built from the units and questions the tests declare, with \`setup()\`, \`unit()\` and \`ask()\`, and \`proof.run\` runs those tests`);
   }
   if (command === 'test' && !existsSync(join(config.skill, 'SKILL.md'))) {
@@ -182,13 +188,11 @@ async function runCommand(command: Command, args: Args) {
   }
 
   try {
-    let proofResult: ProofResult | ProofSkipped | undefined;
+    let proofResult: ProofResult | undefined;
     let testResult: Report | undefined;
     // The proof first: it runs the tests that the questions come from.
     if (command === 'proof' || command === 'check') {
-      if (config.proof) {
-        proofResult = runProof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
-      } else proofResult = { configured: false, ok: true };
+      proofResult = runProof({ skill: config.skill, config: config.proof, ...(config.configFile ? { configFile: config.configFile } : {}), write: args.write, noRun: args.noRun }).result;
     }
     // The units of the skill folder: the file each question is about, and the units the report
     // lists so the layers can be joined on them.
@@ -197,18 +201,18 @@ async function runCommand(command: Command, args: Args) {
       const model = await loadModel(config.model);
       const changed = args.changed ? changedSkillFiles(config.skill, args.base) : undefined;
       const select = changed ? changedSelection(changed) : undefined;
-      const cfg = config.proof!;
+      const cfg = config.proof;
       // `check` ran the tests in its proof, which reports what went wrong with them.
       const own = command === 'test' ? runTests(cfg, args.noRun) : undefined;
       const records = readRecords(cfg.units, cfg.cwd);
       const problems = own ? recordProblems(cfg, own, records) : [];
       const collected = collectQuestions(records.units, records.questions, config.skill, skillUnits);
-      testResult = await runAll(config, model, collected, { dryRun: args.dryRun, problems, ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
+      testResult = await runAll(config, model, collected, { dryRun: args.dryRun, advisory: args.advisory, problems, leftOut: leftOut(records), ...(own ? { run: own.run } : {}), ...(select ? { select } : {}) });
       if (changed) testResult.changed = { ref: changed.ref, commit: changed.commit };
     }
     const report = buildReport(command, {
       units: skillUnits.map((u) => {
-        const built = proofResult?.configured ? proofResult.units.find((p) => p.id === u.id && p.file === u.file) : undefined;
+        const built = proofResult ? proofResult.units.find((p) => p.id === u.id && p.file === u.file) : undefined;
         return { id: u.id, kind: u.kind, file: u.file, line: u.line, ...(built ? { from: built.from, ...(built.test ? { test: built.test } : {}) } : {}) };
       }),
       ...(proofResult ? { proof: proofResult } : {}),
@@ -230,8 +234,8 @@ async function runCommand(command: Command, args: Args) {
  */
 function recordProblems(cfg: ProofConfig, own: TestRun, records: Records): QuestionProblem[] {
   const out: QuestionProblem[] = [];
-  const failure = runFailure(cfg, own, records.units.length + records.questions.length > 0);
-  if (failure) out.push({ message: failure });
+  const failure = runFailure(cfg, own, records.units.length + records.questions.length + records.files.length > 0);
+  if (failure) out.push({ message: failure, run: true });
   for (const p of records.problems) out.push({ ...(p.test?.unit ? { unit: p.test.unit } : {}), declared: p.test ? { file: p.test.file, line: p.test.line } : { file: p.path, line: 1 }, message: p.message });
   for (const r of [...records.units, ...records.questions]) {
     if (r.status !== 'failed') continue;
@@ -239,6 +243,12 @@ function recordProblems(cfg: ProofConfig, own: TestRun, records: Records): Quest
     out.push({ id: r.id, ...(r.kind === 'question' ? {} : { unit: r.id }), declared: { file: r.abs, line: r.line }, message: `${what}: ${r.error}` });
   }
   return out;
+}
+
+/** How many questions the failed tests declare: those of a unit whose test failed, and each `ask()` that failed. */
+function leftOut(records: Records): number {
+  const asked = (ask: unknown) => (Array.isArray(ask) ? ask.length : ask ? 1 : 0);
+  return records.units.filter((r) => r.status === 'failed').reduce((n, r) => n + asked(r.ask), 0) + records.questions.filter((r) => r.status === 'failed').length;
 }
 
 // ---------------------------------------------------------------- init

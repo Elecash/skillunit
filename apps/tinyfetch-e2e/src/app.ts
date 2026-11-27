@@ -1,7 +1,9 @@
 /**
  * A copy of apps/tinyfetch in a temporary git repository: the base commit is the app as it is, a
  * scenario changes it and commits, and `run` calls the built SkillUnit CLI on the copy. `check`
- * and `proof` run the app's tests themselves, through `proof.run`.
+ * and `proof` run the app's tests themselves, through `proof.run`, which type-checks them first
+ * with `../../tools/tsc.mjs`: the copy is `apps/tinyfetch` in a temporary folder whose `tools`
+ * is the workspace's.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -36,10 +38,15 @@ export interface Run {
 export class App {
   readonly root: string;
   readonly base: string;
+  /** The temporary folder that holds the copy. */
+  private readonly outer: string;
   private static all: App[] = [];
 
   private constructor(name: string) {
-    this.root = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
+    this.outer = mkdtempSync(join(tmpdir(), `tinyfetch-${name}-`));
+    this.root = join(this.outer, 'apps', 'tinyfetch');
+    mkdirSync(this.root, { recursive: true });
+    symlinkSync(join(workspace, 'tools'), join(this.outer, 'tools'), 'dir');
     for (const part of ['src', 'skill', 'skillunit.yaml', 'tsconfig.json', 'package.json', 'vitest.config.ts']) {
       cpSync(join(appSource, part), join(this.root, part), { recursive: true });
     }
@@ -67,7 +74,7 @@ export class App {
   }
 
   static removeAll() {
-    for (const app of App.all.splice(0)) rmSync(app.root, { recursive: true, force: true });
+    for (const app of App.all.splice(0)) rmSync(app.outer, { recursive: true, force: true });
   }
 
   git(...args: string[]): string {

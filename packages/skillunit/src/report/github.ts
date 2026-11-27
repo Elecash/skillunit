@@ -18,7 +18,7 @@ export function github(report: CheckReport, options: ReportOptions): string {
   const problem = (layer: string, skill: string, p: Problem) =>
     annotate(p.severity, shown(join(skill, p.file), at), p.line, `SkillUnit ${layer}${p.unit ? `: ${p.unit}` : ''}`, withOrigin(skill, p, options));
 
-  if (report.proof?.configured) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
+  if (report.proof) for (const p of report.proof.problems) problem('proof', report.proof.skill, p);
   if (report.test) {
     // A question is annotated where it is declared: the line of its `unit()` or `ask()`.
     for (const p of report.test.problems) {
@@ -38,14 +38,15 @@ export function github(report: CheckReport, options: ReportOptions): string {
         const origin = unitOrigin(report, v.unit, options);
         const file = v.declared ? shown(v.declared.file, at) : shown(join(report.test.skill, r.file), at);
         const line = v.declared?.line ?? 1;
-        if (!v.pass) annotate('error', file, line, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
+        // With `--advisory`, a question that fails is a warning: it does not fail the run.
+        if (!v.pass) annotate(report.test.advisory ? 'warning' : 'error', file, line, `SkillUnit test: ${v.id}`, `${got}\nscenario: ${v.scenario}${origin ? `\n${origin}` : ''}`);
         else if (v.borderline) annotate('warning', file, line, `SkillUnit test: ${v.id} is borderline`, `passed near its threshold, so a later run may fail it: ${got}`);
       }
     }
   }
   const { proof } = report;
-  const change = proof?.configured ? buildChange(proof, options) : null;
-  if (proof?.configured) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
+  const change = proof ? buildChange(proof, options) : null;
+  if (proof) out.push(`::notice title=SkillUnit proof::${data(proofSummary(proof))}`);
   if (change) out.push(`::notice title=SkillUnit proof::${data(change)}`);
   out.push(statusLine(report), '');
   return out.join('\n');

@@ -16,7 +16,7 @@ thresholds:
   no: 0.3                    # highest P(yes) that passes an expected "no": under 0.5
   margin: 0.13               # how close to a threshold a verdict is marked borderline
 proof:                       # the skill is built from the tests (no proof and no questions without it)
-  run: "npx vitest run skill.test"           # the tests that declare the skill, run through the shell
+  run: "npx tsc --noEmit && npx vitest run skill.test"   # the type-check, then the tests that declare the skill, through the shell
   units: ./tmp/skill-units                   # where the tests leave their units (the default)
   format: "npx --no-install prettier --write {file}"   # run once on the built Markdown files
 ```
@@ -41,8 +41,8 @@ proof:                       # the skill is built from the tests (no proof and n
   layer and no [questions](questions.md) for the decision model. `run` is the command that runs
   the tests that declare the skill, from the folder of this file; `proof`, `check` and `test` run
   it, and without it the records already in `units` are used. Point it at those files only, such
-  as `npx vitest run skill.test` for files named `*.skill.test.ts`: on SkillUnit's own skill that
-  was 4.0 s where the whole suite took 70.9 s, and CI still runs the whole suite. `units` is the
+  as `npx vitest run skill.test` for files named `*.skill.test.ts`, after the type-check of the
+  test files, since Vitest strips the types; CI still runs the whole suite. `units` is the
   folder where the tests leave their records (default `./tmp/skill-units`), and `proof` empties it
   of its records before `run`. The regions of examples are read from the test file each record
   names. `format` is a command with `{file}`, run once with every built Markdown file in place of
@@ -73,9 +73,10 @@ Each provider has its own key: `TYPESAFE_API_KEY` for `typesafe` and `OPENAI_API
 
 The key comes from the environment, or from a `.env` file. SkillUnit reads the
 `.env` next to `skillunit.yaml` (the current folder when there is none), then the `.env` of each
-folder above it, up to the root of the git repository. A variable already set in the
-environment wins over every file, and a closer file wins over a farther one. So one `.env` at the
-root of a repository serves every project in it, and CI sets the key as a secret.
+folder above it, up to the root of the git repository. With no git repository above it, only the
+`.env` next to `skillunit.yaml` is read. A variable already set in the environment wins over
+every file, and a closer file wins over a farther one. So one `.env` at the root of a repository
+serves every project in it, and CI sets the key as a secret.
 
 The key never goes in `skillunit.yaml` or in a test: both are committed.
 

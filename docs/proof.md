@@ -56,6 +56,39 @@ is a unit. `SKILL.md` gets a "Where to look" table with a row for every other fi
 `when`. The region `skill:<setup id>`, anywhere in the test file, is the code under the
 description, such as the import every example of the file assumes.
 
+An example shows the import an agent writes, by the name of the package, so the test inside the
+package imports the package by its name too. Node resolves a package's own name through the
+`exports` of its `package.json`, and Vitest and TypeScript with `"moduleResolution": "NodeNext"`
+do the same. tinyfetch's `exports` points at its source, so its tests run the code as it is, with
+no build and no alias:
+
+```json
+{
+  "name": "tinyfetch",
+  "type": "module",
+  "exports": "./src/index.ts"
+}
+```
+
+```ts
+// #region skill:timeouts
+import { tf, TimeoutError } from 'tinyfetch';
+// #endregion
+```
+
+A package whose `exports` points at built files resolves its own name to them, so its tests run
+the last build. SkillUnit's own package is one: its tests map each entry to the source, with
+`resolve.alias` in `vitest.config.ts` and `paths` in `tsconfig.json`:
+
+```ts
+// vitest.config.ts
+resolve: { alias: { 'skillunit/vitest': fileURLToPath(new URL('./src/vitest.ts', import.meta.url)) } },
+```
+
+```json
+{ "compilerOptions": { "paths": { "skillunit/vitest": ["./src/vitest.ts"] } } }
+```
+
 A unit with no `setup()` before it in its test file belongs to no file, and fails the build. A
 build with files and no `SKILL.md` fails too.
 
@@ -88,7 +121,14 @@ The body gets a context, and the runner's own context after it:
 - `u.value(text)` sets the `Value` of a fact from what the body observed;
 - `u.example(lang, text)` adds a block the body produced: a command, a config, an output.
 
+`and()`, `or()` and `code()`, from `skillunit/vitest` and `skillunit/unit` next to `key`, list
+what the body read as a sentence does: `and(['a', 'b', 'c'])` is `a, b and c`, `or()` joins with
+`or`, and `code()` puts each item in backticks, so `and(code(names))` lists names of the code as
+code.
+
 ```ts
+import { and, unit } from 'skillunit/vitest';
+
 unit('what-is-retried', { when: 'a request with `retry` fails.', values: { 'retried-status': RETRIED_STATUS } }, async (u) => {
   const retried: string[] = [];
   const never: string[] = [];
@@ -130,7 +170,9 @@ unit(
 
 When the body passes, the helper writes the unit as JSON into the `proof.units` folder of the
 nearest `skillunit.yaml` above the working directory. When it throws, the helper writes a record
-with the id and the error's message, and throws again. A skipped test writes nothing.
+with the id and the error's message, and throws again. A skipped test writes nothing. Each test
+writes a failed record that says it did not finish before its body runs, and replaces it when the
+body ends, so a test that times out, or a run that stops, leaves a unit whose test failed.
 
 ### What a body is counted as
 
@@ -157,8 +199,11 @@ what the unit says, or declare it with no body: `unit(id, spec)` is a unit no te
 `skillunit/vitest` binds Vitest's `it`. For another runner, `skillunit/unit` exports
 `createUnit(it, options)`, which gives `unit`, `ask` and `setup`. `options.write(record, key)`
 replaces the function that writes the file, for a runner that cannot write files itself, such as
-one in a browser. `options.assertions(ctx)` returns how many assertions the test has made so far;
-with it, a body is counted as the table above says. Without it nothing is counted, so a project
+one in a browser. It is called twice for each test, with the same `key`: the second record
+replaces the first. `options.remove(record, key)` takes out what `write` wrote for a test skipped
+from inside its body; without it, that test keeps the record that says it did not finish.
+`options.assertions(ctx)` returns how many assertions the test has made so far; with it, a body
+is counted as the table above says. Without it nothing is counted, so a project
 that asserts with `node:assert` under Vitest, which Vitest does not count, makes its own helper
 with `createUnit(it)` and no `assertions`.
 
@@ -214,12 +259,16 @@ skill:
 
 - `key<T>(name)`, from `skillunit/vitest` or `skillunit/unit`, returns `name` and accepts only a
   key of `T`: `key<RequestOptions>('retry')`. A key renamed in the code fails the type-check of
-  every test that still names it.
+  every test that still names it. With the type of a module, after
+  `import type * as tinyfetch from 'tinyfetch'`, `key<typeof tinyfetch>('create')` accepts only a
+  name the module exports, so a renamed export fails the same way.
 - `exportNames(entry)`, from `skillunit/typescript`, gives the names a TypeScript file exports,
   `values` and `types` apart, as the compiler sees them. A class exported with `export type` is a
-  type, and `export *` brings the names of its module. It takes a path or a `file:` URL, resolves
-  modules with the `tsconfig.json` above the file, and loads the project's own `typescript`,
-  which `skillunit/vitest` and `skillunit/unit` never load.
+  type, and `export *` brings the names of its module. It takes a path or a `file:` URL, and
+  resolves modules with the `tsconfig.json` above the file. It loads the project's own
+  `typescript` when that package has the compiler API, and SkillUnit's own TypeScript 6 when it
+  does not: TypeScript 7 exports only its version from `typescript`. `skillunit/vitest` and
+  `skillunit/unit` never load it.
 
 ```ts
 import { exportNames } from 'skillunit/typescript';
@@ -280,18 +329,38 @@ It is an error when:
 - a region belongs to no unit and no file, or its id is in two places;
 - a file the build gives is not in the skill folder;
 - the skill folder has a unit that no test declares, because its test was skipped or deleted, or
-  did not run. `--write` takes it out;
+  did not run. `--write` takes it out, after a run that passed;
 - the skill folder holds a Markdown file that no `setup()` declares. `--write` reports it and
   leaves it there;
-- `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, and says the
-  command, how it ended and the last lines of its output, where the runner names the test that
-  failed. When the run left no record at all, it says that too. A test that declares a unit and
-  fails is reported twice: on its unit, with the assertion's message, and by the run;
+- `proof.run` did not exit with 0. The error is on `proof.run` in `skillunit.yaml`, comes first in
+  the report, and says the command, how it ended and the last 30 lines of its output, where the
+  runner names the test that failed. A test that declares a unit and fails is reported twice: on
+  its unit, with the assertion's message, and by the run. A run that left no record at all failed
+  before the tests, as a type-check does: the error says so and shows the first 30 lines of the
+  output instead, where the compiler prints its errors. It is then the only error, since nothing
+  was built or compared, and `--write` writes nothing;
 - a line of the skill folder is not what the build gives. The message says to run
   `skillunit proof --write`, which is all a change to the code needs, and that the skill folder is
   built, so a change to its text is made where the line comes from.
 
 A file whose build failed is neither compared nor written, so its one problem is reported once.
+
+### When a test fails
+
+A test fails in one of three ways: an assertion fails, the test does not finish because it timed
+out or the run stopped, or its file does not load. In all three `proof.run` does not exit with 0,
+and its finding comes first. Then:
+
+- a unit whose test failed, or did not finish, is reported on its unit with the message of its
+  test and the line of the test. The file of the skill that holds it is not built, so `--write`
+  leaves that file as it is;
+- a unit, a file or a row of the index that the skill has and that the run left no record of, as
+  when a test file does not load, is reported as such, with a pointer to the run. It is not called
+  deleted, since its test may not have run.
+
+`--write` takes a unit or a row of the index out of the skill only after a run that exits with 0,
+and never removes a file. After a run that failed, it writes the files whose build takes nothing
+out, and says which files it left as they are and why.
 
 ## Where a line comes from
 
@@ -314,17 +383,41 @@ it.
 ## Which tests `proof.run` runs
 
 `skillunit proof`, `skillunit check` and `skillunit test` all need the records, so all three run
-`proof.run`. It should run the files that declare the skill and nothing else. Measured on
-SkillUnit's own skill at 0.3.0, where `proof.run` was the package's whole suite:
+`proof.run`. It should run the files that declare the skill and nothing else: a test that fails
+anywhere in the run fails the proof, and `--write` then takes nothing out of the skill. Measured
+on SkillUnit's own package on 2026-11-27, on one machine, where Vitest runs the files in parallel:
 
 | What runs | Tests | Time |
 | --- | --- | --- |
-| the whole suite | 349 | 70.9 s |
-| the 6 files that declare units | 129 | 4.0 s |
+| the whole suite | 331 | 4.2 s |
+| the 5 files that declare the skill | 63 | 3.9 s |
 
 Name those files `*.skill.test.ts` and point `proof.run` at the name: `npx vitest run skill.test`.
 A file name keeps the command current, since a new file of units is run as soon as it has the
 name.
+
+### The type-check first
+
+Vitest strips the types, so a test passes with a name the code no longer has, or with an example
+that no longer compiles. In a round of trials with agents, four states of the code passed `check`
+and failed only `tsc`. Put the type-check of the test files before them in `proof.run`, so that
+the proof fails on them:
+
+```yaml
+proof:
+  run: "npx tsc --noEmit && npx vitest run skill.test"
+```
+
+The `tsconfig.json` must include the test files. A type error is then one finding, on
+`proof.run`, with the compiler's errors, and nothing is built, compared or written until the tests
+type-check. `skillunit init` suggests this command when the folder has a `tsconfig.json`.
+
+What it adds to `check --dry-run`, measured on 2026-11-27 on one machine:
+
+| Skill | Without the type-check | With it | The type-check alone |
+| --- | --- | --- | --- |
+| tinyfetch | 0.96 s | 1.25 s | 0.35 s |
+| SkillUnit's own | 4.05 s | 4.75 s | 0.76 s |
 
 The project's CI still runs the whole suite. A unit declared in a file the command does not run
 is not lost without notice: the skill folder has it and no test declares it, and proof says so.
@@ -334,13 +427,13 @@ is not lost without notice: the skill folder has it and no test declares it, and
 ```yaml
 skill: ./skill          # built, committed, what agents read
 proof:
-  run: "npx vitest run skill.test"      # the tests that declare the skill
+  run: "npx tsc --noEmit && npx vitest run skill.test"   # the type-check, then the tests that declare the skill
   units: ./tmp/skill-units              # where tests leave their records (the default)
   format: "npx --no-install prettier --write {file}"
 ```
 
-Paths start from the folder of `skillunit.yaml`. Without `proof` there is no proof layer and no
-questions: `check` says the proof is not configured.
+Paths start from the folder of `skillunit.yaml`. `proof`, `test` and `check` exit with 2 on
+settings with no `proof`: the skill and its questions both come from the records of `proof.run`.
 
 `format` is for a project whose formatter rewrites Markdown, as Prettier rewrites tables and the
 code in fenced blocks. Each built file is formatted on a copy next to where it goes, so the
@@ -395,11 +488,16 @@ that file, from 0, in `order`:
 ```
 
 A failed test writes the same `skillunit`, `id`, `file`, `line` and `test`, with
-`"status": "failed"` and the error's message in `error`. `examples` is a list of
-`{ "lang": …, "text": … }`, the blocks of `u.example`. As with `unit()`, a value is a single line
-and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`): SkillUnit refuses a
-record that breaks either, since a line break there would add lines to the built file that no unit
-declares. The finding about a record that is refused is on the record, and its origin is the test
+`"status": "failed"` and the error's message in `error`, and the unit's `ask` when it has
+questions, which the report then counts as left out. A helper in another language does what
+`unit()` does: it writes a failed record that says the test did not finish when the test starts,
+replaces it when the test ends, and takes it out when the test is skipped from inside, so a test
+that times out is reported as failed and not as deleted. `examples` is a list of
+`{ "lang": …, "text": … }`, the blocks of `u.example`. As with `unit()`, each entry of `values` is
+a single line and each `lang` is a fence language (letters, digits, `_`, `+`, `.` and `-`):
+SkillUnit refuses a record that breaks either, since a line break there would add lines to the
+built file that no unit declares. A label such as `when` or `value` is one paragraph: its line
+breaks become spaces, and a blank line in it is refused. The finding about a record that is refused is on the record, and its origin is the test
 the record names in `file` and `line`, when it has them. A unit no test proves has
 `"body": false`. `ask` holds the questions as the spec gives them, one or a list, with or without
 `id`; SkillUnit fills in the default ids and checks them when it reads the record. The other keys
@@ -444,10 +542,13 @@ def pytest_runtest_makereport(item, call):
         item.skill_report = report
 
 
+def path(request, id):
+    return UNITS / f"{id}.{hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]}.json"
+
+
 def write(request, record):
     UNITS.mkdir(parents=True, exist_ok=True)
-    name = hashlib.sha1(request.node.nodeid.encode()).hexdigest()[:8]
-    (UNITS / f"{record['id']}.{name}.json").write_text(json.dumps(record, indent=2))
+    path(request, record["id"]).write_text(json.dumps(record, indent=2))
 
 
 @pytest.fixture
@@ -466,22 +567,29 @@ def setup(request):
 def unit(request):
     """Declares the unit this test proves; call it once, first, with the keys of the contract."""
     spec = {}
+    file, line, _ = request.node.location
+    record = {"skillunit": 2, "file": file, "line": line + 1, "test": request.node.nodeid}
 
     def declare(id, **keys):
         if spec:
             raise RuntimeError(f"unit() is called once per test; {spec['id']} is already declared here")
         spec.update(id=id, **keys)
+        record["id"] = id
+        owner = CURRENT.get(file)
+        if owner:
+            record.update(setup=owner["setup"], order=owner["order"])
+            owner["order"] += 1
+        # Replaced when the test ends: a test that does not finish keeps this record.
+        write(request, {**record, "status": "failed", "error": "the test did not finish, because it timed out or the run stopped before it ended"})
 
     yield declare
-    report = getattr(request.node, "skill_report", None)
-    if not spec or report is None or report.skipped:
+    if not spec:
         return
-    file, line, _ = request.node.location
-    record = {"skillunit": 2, "id": spec.pop("id"), "file": file, "line": line + 1, "test": request.node.nodeid}
-    owner = CURRENT.get(file)
-    if owner:
-        record.update(setup=owner["setup"], order=owner["order"])
-        owner["order"] += 1
+    spec.pop("id")
+    report = getattr(request.node, "skill_report", None)
+    if report is None or report.skipped:
+        path(request, record["id"]).unlink(missing_ok=True)
+        return
     if report.passed:
         kind = "rule" if "do" in spec else "decision" if "paths" in spec else "fact"
         record.update(status="passed", kind=kind, examples=spec.pop("examples", []), **spec)
@@ -524,7 +632,7 @@ def test_never_disable_timeout(unit):
 ```
 
 `request.node.location` gives the file from pytest's root folder, so this assumes `skillunit.yaml`
-sits there. `setup` declares a file of the skill; the units of the tests after it in the same test file belong to it, in the order pytest runs them. A test calls `unit` once: a second call fails the test and says so. A failed test's
+sits there. `setup` declares a file of the skill; the units of the tests after it in the same test file belong to it, in the order pytest runs them. A test calls `unit` once: a second call fails the test and says so. `unit` writes a failed record that says the test did not finish when it is called, so a test that hangs or a run that stops leaves it; when the test ends, the record of how it ended replaces it, and a skipped test takes it out. A failed test's
 record keeps the assertion's message, as pytest reports it. A parametrized test writes one record
 per case, all with the same id, and SkillUnit refuses an id declared twice; a unit built from
 several cases goes in one test that loops over them. A region in Python reads `# #region skill:<id>` and `# #endregion`. The fixture copies

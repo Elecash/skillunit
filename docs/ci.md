@@ -28,7 +28,8 @@ jobs:
 - With `proof.run` in `skillunit.yaml`, `check` runs the tests that declare the skill
   itself and goes on when they fail, so a failing test is reported on the unit it declares, then
   fails: a run that did not exit with 0 is an error, with the end of its output. Point
-  `proof.run` at those tests only, such as `npx vitest run skill.test`, and let the project's own
+  `proof.run` at those tests only, after their type-check, such as
+  `npx tsc --noEmit && npx vitest run skill.test`, and let the project's own
   test job run the whole suite. A project that runs those tests in a step of its own runs
   `check --no-run` after it, with `if: always()` on the `check` step so a red test step does not
   skip it.
@@ -40,6 +41,23 @@ jobs:
 - The dry run needs no key. It runs the proof in full, and checks that every question can
   be asked and fits, so a renamed heading, a question whose `expect` names no option, or a unit
   missing from the skill fails it before the model is asked.
+
+## Questions that do not block a merge
+
+By default a question that fails fails the check, as a failing test does. A project that wants
+the questions in its pull requests without gating the merge on them runs the second step with
+`--advisory`:
+
+```yaml
+      # Blocks the merge on the proof and on every question (the default).
+      - run: npx skillunit check --no-run --reporter github
+      # Blocks the merge on the proof only; a question that fails is a warning on its line.
+      - run: npx skillunit check --no-run --advisory --reporter github
+```
+
+With `--advisory` the run still fails on the proof, and on what is not a verdict: a question
+that cannot be asked, a missing key, a provider that answers with an error. The status line ends
+with `, advisory`, so a green check is not read as questions that passed.
 
 ## Pull requests from forks
 

@@ -84,7 +84,7 @@ const test = (requests: RequestReport[], overrides: Partial<Report> = {}): Repor
     thresholds: { ...DEFAULT_THRESHOLDS },
     requests,
     problems: [],
-    summary: { tests: all.length, passed: all.filter((v) => v.pass).length, borderline: 0, skipped: 0, usage: { input_tokens: 0, output_tokens: 0 } },
+    summary: { tests: all.length, passed: all.filter((v) => v.pass).length, borderline: 0, skipped: 0, leftOut: 0, usage: { input_tokens: 0, output_tokens: 0 } },
     ...overrides,
   };
 };
@@ -139,7 +139,6 @@ describe('the report by unit', () => {
   it('counts coverage only when check ran both layers over the whole skill', () => {
     expect(unitTree(report('test', { test: test(requests()) })).coverage).toBeNull();
     expect(unitTree(report('proof', { proof: proof() })).coverage).toBeNull();
-    expect(unitTree(report('check', { proof: { configured: false, ok: true }, test: test(requests()) })).coverage).toBeNull();
     expect(unitTree(report('check', { proof: proof(), test: test(requests(), { changed: { ref: 'main', commit: 'abc' } }) })).coverage).toBeNull();
     const tree = unitTree(report('test', { test: test(requests()) }));
     expect(unit(tree, 'never-disable-timeout')).toMatchObject({ coverage: null, mark: 'pass' });
@@ -212,7 +211,7 @@ describe('the report by unit', () => {
 
   it('with --changed, keeps only the units and files that have a line', () => {
     const retries = [request('features/retries.md', [verdict('post-no-retry', 10, 'retry-idempotent-only')])];
-    for (const t of [test(retries, { changed: { ref: 'main', commit: 'abc' } }), test(retries, { summary: { tests: 1, passed: 1, borderline: 0, skipped: 3, usage: { input_tokens: 0, output_tokens: 0 } } })]) {
+    for (const t of [test(retries, { changed: { ref: 'main', commit: 'abc' } }), test(retries, { summary: { tests: 1, passed: 1, borderline: 0, skipped: 3, leftOut: 0, usage: { input_tokens: 0, output_tokens: 0 } } })]) {
       const tree = unitTree(report('test', { test: t }));
       expect(tree.partial).toBe(true);
       expect(tree.files.map((f) => [f.file, f.units.map((u) => u.id)])).toEqual([['features/retries.md', ['retry-idempotent-only']]]);
@@ -224,8 +223,8 @@ describe('the report by unit', () => {
     expect(lines(unit(check, 'retry-defaults').lines)).toEqual(['origin pass test']);
   });
 
-  it('with no `proof`, has no proof lines', () => {
-    const tree = unitTree(report('check', { proof: { configured: false, ok: true }, test: test(requests()) }));
+  it('with no proof layer, has no proof lines', () => {
+    const tree = unitTree(report('test', { test: test(requests()) }));
     expect(tree.layers).toEqual({ proof: false, test: true });
     expect(tree.files.flatMap((f) => f.units).flatMap((u) => u.lines).some((l) => l.kind === 'origin' || (l.kind === 'missing' && l.layer === 'proof'))).toBe(false);
   });

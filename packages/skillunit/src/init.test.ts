@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
-import { init } from './init.js';
+import { CONTRACT, init } from './init.js';
 import { ConfigError } from './problems.js';
 
 const roots: string[] = [];
 function project(): string {
   const root = mkdtempSync(join(tmpdir(), 'skillunit-init-'));
   roots.push(root);
+  writeFileSync(join(root, 'package.json'), '{}\n');
   mkdirSync(join(root, 'skills', 'my-skill'), { recursive: true });
   writeFileSync(join(root, 'skills', 'my-skill', 'SKILL.md'), '# My skill\n');
   return root;
@@ -37,6 +38,13 @@ describe('init', () => {
     expect(text).not.toContain('specs');
   });
 
+  it('with a tsconfig.json, the proof.run it suggests type-checks before the tests', () => {
+    const root = project();
+    writeFileSync(join(root, 'tsconfig.json'), '{}\n');
+    init('skills/my-skill', root);
+    expect(readFileSync(join(root, 'skillunit.yaml'), 'utf8')).toContain('\n# proof: { run: "npx tsc --noEmit && npx vitest run skill.test" }   # the type-check, then the test files that declare them: *.skill.test.ts\n');
+  });
+
   it('with no folder, the skill is the current folder', () => {
     const root = project();
     init('.', root);
@@ -52,6 +60,12 @@ describe('init', () => {
       'next: in a test, declare each file of the skill with `setup()` and each unit with `unit()`, from `skillunit/vitest`, and set `proof.run` in skillunit.yaml to the command that runs those tests',
       'then: run `skillunit proof --write` to build ./skills/other, and `skillunit check` to check it',
     ]);
+  });
+
+  it('with no package.json, points at the JSON contract for a test in another runner or language', () => {
+    const root = project();
+    rmSync(join(root, 'package.json'));
+    expect(init('skills/my-skill', root).at(-1)).toBe(`no package.json here: a test in another runner or language writes the records itself, as the JSON contract says: ${CONTRACT}`);
   });
 
   it('refuses to overwrite skillunit.yaml', () => {

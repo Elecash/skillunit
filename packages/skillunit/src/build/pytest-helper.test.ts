@@ -113,4 +113,32 @@ describe.skipIf(!pytest)('the pytest helper of docs/proof.md', () => {
     expect(failed.first).toMatch(/^RuntimeError: unit\(\) is called once per test; first is already declared here/);
     expect(failed.red).toMatch(/^AssertionError: the timeout is not 10 seconds/);
   });
+
+  it('a test the run stops in keeps a failed record that says it did not finish; a skipped test leaves none', () => {
+    const dir = mkdtempSync(join(root, 'stopped-'));
+    writeFileSync(join(dir, 'conftest.py'), /```python\n([\s\S]*?)```/.exec(readFileSync(DOC, 'utf8'))![1]!);
+    writeFileSync(
+      join(dir, 'test_stopped.py'),
+      [
+        'import os',
+        'import pytest',
+        '',
+        '',
+        'def test_skipped(unit):',
+        '    unit("skipped", when="x.", do="y.")',
+        '    pytest.skip("not here")',
+        '',
+        '',
+        'def test_stops(unit):',
+        '    unit("stops", when="x.", do="y.")',
+        '    os._exit(1)',
+        '',
+      ].join('\n'),
+    );
+    const run = spawnSync('python3', ['-m', 'pytest', '-q', '-p', 'no:cacheprovider'], { cwd: dir, encoding: 'utf8' });
+    expect(run.status, run.stdout + run.stderr).toBe(1);
+    const records = readRecords(join(dir, 'tmp', 'skill-units'), dir);
+    expect(records.problems).toEqual([]);
+    expect(records.units.map((u) => [u.id, u.status, u.status === 'failed' ? u.error : ''])).toEqual([['stops', 'failed', 'the test did not finish, because it timed out or the run stopped before it ended']]);
+  });
 });

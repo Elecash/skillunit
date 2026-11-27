@@ -156,6 +156,18 @@ const postRetry = question('post-retry', {
 const getOk = question('get-ok', { scenarios: ['A GET times out.'], question: 'May the agent retry it?', expect: 'yes', sections: ['Retries'] });
 
 describe('runAll', () => {
+  it('with `advisory`, a question that fails does not fail the run; a request that could not run still does', async () => {
+    const config = project();
+    const wrong = stub(() => ({ 'get-ok': { probabilities: { yes: 0.1, no: 0.9 } } }));
+    expect((await runAll(config, wrong.model, collected(getOk))).ok).toBe(false);
+    const advisory = await runAll(config, wrong.model, collected(getOk), { advisory: true });
+    expect(advisory).toMatchObject({ ok: true, advisory: true, summary: { tests: 1, passed: 0 } });
+    expect(advisory.requests[0]!.verdicts[0]!.pass).toBe(false);
+    const down = stub(() => new Error('the provider is down'));
+    expect((await runAll(config, down.model, collected(getOk), { advisory: true })).ok).toBe(false);
+    expect(await runAll(config, wrong.model, collected(getOk))).not.toHaveProperty('advisory');
+  });
+
   it('sends one request per file and takes the median phrasing', async () => {
     const config = project();
     const { model, calls } = stub(() => ({
@@ -171,7 +183,7 @@ describe('runAll', () => {
     expect(report.requests[0]!.verdicts[0]).toMatchObject({ answer: 'stop', expectedProb: 0.8, variants: [0.9, 0.2, 0.8], unit: 'retry-idempotent-only', declared: { file: '/project/src/a.skill.test.ts', line: 10 } });
     expect(report.requests[0]).toMatchObject({ file: 'SKILL.md', sections: ['Retries'], with: [], model: 'stub-1' });
     expect(report.provider).toBe('stub');
-    expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, usage: { input_tokens: 100, output_tokens: 10 } });
+    expect(report.summary).toEqual({ tests: 2, passed: 2, borderline: 0, skipped: 0, leftOut: 0, usage: { input_tokens: 100, output_tokens: 10 } });
   });
 
   it('asks the questions of two files, or of one file with different `with`, in requests of their own', async () => {

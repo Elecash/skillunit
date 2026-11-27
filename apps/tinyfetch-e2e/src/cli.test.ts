@@ -17,7 +17,7 @@ describe('exit 2 with a JSON reporter', () => {
       expect(result.status).toBe(2);
       expect(result.stderr).toMatch(/^skillunit: /);
       const out = JSON.parse(result.stdout);
-      expect(out).toMatchObject({ schema: 7, command: args[0], ok: false, error: { exit: 2 } });
+      expect(out).toMatchObject({ schema: 8, command: args[0], ok: false, error: { exit: 2 } });
       expect(result.stderr).toContain(out.error.message);
     }
   });

@@ -12,7 +12,7 @@ FAILED  test 2/4 passed (1 request could not run, 1 problem, 2 borderline)
 
 exports[`reporters > json: every layer with every kind of finding 1`] = `
 "{
-  "schema": 7,
+  "schema": 8,
   "command": "check",
   "ok": false,
   "units": [
@@ -200,6 +200,7 @@ exports[`reporters > json: every layer with every kind of finding 1`] = `
       "passed": 2,
       "borderline": 2,
       "skipped": 0,
+      "leftOut": 0,
       "usage": {
         "input_tokens": 2000,
         "output_tokens": 200
@@ -459,7 +460,7 @@ FAILED  proof 3 errors, 1 warning
 
 exports[`reporters > the proof layer > json: units proved by a test and declared without one, with every kind of finding 1`] = `
 "{
-  "schema": 7,
+  "schema": 8,
   "command": "proof",
   "ok": false,
   "units": [

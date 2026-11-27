@@ -77,7 +77,7 @@ const test: Report = {
     },
   ],
   problems: [{ id: 'which-file', declared: { file: '/repo/src/skill.skill.test.ts', line: 20 }, message: 'the question `which-file` is about features/gone.md, which is not a file in the skill folder' }],
-  summary: { tests: 4, passed: 2, borderline: 2, skipped: 0, usage: { input_tokens: 2000, output_tokens: 200 } },
+  summary: { tests: 4, passed: 2, borderline: 2, skipped: 0, leftOut: 0, usage: { input_tokens: 2000, output_tokens: 200 } },
 };
 
 const full: CheckReport = buildReport('check', { units, test });
@@ -119,7 +119,7 @@ describe('reporters', () => {
         dryRun: true,
         problems: [],
         requests: [{ ...test.requests[0]!, model: undefined, verdicts: test.requests[0]!.verdicts.map((v) => ({ ...v, answer: '(dry run)', pass: true, weak: false, borderline: false })) }],
-        summary: { ...test.summary, tests: 4, passed: 4, borderline: 0, skipped: 0, usage: { input_tokens: 0, output_tokens: 0 } },
+        summary: { ...test.summary, tests: 4, passed: 4, borderline: 0, skipped: 0, leftOut: 0, usage: { input_tokens: 0, output_tokens: 0 } },
       },
     });
     expect(render(dry, 'table', options)).toMatchSnapshot();
@@ -166,7 +166,7 @@ describe('reporters', () => {
   });
 
   it('table: test --changed with nothing to ask', () => {
-    const none = buildReport('test', { test: { ...test, ok: true, problems: [], requests: [], changed: { ref: 'main', commit: 'abc1234def' }, summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, usage: { input_tokens: 0, output_tokens: 0 } } } });
+    const none = buildReport('test', { test: { ...test, ok: true, problems: [], requests: [], changed: { ref: 'main', commit: 'abc1234def' }, summary: { tests: 0, passed: 0, borderline: 0, skipped: 7, leftOut: 0, usage: { input_tokens: 0, output_tokens: 0 } } } });
     expect(render(none, 'table', options)).toBe('\nUnits  test nothing to ask · changed since main (abc1234)\n\n  0 tests · 7 questions left out by --changed\n\nOK  test asked nothing: no question is about a file changed since main (abc1234)\n');
   });
 
@@ -177,7 +177,7 @@ describe('reporters', () => {
 
   it('json: the report as it is, with the schema', () => {
     const json = JSON.parse(render(full, 'json', options));
-    expect(json).toMatchObject({ schema: 7, command: 'check', ok: false });
+    expect(json).toMatchObject({ schema: 8, command: 'check', ok: false });
     expect(json.test.requests[0].verdicts[1].borderline).toBe(true);
     expect(json.units).toEqual(units);
   });
@@ -317,6 +317,49 @@ describe('reporters', () => {
       expect(render(report, 'table', options).trim().split('\n').at(-1)).toBe('OK  proof ok, wrote 2 files · test 0/0 passed');
     });
 
+    it('table: when the skill folder and the tests count other units, each count says which', () => {
+      const report = buildReport('check', { units, proof, test: { ...test, ok: true, problems: [], requests: [], summary: { ...test.summary, tests: 0, passed: 0, borderline: 0 } } });
+      const out = render(report, 'table', options);
+      expect(out).toContain('  4 units in the skill folder · ');
+      expect(out).toContain('  3 units the tests declare · 1 proved by a test, 1 failed');
+      const same = buildReport('check', { units: units.slice(0, 3), proof, test: { ...test, ok: true, problems: [], requests: [], summary: { ...test.summary, tests: 0, passed: 0, borderline: 0 } } });
+      expect(render(same, 'table', options)).toContain('  3 units · 1 proved by a test, 1 failed');
+    });
+
+    it('table: the questions of a test that failed are counted as left out', () => {
+      const dry = { ...test, ok: true, dryRun: true, problems: [], requests: [], summary: { ...test.summary, tests: 5, passed: 5, borderline: 0, leftOut: 1 } };
+      expect(render(buildReport('test', { test: dry }), 'table', options).trim().split('\n').at(-1)).toBe('OK  test dry run ok, 5 tests ready, 1 question left out, from a test that failed');
+      const asked = { ...dry, dryRun: false, summary: { ...dry.summary, leftOut: 2 } };
+      expect(render(buildReport('test', { test: asked }), 'table', options).trim().split('\n').at(-1)).toBe('OK  test 5/5 passed (2 questions left out, from tests that failed)');
+    });
+
+    it('table: a run that failed comes first, before the files, and first in the list of failures', () => {
+      const run = { file: '../../skillunit.yaml', line: 3, severity: 'error' as const, run: true as const, message: '`proof.run` (`npx vitest run`) exited with 1: a test failed, or the run did' };
+      const out = render(buildReport('proof', { units, proof: { ...proof, problems: [run, ...proof.problems] } }), 'table', options);
+      expect(out.indexOf('proof.run failed')).toBeGreaterThan(-1);
+      expect(out.indexOf('proof.run failed')).toBeLessThan(out.indexOf('skills/demo/SKILL.md'));
+      expect(out.split('\nFailed\n')[1]!.split('\n')[0]).toBe('  proof skillunit.yaml:3');
+    });
+
+    it('table: a run that left no record shows the run alone, with no tree of empty units', () => {
+      const run = { file: '../../skillunit.yaml', line: 3, severity: 'error' as const, run: true as const, message: '`proof.run` (`tsc --noEmit && npx vitest run`) exited with 2 and left no record in `tmp/skill-units`: it failed before any test wrote one' };
+      const none = { ...proof, ok: false, units: [], files: [], problems: [run], summary: { ...proof.summary, units: 0, proved: 0, declared: 0, failed: 0, files: 0, differ: 0, written: 0, extra: 0 } };
+      const out = render(buildReport('proof', { units, proof: none }), 'table', options);
+      expect(out).toContain('proof.run failed');
+      expect(out).not.toContain('skills/demo/SKILL.md');
+      expect(out).toContain('\n  nothing built or compared: the run left no record\n');
+      expect(out.split('\nFailed\n')[1]!.trim().split('\n')).toEqual(['proof skillunit.yaml:3', '', 'FAILED  proof 1 error, 0 warnings']);
+    });
+
+    it('advisory: the status line says so, and github writes a failed question as a warning', () => {
+      const advisory = buildReport('test', { test: { ...test, ok: true, advisory: true, problems: [], requests: test.requests.filter((r) => !r.error) } });
+      expect(render(advisory, 'table', options).trim().split('\n').at(-1)).toBe('OK  test 2/4 passed (2 borderline), advisory');
+      const github = render(advisory, 'github', options);
+      expect(github).toContain('::warning file=src/retry.skill.test.ts,line=30,title=SkillUnit test%3A user-asks-for-mutations::');
+      expect(github).not.toContain('::error');
+      expect(JSON.parse(render(advisory, 'json', options)).test.advisory).toBe(true);
+    });
+
     it('github: escapes the characters workflow commands use', () => {
       const odd = buildReport('proof', { proof: { ...proof, problems: [{ file: 'a,b:c.md', line: 1, severity: 'error', message: '100% broken\nsecond line' }] } });
       expect(render(odd, 'github', options).split('\n')[0]).toBe('::error file=skills/demo/a%2Cb%3Ac.md,line=1,title=SkillUnit proof::100%25 broken%0Asecond line');
@@ -357,16 +400,6 @@ describe('reporters', () => {
       expect(render(report, 'table', options)).toContain(`  ${line}\n`);
       expect(render(report, 'github', options)).toContain(`::notice title=SkillUnit proof::${line}\n`);
       expect(render(report, 'junit', options)).toContain(`<system-out>${line}</system-out>`);
-    });
-
-    it('table: says when check ran with no `proof`', () => {
-      const report = buildReport('check', { units, proof: { configured: false, ok: true } });
-      const text = render(report, 'table', options);
-      expect(text).toContain('Units  proof not configured\n');
-      expect(text).not.toContain('proof  ');
-      expect(text.trim().split('\n').at(-1)).toBe('OK  proof not configured');
-      expect(render(report, 'github', options)).toBe('OK  proof not configured\n');
-      expect(JSON.parse(render(report, 'json', options)).proof).toEqual({ configured: false, ok: true });
     });
   });
 });

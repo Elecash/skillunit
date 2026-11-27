@@ -9,15 +9,31 @@ interface Registered {
   rest: unknown[];
 }
 
+/** Records kept as files keep them: a write under a key replaces the record written before under it. */
+function keyed<T>(make: (record: UnitRecord, key: string) => T) {
+  const records: T[] = [];
+  const keys: string[] = [];
+  const write = (record: UnitRecord, key: string) => {
+    const i = keys.indexOf(key);
+    if (i >= 0) records[i] = make(record, key);
+    else keys.push(key), records.push(make(record, key));
+  };
+  const remove = (_record: UnitRecord, key: string) => {
+    const i = keys.indexOf(key);
+    if (i >= 0) keys.splice(i, 1), records.splice(i, 1);
+  };
+  return { records, write, remove };
+}
+
 /** A runner of our own: `it` records each test, and `run` runs them as a runner would. */
 function runner(options: { skip?: boolean; only?: boolean } = {}) {
   const tests: Registered[] = [];
-  const records: { record: UnitRecord; key: string }[] = [];
   const add = (how: Registered['how']) => (name: string, fn: Registered['fn'], ...rest: unknown[]) => void tests.push({ name, fn, how, rest });
   const fake = add('') as RunnerIt<{ n: number }>;
   if (options.skip !== false) fake.skip = add('skip');
   if (options.only !== false) fake.only = add('only');
-  const { unit, ask, setup } = createUnit(fake, { write: (record, key) => void records.push({ record, key }) });
+  const { records, write, remove } = keyed((record, key) => ({ record, key }));
+  const { unit, ask, setup } = createUnit(fake, { write, remove });
   /** Runs every test that is not skipped; returns each one's error message, or `ok`. */
   const run = async () => {
     const out: string[] = [];
@@ -126,6 +142,52 @@ describe('what the body gives', () => {
     ]);
   });
 
+  it('a test that does not finish keeps a failed record that says so, from its start', async () => {
+    const r = runner();
+    let finish = () => {};
+    r.unit('default-timeout', { when: 'x.', value: 'y.' }, () => new Promise<void>((resolve) => (finish = resolve)));
+    r.setup('timeouts', { file: 'features/timeouts.md', title: 'Timeouts', when: 'Time out a request', description: 'How long a request waits.' });
+    r.ask('which-file', { file: 'SKILL.md', scenario: 'A request hangs.', question: 'Which file?', options: { timeouts: 'timeouts', errors: 'errors' }, expect: 'timeouts' });
+    // The runner abandons the body, as on a timeout: the body has not ended, and nothing replaced the record.
+    const pending = r.tests[0]!.fn({ n: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(r.records.map((x) => x.record)).toEqual([expect.objectContaining({ id: 'default-timeout', status: 'failed', error: 'the test did not finish, because it timed out or the run stopped before it ended' })]);
+    finish();
+    await pending;
+    expect(r.records.map((x) => x.record)).toEqual([expect.objectContaining({ id: 'default-timeout', status: 'passed' })]);
+    for (const t of r.tests.slice(1)) await t.fn({ n: 1 });
+    expect(r.records.map((x) => [x.record.id, x.record.status])).toEqual([
+      ['default-timeout', 'passed'],
+      ['timeouts', 'passed'],
+      ['which-file', 'passed'],
+    ]);
+  });
+
+  it('`setup()` and `ask()` write a record that says they did not finish first, then the one of how they ended, under one key', async () => {
+    const tests: Registered['fn'][] = [];
+    const writes: [string, string, string][] = [];
+    const fake = ((_name: string, fn: Registered['fn']) => void tests.push(fn)) as RunnerIt<{ n: number }>;
+    const { setup, ask } = createUnit(fake, { write: (record, key) => void writes.push([record.id, record.status, key]) });
+    setup('timeouts', { file: 'features/timeouts.md', title: 'Timeouts', when: 'Time out a request', description: 'How long a request waits.' });
+    ask('which-file', { file: 'SKILL.md', scenario: 'A request hangs.', question: 'Which file?', options: { timeouts: 'timeouts', errors: 'errors' }, expect: 'timeouts' });
+    for (const t of tests) await t({ n: 1 });
+    expect(writes.map(([id, status]) => `${id} ${status}`)).toEqual(['timeouts failed', 'timeouts passed', 'which-file failed', 'which-file passed']);
+    expect(writes[0]![2]).toBe(writes[1]![2]);
+    expect(writes[2]![2]).toBe(writes[3]![2]);
+  });
+
+  it('a failure the runner recorded first, such as a timeout, is the error of the record', async () => {
+    const tests: Registered['fn'][] = [];
+    const records: UnitRecord[] = [];
+    const fake = ((_name: string, fn: Registered['fn']) => void tests.push(fn)) as RunnerIt<{ n: number }>;
+    const { unit } = createUnit(fake, { write: (record) => void records.push(record), failure: () => 'Test timed out in 5000ms.' });
+    unit('default-timeout', { when: 'x.', value: 'y.' }, () => {
+      throw new TypeError('fetch failed');
+    });
+    await expect(tests[0]!({ n: 1 })).rejects.toThrow('fetch failed');
+    expect(records.at(-1)).toMatchObject({ status: 'failed', error: 'Test timed out in 5000ms.' });
+  });
+
   it('a fact whose value nobody sets fails, and so does `u.value` in a rule', async () => {
     const r = runner();
     r.unit('what-is-retried', { when: 'x.' }, noop);
@@ -193,9 +255,9 @@ describe('a body that asserts nothing', () => {
   const counted = () => {
     let count = 0;
     const tests: Registered[] = [];
-    const records: UnitRecord[] = [];
+    const { records, write } = keyed((record) => record);
     const fake = ((name: string, fn: Registered['fn']) => void tests.push({ name, fn, how: '', rest: [] })) as RunnerIt<{ n: number }>;
-    const { unit } = createUnit(fake, { write: (record) => void records.push(record), assertions: () => count });
+    const { unit } = createUnit(fake, { write, assertions: () => count });
     const assert = () => void count++;
     const run = async () => {
       const out: string[] = [];
@@ -380,13 +442,13 @@ describe('questions for the decision model', () => {
     expect(r.records[0]!.record).toMatchObject({ ask: [{ id: 'never-disable-timeout', ...q }] });
   });
 
-  it('a unit whose body fails leaves no questions', async () => {
+  it('a unit whose body fails keeps its questions in its failed record, so the report can count them', async () => {
     const r = runner();
     r.unit('default-timeout', { when: 'x.', value: 'y.', ask: question }, () => {
       throw new Error('expected 5000 to be 10000');
     });
     expect(await r.run()).toEqual(['expected 5000 to be 10000']);
-    expect(r.records[0]!.record).not.toHaveProperty('ask');
+    expect(r.records[0]!.record).toMatchObject({ status: 'failed', ask: [{ id: 'default-timeout' }] });
   });
 
   it('two questions of the run with one id: the second unit fails and names the first', async () => {

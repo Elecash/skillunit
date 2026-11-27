@@ -18,13 +18,6 @@ import type { Question } from '../test/questions.js';
 import type { UnitRecord } from '../unit/contract.js';
 import { createUnit, type RunnerIt } from '../unit/create.js';
 
-/** `a`, `a and b`, `a, b and c`. */
-export const and = (items: readonly string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
-/** `a`, `a or b`, `a, b or c`. */
-export const or = (items: readonly string[]) => (items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} or ${items.at(-1)}`);
-/** Each item in backticks. */
-export const code = (items: readonly string[]) => items.map((i) => `\`${i}\``);
-
 const folders: string[] = [];
 /** A new folder for one test. `cleanUp` takes them all away. */
 export function scratch(name: string): string {
@@ -41,10 +34,10 @@ export const cleanUp = () => folders.splice(0).forEach((d) => rmSync(d, { recurs
  */
 export function runner() {
   const tests: { fn: (ctx: unknown) => unknown }[] = [];
-  const records: UnitRecord[] = [];
+  const { records, write } = memoryWriter();
   const add = (_name: string, fn: (ctx: unknown) => unknown) => void tests.push({ fn });
   const it = Object.assign(add, { skip: () => {}, only: add }) as unknown as RunnerIt<unknown>;
-  const { unit, ask, setup } = createUnit(it, { write: (record) => void records.push(record) });
+  const { unit, ask, setup } = createUnit(it, { write });
   const run = async () => {
     const out: string[] = [];
     for (const t of tests.splice(0)) {
@@ -58,6 +51,21 @@ export function runner() {
     return out;
   };
   return { unit, ask, setup, records, run };
+}
+
+/**
+ * A `write` for `createUnit` that keeps the records in memory as the files would be: a record
+ * written under a key replaces the one written before under it.
+ */
+export function memoryWriter() {
+  const records: UnitRecord[] = [];
+  const keys: string[] = [];
+  const write = (record: UnitRecord, key: string) => {
+    const i = keys.indexOf(key);
+    if (i >= 0) records[i] = record;
+    else keys.push(key), records.push(record);
+  };
+  return { records, write };
 }
 
 /** outside/.env  ·  outside/repo/.git  ·  repo/.env  ·  repo/apps/app/.env  ·  repo/apps/other */

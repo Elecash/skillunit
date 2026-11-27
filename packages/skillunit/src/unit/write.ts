@@ -3,7 +3,7 @@
  * `<proof.units>/<id>.<hash>.json` of the nearest `skillunit.yaml` above the working directory,
  * with `file` made relative to that file's folder.
  */
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { CONFIG_FILE, DEFAULT_PROOF_UNITS, loadConfig } from '../config.js';
 import type { UnitRecord } from './contract.js';
@@ -24,6 +24,11 @@ export function writeUnit(record: UnitRecord, key: string): string {
   const path = join(units, `${record.id}.${hash(key)}.json`);
   writeFileSync(path, `${JSON.stringify({ ...record, file }, null, 2)}\n`);
   return path;
+}
+
+/** Deletes the file `writeUnit` writes for `record` and `key`, when it is there. */
+export function removeUnit(record: UnitRecord, key: string): void {
+  rmSync(join(unitsTarget(process.cwd()).units, `${record.id}.${hash(key)}.json`), { force: true });
 }
 
 /** The folder of the nearest `skillunit.yaml` at or above `from`, and its `proof.units`. */

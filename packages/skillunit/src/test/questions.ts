@@ -49,6 +49,8 @@ export interface QuestionProblem {
   /** Where it is declared, when it is: the absolute path of the test file, and the line. */
   declared?: { file: string; line: number };
   message: string;
+  /** `proof.run` did not exit with 0: the report shows this first. */
+  run?: true;
 }
 
 export interface Collected {
